@@ -1,16 +1,32 @@
 "use client";
 
+import {
+  ChangeEvent,
+  FormEvent,
+  ReactNode,
+  Suspense,
+  useState,
+} from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
+
 import { supabase } from "@/lib/supabase";
 
-export default function NewTaskPage() {
+type TaskForm = {
+  title: string;
+  status: string;
+  due_date: string;
+  assigned_user: string;
+  priority: string;
+  memo: string;
+};
+
+function NewTaskForm() {
   const router = useRouter();
-
   const searchParams = useSearchParams();
-const caseId = searchParams.get("case_id");
 
-  const [form, setForm] = useState({
+  const caseId = searchParams.get("case_id");
+
+  const [form, setForm] = useState<TaskForm>({
     title: "",
     status: "未対応",
     due_date: "",
@@ -19,101 +35,188 @@ const caseId = searchParams.get("case_id");
     memo: "",
   });
 
-  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
 
   function handleChange(
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
+    event: ChangeEvent<
+      HTMLInputElement |
+      HTMLTextAreaElement |
+      HTMLSelectElement
+    >
   ) {
-    setForm({ ...form, [e.target.name]: e.target.value });
+    const { name, value } = event.target;
+
+    setForm((current) => ({
+      ...current,
+      [name]: value,
+    }));
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setLoading(true);
+  async function handleSubmit(
+    event: FormEvent<HTMLFormElement>
+  ) {
+    event.preventDefault();
 
-    const { error } = await supabase.from("tasks").insert({
-  case_id: caseId,
-  title: form.title,
-  status: form.status,
-  due_date: form.due_date || null,
-  assigned_user: form.assigned_user,
-  priority: form.priority,
-  memo: form.memo,
-});
+    setSubmitError("");
 
-    setLoading(false);
-
-    if (error) {
-      alert("登録に失敗しました：" + error.message);
+    if (!form.title.trim()) {
+      setSubmitError("タスク名を入力してください。");
       return;
     }
 
-    router.push(caseId ? `/cases/${caseId}` : "/tasks");
+    setSubmitting(true);
+
+    const { error } = await supabase
+      .from("tasks")
+      .insert({
+        case_id: caseId || null,
+        title: form.title.trim(),
+        status: form.status,
+        due_date: form.due_date || null,
+        assigned_user:
+          form.assigned_user.trim() || null,
+        priority: form.priority,
+        memo: form.memo.trim() || null,
+      });
+
+    if (error) {
+      setSubmitError(
+        `登録に失敗しました：${error.message}`
+      );
+      setSubmitting(false);
+      return;
+    }
+
+    setSubmitting(false);
+
+    router.push(
+      caseId ? `/cases/${caseId}` : "/tasks"
+    );
+
     router.refresh();
+  }
+
+  function handleCancel() {
+    router.push(
+      caseId ? `/cases/${caseId}` : "/tasks"
+    );
   }
 
   return (
     <>
-      <header className="border-b bg-white px-8 py-5">
-        <h1 className="text-xl font-bold text-gray-900">タスク登録</h1>
-        <p className="text-sm text-gray-500">対応漏れ防止のタスクを登録します</p>
+      <header className="border-b bg-white px-4 py-5 md:px-8">
+        <h1 className="text-2xl font-bold text-gray-900">
+          タスク登録
+        </h1>
+
+        <p className="mt-1 text-sm text-gray-500">
+          {caseId
+            ? "案件に紐づく対応タスクを登録します"
+            : "対応漏れ防止のタスクを登録します"}
+        </p>
       </header>
 
-      <form onSubmit={handleSubmit} className="p-8">
-        <div className="max-w-3xl rounded-xl bg-white p-6 shadow-sm">
+      <main className="p-4 md:p-8">
+        <form
+          onSubmit={handleSubmit}
+          className="mx-auto max-w-3xl rounded-xl bg-white p-5 shadow-sm md:p-8"
+        >
+          <div className="mb-6">
+            <h2 className="text-lg font-bold text-gray-900">
+              タスク情報
+            </h2>
+
+            <p className="mt-1 text-sm text-gray-500">
+              タスク名・期限・担当者を入力してください。
+            </p>
+          </div>
+
+          {submitError ? (
+            <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+              {submitError}
+            </div>
+          ) : null}
+
           <div className="grid gap-5 md:grid-cols-2">
-            <Field label="タスク名">
+            <Field
+              label="タスク名"
+              required
+            >
               <input
+                type="text"
                 name="title"
                 value={form.title}
                 onChange={handleChange}
                 required
-                className="w-full rounded-lg border px-4 py-3 text-sm"
+                disabled={submitting}
+                placeholder="例：納期確認"
+                className={inputClassName}
               />
             </Field>
 
-            <Field label="ステータス">
+            <Field
+              label="ステータス"
+              required
+            >
               <select
                 name="status"
                 value={form.status}
                 onChange={handleChange}
-                className="w-full rounded-lg border px-4 py-3 text-sm"
+                disabled={submitting}
+                className={inputClassName}
               >
-                <option>未対応</option>
-                <option>対応中</option>
-                <option>完了</option>
+                <option value="未対応">
+                  未対応
+                </option>
+
+                <option value="対応中">
+                  対応中
+                </option>
+
+                <option value="完了">
+                  完了
+                </option>
               </select>
             </Field>
 
             <Field label="期限">
               <input
+                type="date"
                 name="due_date"
                 value={form.due_date}
                 onChange={handleChange}
-                type="date"
-                className="w-full rounded-lg border px-4 py-3 text-sm"
+                disabled={submitting}
+                className={inputClassName}
               />
             </Field>
 
             <Field label="担当者">
               <input
+                type="text"
                 name="assigned_user"
                 value={form.assigned_user}
                 onChange={handleChange}
-                className="w-full rounded-lg border px-4 py-3 text-sm"
+                disabled={submitting}
+                placeholder="担当者名"
+                className={inputClassName}
               />
             </Field>
 
-            <Field label="優先度">
+            <Field
+              label="優先度"
+              required
+            >
               <select
                 name="priority"
                 value={form.priority}
                 onChange={handleChange}
-                className="w-full rounded-lg border px-4 py-3 text-sm"
+                disabled={submitting}
+                className={inputClassName}
               >
-                <option>高</option>
-                <option>中</option>
-                <option>低</option>
+                <option value="高">高</option>
+                <option value="中">中</option>
+                <option value="低">低</option>
               </select>
             </Field>
           </div>
@@ -124,46 +227,95 @@ const caseId = searchParams.get("case_id");
                 name="memo"
                 value={form.memo}
                 onChange={handleChange}
-                rows={4}
-                className="w-full rounded-lg border px-4 py-3 text-sm"
+                rows={5}
+                disabled={submitting}
+                placeholder="対応内容や注意事項を入力"
+                className={inputClassName}
               />
             </Field>
           </div>
 
-          <div className="mt-8 flex gap-3">
+          <div className="mt-8 flex flex-col-reverse gap-3 border-t pt-6 sm:flex-row sm:justify-end">
             <button
               type="button"
-              onClick={() => router.push("/tasks")}
-              className="rounded-lg border px-5 py-3 text-sm font-bold text-gray-700"
+              onClick={handleCancel}
+              disabled={submitting}
+              className="rounded-lg border border-gray-300 bg-white px-5 py-3 text-sm font-bold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
             >
               キャンセル
             </button>
 
             <button
               type="submit"
-              disabled={loading}
-              className="rounded-lg bg-gray-900 px-5 py-3 text-sm font-bold text-white disabled:opacity-50"
+              disabled={submitting}
+              className="rounded-lg bg-gray-900 px-5 py-3 text-sm font-bold text-white hover:bg-gray-700 disabled:cursor-not-allowed disabled:bg-gray-400"
             >
-              {loading ? "登録中..." : "登録する"}
+              {submitting
+                ? "登録しています..."
+                : "登録する"}
             </button>
           </div>
-        </div>
-      </form>
+        </form>
+      </main>
     </>
   );
 }
 
+export default function NewTaskPage() {
+  return (
+    <Suspense fallback={<LoadingPage />}>
+      <NewTaskForm />
+    </Suspense>
+  );
+}
+
+function LoadingPage() {
+  return (
+    <>
+      <header className="border-b bg-white px-4 py-5 md:px-8">
+        <h1 className="text-2xl font-bold text-gray-900">
+          タスク登録
+        </h1>
+      </header>
+
+      <main className="p-4 md:p-8">
+        <div className="mx-auto max-w-3xl rounded-xl bg-white p-8 text-center shadow-sm">
+          <p className="text-sm text-gray-500">
+            読み込み中...
+          </p>
+        </div>
+      </main>
+    </>
+  );
+}
+
+const inputClassName =
+  "w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-gray-900 focus:ring-1 focus:ring-gray-900 disabled:cursor-not-allowed disabled:bg-gray-100";
+
 function Field({
   label,
+  required = false,
   children,
 }: {
   label: string;
-  children: React.ReactNode;
+  required?: boolean;
+  children: ReactNode;
 }) {
   return (
-    <label className="block">
-      <p className="mb-2 text-sm font-bold text-gray-700">{label}</p>
-      {children}
-    </label>
+    <div>
+      <p className="text-sm font-bold text-gray-700">
+        {label}
+
+        {required ? (
+          <span className="ml-1 text-red-600">
+            *
+          </span>
+        ) : null}
+      </p>
+
+      <div className="mt-2">
+        {children}
+      </div>
+    </div>
   );
 }
