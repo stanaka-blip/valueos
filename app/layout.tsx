@@ -10,11 +10,15 @@ export const metadata: Metadata = {
 const menuItems = [
   { name: "ダッシュボード", href: "/" },
   { name: "案件管理", href: "/cases" },
-  { name: "請求管理", href: "/invoices" },
   { name: "販売店マスタ", href: "/dealers" },
   { name: "メーカーマスタ", href: "/manufacturers" },
   { name: "商品マスタ", href: "/products" },
+  { name: "商品登録", href: "/products/new" },
+  { name: "仕入先マスタ", href: "/suppliers" },
+  { name: "商社・仕入先登録", href: "/suppliers/new" },
   { name: "価格マスタ", href: "/prices" },
+  { name: "販売価格マスタ", href: "/sales-prices" },
+  { name: "請求管理", href: "/invoices" },
   { name: "タスク管理", href: "/tasks" },
 ];
 
