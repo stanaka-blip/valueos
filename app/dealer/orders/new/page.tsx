@@ -222,18 +222,35 @@ export default function DealerNewOrderPage() {
     setCurrentStep(2);
   }
 
-  function handleStep2Next(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  function validateStep2OrderCategory(): boolean {
     setProductSubmitted(true);
 
-    if (!productForm.order_category) {
+    if (!productForm.order_category.trim()) {
       setProductErrors({
         order_category: "発注区分は必須です",
       });
-      return;
+      return false;
     }
 
     setProductErrors({});
+    return true;
+  }
+
+  function handleStep2Next(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!validateStep2OrderCategory()) {
+      return;
+    }
+
+    console.log("新規発注 STEP2 商品情報:", productForm);
+  }
+
+  function handleStep2NextClick() {
+    if (!validateStep2OrderCategory()) {
+      return;
+    }
+
     console.log("新規発注 STEP2 商品情報:", productForm);
   }
 
@@ -606,7 +623,12 @@ export default function DealerNewOrderPage() {
           </div>
         </form>
         ) : (
-        <form onSubmit={handleStep2Next} className="space-y-6" noValidate>
+        <form
+          onSubmit={handleStep2Next}
+          className="space-y-6"
+          noValidate
+          method="post"
+        >
           {hasProductErrors ? (
             <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
               入力内容をご確認ください。
@@ -615,26 +637,46 @@ export default function DealerNewOrderPage() {
 
           <SectionCard title="商品情報">
             <div className="grid gap-5 md:grid-cols-2">
-              <Field
-                label="発注区分"
-                required
-                error={productErrors.order_category}
-              >
-                <select
-                  name="order_category"
-                  value={productForm.order_category}
-                  onChange={handleProductChange}
-                  className={inputClassName}
-                  aria-invalid={Boolean(productErrors.order_category)}
-                >
-                  <option value="">選択してください</option>
-                  {ORDER_CATEGORIES.map((category) => (
-                    <option key={category} value={category}>
-                      {category}
-                    </option>
-                  ))}
-                </select>
-              </Field>
+              <label className="block">
+                <span className="text-sm font-bold text-gray-700">
+                  発注区分
+                  <span className="ml-1 text-red-600">*</span>
+                </span>
+                <div className="mt-2">
+                  <select
+                    name="order_category"
+                    value={productForm.order_category}
+                    onChange={handleProductChange}
+                    className={
+                      productErrors.order_category
+                        ? `${inputClassName} border-red-500 focus:border-red-600 focus:ring-red-600`
+                        : inputClassName
+                    }
+                    aria-invalid={Boolean(productErrors.order_category)}
+                    aria-describedby={
+                      productErrors.order_category
+                        ? "order-category-error"
+                        : undefined
+                    }
+                  >
+                    <option value="">選択してください</option>
+                    {ORDER_CATEGORIES.map((category) => (
+                      <option key={category} value={category}>
+                        {category}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {productErrors.order_category ? (
+                  <span
+                    id="order-category-error"
+                    role="alert"
+                    className="mt-1.5 block text-sm font-medium text-red-600"
+                  >
+                    {productErrors.order_category}
+                  </span>
+                ) : null}
+              </label>
             </div>
 
             {isPackageOrder ? (
@@ -769,7 +811,8 @@ export default function DealerNewOrderPage() {
             </button>
 
             <button
-              type="submit"
+              type="button"
+              onClick={handleStep2NextClick}
               className="inline-flex items-center justify-center rounded-lg bg-gray-900 px-6 py-3 text-sm font-bold text-white hover:bg-gray-700"
             >
               次へ
