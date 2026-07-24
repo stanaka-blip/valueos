@@ -10,7 +10,9 @@ const MEMO_LABELS = [
   "荷受け電話番号",
   "荷受け可能時間",
   "納品時注意事項",
+  "差し戻し理由",
 ] as const;
+
 
 const CONSTRUCTION_LABELS = [
   "施工店名",
@@ -30,6 +32,7 @@ export type ParsedCaseExtras = {
   receivingHours: string | null;
   deliveryNotes: string | null;
   caseMemo: string | null;
+  returnReason: string | null;
   contractorName: string | null;
   contractorContact: string | null;
   contractorPhone: string | null;
@@ -87,6 +90,7 @@ export function parseCaseExtras(params: {
     receivingHours: memoFields["荷受け可能時間"] || null,
     deliveryNotes: memoFields["納品時注意事項"] || null,
     caseMemo: memoFields["案件備考"] || null,
+    returnReason: memoFields["差し戻し理由"] || null,
     contractorName: constructionFields["施工店名"] || null,
     contractorContact: constructionFields["施工店担当者"] || null,
     contractorPhone: constructionFields["施工店電話番号"] || null,
@@ -100,4 +104,19 @@ export function displayValue(value: string | null | undefined): string {
 
   const trimmed = String(value).trim();
   return trimmed ? trimmed : "未登録";
+}
+
+/** Append or replace 【差し戻し理由】 in cases.memo (existing labeled-memo pattern). */
+export function upsertReturnReasonMemo(
+  memo: string | null | undefined,
+  reason: string
+): string {
+  const trimmedReason = reason.trim();
+  const withoutOld = (memo || "")
+    .replace(/【差し戻し理由】[^\n【]*/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  const block = `【差し戻し理由】${trimmedReason}`;
+  return withoutOld ? `${withoutOld}\n${block}` : block;
 }

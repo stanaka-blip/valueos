@@ -12,6 +12,24 @@ export const ORDER_STATUS_FILTERS = [
 export type OrderStatusFilterValue =
   (typeof ORDER_STATUS_FILTERS)[number]["value"];
 
+/**
+ * DB values written by admin actions.
+ * Prefer existing Japanese conventions used in ValueOS (StatusSelect etc.).
+ */
+export const ORDER_STATUS_DB = {
+  /** Incoming dealer order (already used in DB) */
+  NEW: "新規受付",
+  REVIEWING: "内容確認中",
+  /** Accepted by internal staff */
+  ACCEPTED: "受付済み",
+  RETURNED: "差し戻し",
+  /** Existing cancel value in StatusSelect / cases workflow */
+  CANCELLED: "キャンセル",
+  ORDERED: "発注済",
+} as const;
+
+export type OrderActionType = "accept" | "return" | "cancel";
+
 /** Normalize stored status (e.g. "'新規受付'" → "新規受付") */
 export function normalizeStatus(status: string | null | undefined): string {
   if (!status) {
@@ -55,9 +73,9 @@ export function getStatusDisplayLabel(
     下書き: "下書き",
     確認中: "確認中",
     内容確認中: "確認中",
+    新規受付: "新規受付",
     差し戻し: "差し戻し",
     受付済み: "受付済み",
-    新規受付: "受付済み",
     発注済み: "発注済み",
     発注済: "発注済み",
     完了: "完了",
@@ -77,6 +95,7 @@ export function getStatusBadgeClassName(
 
   const styles: Record<string, string> = {
     下書き: "bg-gray-100 text-gray-700",
+    新規受付: "bg-sky-100 text-sky-800",
     確認中: "bg-blue-100 text-blue-700",
     差し戻し: "bg-orange-100 text-orange-800",
     受付済み: "bg-emerald-100 text-emerald-800",
@@ -96,10 +115,56 @@ export function matchesStatusFilter(
     return true;
   }
 
+  const normalized = normalizeStatus(status);
   const label = getStatusDisplayLabel(status);
+
+  if (filter === "reviewing") {
+    return (
+      label === "確認中" ||
+      label === "新規受付" ||
+      normalized === "新規受付" ||
+      normalized === "内容確認中" ||
+      normalized === "確認中"
+    );
+  }
+
   const filterLabel = ORDER_STATUS_FILTERS.find(
     (item) => item.value === filter
   )?.label;
 
   return Boolean(filterLabel && label === filterLabel);
+}
+
+export function getAvailableOrderActions(
+  status: string | null | undefined
+): OrderActionType[] {
+  const label = getStatusDisplayLabel(status);
+
+  if (
+    label === "新規受付" ||
+    label === "確認中" ||
+    label === "下書き" ||
+    label === "差し戻し"
+  ) {
+    return ["accept", "return", "cancel"];
+  }
+
+  if (label === "受付済み") {
+    return ["cancel"];
+  }
+
+  return [];
+}
+
+export function getTargetStatusForAction(
+  action: OrderActionType
+): string {
+  switch (action) {
+    case "accept":
+      return ORDER_STATUS_DB.ACCEPTED;
+    case "return":
+      return ORDER_STATUS_DB.RETURNED;
+    case "cancel":
+      return ORDER_STATUS_DB.CANCELLED;
+  }
 }

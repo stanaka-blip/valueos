@@ -6,6 +6,7 @@ import { ReactNode, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
 import { displayValue, parseCaseExtras } from "./parseCaseExtras";
+import OrderStatusActions from "./OrderStatusActions";
 import {
   getStatusBadgeClassName,
   getStatusDisplayLabel,
@@ -358,6 +359,23 @@ export default function OrderDetail({ orderId }: OrderDetailProps) {
         </div>
       </section>
 
+      <OrderStatusActions
+        caseId={caseData.id}
+        currentStatus={caseData.status}
+        currentMemo={caseData.memo}
+        onStatusUpdated={({ status, memo }) => {
+          setCaseData((current) =>
+            current
+              ? {
+                  ...current,
+                  status,
+                  memo,
+                }
+              : current
+          );
+        }}
+      />
+
       <SectionCard title="案件情報">
         <InfoGrid>
           <InfoItem label="案件番号" value={caseData.case_no} />
@@ -374,6 +392,11 @@ export default function OrderDetail({ orderId }: OrderDetailProps) {
               value={resolveCaseMemoDisplay(extras.caseMemo, caseData.memo)}
             />
           </div>
+          {extras.returnReason ? (
+            <div className="md:col-span-2">
+              <InfoItem label="差し戻し理由" value={extras.returnReason} />
+            </div>
+          ) : null}
         </InfoGrid>
       </SectionCard>
 
