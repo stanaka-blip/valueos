@@ -10,12 +10,15 @@ import CaseDetailView, {
   type PaymentRow,
   type TaskRow,
 } from "./CaseDetailView";
+import { toSettlementViewData } from "./settlementView";
+import { getCaseSettlementByCaseId } from "@/lib/repositories/caseSettlements";
 
 export const dynamic = "force-dynamic";
 
 type Dealer = {
   name: string | null;
   contact_name: string | null;
+  payment_type: string | null;
 };
 
 type ManufacturerRelation = {
@@ -70,6 +73,7 @@ export default async function CaseDetailPage({
     { data: ordersData, error: ordersError },
     { data: invoicesData, error: invoicesError },
     { data: paymentsData, error: paymentsError },
+    settlementResult,
   ] = await Promise.all([
     supabase
       .from("cases")
@@ -78,7 +82,8 @@ export default async function CaseDetailPage({
         *,
         dealers (
           name,
-          contact_name
+          contact_name,
+          payment_type
         )
       `
       )
@@ -181,6 +186,8 @@ export default async function CaseDetailPage({
       )
       .eq("case_id", id)
       .order("payment_date", { ascending: false }),
+
+    getCaseSettlementByCaseId(id),
   ]);
 
   if (caseError || !caseData) {
@@ -299,6 +306,10 @@ export default async function CaseDetailPage({
     status: (row.status as string) || null,
   }));
 
+  const settlement = settlementResult.data
+    ? toSettlementViewData(settlementResult.data)
+    : null;
+
   return (
     <CaseDetailView
       caseData={viewCase}
@@ -307,12 +318,15 @@ export default async function CaseDetailPage({
       invoices={invoices}
       payments={payments}
       tasks={tasks}
+      settlement={settlement}
+      dealerPaymentType={dealer?.payment_type || undefined}
       errors={{
         products: caseProductsError?.message,
         orders: ordersError?.message,
         invoices: invoicesError?.message,
         payments: paymentsError?.message,
         tasks: tasksError?.message,
+        settlement: settlementResult.error || undefined,
       }}
     />
   );
