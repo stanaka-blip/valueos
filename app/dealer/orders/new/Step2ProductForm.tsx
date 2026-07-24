@@ -43,12 +43,14 @@ type Step2ProductFormProps = {
   productForm: DealerOrderProductForm;
   onProductFormChange: (next: DealerOrderProductForm) => void;
   onBack: () => void;
+  onNext: () => void;
 };
 
 export default function Step2ProductForm({
   productForm,
   onProductFormChange,
   onBack,
+  onNext,
 }: Step2ProductFormProps) {
   const [manufacturers, setManufacturers] = useState<ManufacturerOption[]>(
     []
@@ -411,7 +413,7 @@ export default function Step2ProductForm({
       return;
     }
 
-    console.log("新規発注 STEP2 商品情報:", productForm);
+    onNext();
   }
 
   const hasErrors = Object.keys(errors).length > 0;

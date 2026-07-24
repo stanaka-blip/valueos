@@ -6,6 +6,7 @@ import {
   ReactNode,
   useState,
 } from "react";
+import { useRouter } from "next/navigation";
 
 import {
   DELIVERY_DESTINATION_TYPES,
@@ -19,6 +20,9 @@ import {
   RequiredCaseFormField,
 } from "./types";
 import Step2ProductForm from "./Step2ProductForm";
+import Step3AttachmentsForm from "./Step3AttachmentsForm";
+import Step4ConfirmForm from "./Step4ConfirmForm";
+import { saveDealerOrder } from "./saveDealerOrder";
 
 const DUMMY_DEALER_NAME = "株式会社バリューサンプル販売店";
 
@@ -33,6 +37,13 @@ const FIELD_LABELS: Record<RequiredCaseFormField, string> = {
   delivery_address: "納品先住所",
   receiver_name: "荷受け担当者",
   receiver_phone: "荷受け電話番号",
+};
+
+const STEP_DESCRIPTIONS: Record<OrderFormStepId, string> = {
+  1: "案件情報を入力してください",
+  2: "商品情報を入力してください",
+  3: "添付資料があれば追加してください",
+  4: "内容を確認して発注依頼を送信してください",
 };
 
 const INITIAL_FORM: DealerOrderCaseForm = {
@@ -70,12 +81,16 @@ const INITIAL_PRODUCT_FORM: DealerOrderProductForm = {
 };
 
 export default function DealerNewOrderPage() {
+  const router = useRouter();
   const [currentStep, setCurrentStep] = useState<OrderFormStepId>(1);
   const [form, setForm] = useState<DealerOrderCaseForm>(INITIAL_FORM);
   const [errors, setErrors] = useState<DealerOrderCaseFormErrors>({});
   const [submitted, setSubmitted] = useState(false);
   const [productForm, setProductForm] =
     useState<DealerOrderProductForm>(INITIAL_PRODUCT_FORM);
+  const [submitting, setSubmitting] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
 
   const isSameAsSiteAddress = form.delivery_type === "設置先住所と同じ";
 
@@ -165,7 +180,9 @@ export default function DealerNewOrderPage() {
     clearFieldErrors([fieldName]);
   }
 
-  function validateForm(currentForm: DealerOrderCaseForm): DealerOrderCaseFormErrors {
+  function validateForm(
+    currentForm: DealerOrderCaseForm
+  ): DealerOrderCaseFormErrors {
     const nextErrors: DealerOrderCaseFormErrors = {};
 
     for (const field of REQUIRED_CASE_FORM_FIELDS) {
@@ -193,12 +210,36 @@ export default function DealerNewOrderPage() {
     setCurrentStep(2);
   }
 
-  function handleBackToStep1() {
-    setCurrentStep(1);
-  }
-
   function handleDraftSave() {
     // UI only for now
+  }
+
+  async function handleSubmitOrder() {
+    if (submitting) {
+      return;
+    }
+
+    setSubmitting(true);
+    setSaveError("");
+
+    const result = await saveDealerOrder({
+      caseForm: form,
+      productForm,
+    });
+
+    if (!result.ok) {
+      setSubmitting(false);
+      setSaveError(result.errorMessage);
+      return;
+    }
+
+    setSuccessMessage("発注依頼を受け付けました");
+    setSubmitting(false);
+
+    window.setTimeout(() => {
+      router.push("/cases");
+      router.refresh();
+    }, 800);
   }
 
   const hasErrors = Object.keys(errors).length > 0;
@@ -208,9 +249,7 @@ export default function DealerNewOrderPage() {
       <header className="border-b bg-white px-4 py-5 md:px-8">
         <h1 className="text-2xl font-bold text-gray-900">新規発注</h1>
         <p className="mt-1 text-sm text-gray-500">
-          {currentStep === 1
-            ? "案件情報を入力してください"
-            : "商品情報を入力してください"}
+          {STEP_DESCRIPTIONS[currentStep]}
         </p>
       </header>
 
@@ -218,354 +257,385 @@ export default function DealerNewOrderPage() {
         <StepIndicator currentStep={currentStep} />
 
         {currentStep === 1 ? (
-        <form onSubmit={handleStep1Next} className="space-y-6" noValidate>
-          {hasErrors ? (
-            <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-              必須項目に未入力があります。入力内容をご確認ください。
-            </div>
-          ) : null}
-
-          <SectionCard title="販売店情報">
-            <div className="grid gap-5 md:grid-cols-2">
-              <Field label="販売店名">
-                <input
-                  type="text"
-                  name="dealer_name"
-                  value={form.dealer_name}
-                  readOnly
-                  className={`${inputClassName} bg-gray-100 text-gray-600`}
-                />
-              </Field>
-
-              <Field
-                label="販売店担当者"
-                required
-                error={errors.dealer_contact}
-              >
-                <input
-                  type="text"
-                  name="dealer_contact"
-                  value={form.dealer_contact}
-                  onChange={handleChange}
-                  className={inputClassName}
-                  aria-invalid={Boolean(errors.dealer_contact)}
-                />
-              </Field>
-            </div>
-          </SectionCard>
-
-          <SectionCard title="顧客情報">
-            <div className="grid gap-5 md:grid-cols-2">
-              <Field
-                label="顧客名"
-                required
-                error={errors.customer_name}
-              >
-                <input
-                  type="text"
-                  name="customer_name"
-                  value={form.customer_name}
-                  onChange={handleChange}
-                  className={inputClassName}
-                  aria-invalid={Boolean(errors.customer_name)}
-                />
-              </Field>
-
-              <Field label="顧客名カナ">
-                <input
-                  type="text"
-                  name="customer_name_kana"
-                  value={form.customer_name_kana}
-                  onChange={handleChange}
-                  className={inputClassName}
-                />
-              </Field>
-
-              <Field
-                label="電話番号"
-                required
-                error={errors.customer_phone}
-              >
-                <input
-                  type="tel"
-                  name="customer_phone"
-                  value={form.customer_phone}
-                  onChange={handleChange}
-                  className={inputClassName}
-                  aria-invalid={Boolean(errors.customer_phone)}
-                />
-              </Field>
-
-              <Field label="郵便番号" description="例：123-4567">
-                <input
-                  type="text"
-                  name="postal_code"
-                  value={form.postal_code}
-                  onChange={handleChange}
-                  placeholder="123-4567"
-                  className={inputClassName}
-                />
-              </Field>
-
-              <div className="md:col-span-2">
-                <Field
-                  label="設置先住所"
-                  required
-                  error={errors.site_address}
-                >
-                  <input
-                    type="text"
-                    name="site_address"
-                    value={form.site_address}
-                    onChange={handleChange}
-                    className={inputClassName}
-                    aria-invalid={Boolean(errors.site_address)}
-                  />
-                </Field>
-              </div>
-            </div>
-          </SectionCard>
-
-          <SectionCard title="日程情報">
-            {dateWarning ? (
-              <div
-                role="alert"
-                className="mb-5 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900"
-              >
-                {dateWarning}
+          <form onSubmit={handleStep1Next} className="space-y-6" noValidate>
+            {hasErrors ? (
+              <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                必須項目に未入力があります。入力内容をご確認ください。
               </div>
             ) : null}
 
-            <div className="grid gap-5 md:grid-cols-2">
-              <Field
-                label="希望納品日"
-                required
-                error={errors.desired_delivery_date}
-              >
-                <input
-                  type="date"
-                  name="desired_delivery_date"
-                  value={form.desired_delivery_date}
-                  onChange={handleChange}
-                  className={inputClassName}
-                  aria-invalid={Boolean(errors.desired_delivery_date)}
-                />
-              </Field>
+            <SectionCard title="販売店情報">
+              <div className="grid gap-5 md:grid-cols-2">
+                <Field label="販売店名">
+                  <input
+                    type="text"
+                    name="dealer_name"
+                    value={form.dealer_name}
+                    readOnly
+                    className={`${inputClassName} bg-gray-100 text-gray-600`}
+                  />
+                </Field>
 
-              <Field
-                label="工事予定日"
-                required
-                error={errors.construction_date}
-              >
-                <input
-                  type="date"
-                  name="construction_date"
-                  value={form.construction_date}
-                  onChange={handleChange}
-                  className={inputClassName}
-                  aria-invalid={Boolean(errors.construction_date)}
-                />
-              </Field>
-            </div>
-          </SectionCard>
-
-          <SectionCard title="施工店情報">
-            <div className="grid gap-5 md:grid-cols-2">
-              <Field label="施工店名">
-                <input
-                  type="text"
-                  name="contractor_name"
-                  value={form.contractor_name}
-                  onChange={handleChange}
-                  className={inputClassName}
-                />
-              </Field>
-
-              <Field label="施工店担当者">
-                <input
-                  type="text"
-                  name="contractor_contact"
-                  value={form.contractor_contact}
-                  onChange={handleChange}
-                  className={inputClassName}
-                />
-              </Field>
-
-              <Field label="施工店電話番号">
-                <input
-                  type="tel"
-                  name="contractor_phone"
-                  value={form.contractor_phone}
-                  onChange={handleChange}
-                  className={inputClassName}
-                />
-              </Field>
-            </div>
-          </SectionCard>
-
-          <SectionCard title="納品情報">
-            <div className="grid gap-5 md:grid-cols-2">
-              <Field
-                label="納品先区分"
-                required
-                error={errors.delivery_type}
-              >
-                <select
-                  name="delivery_type"
-                  value={form.delivery_type}
-                  onChange={handleChange}
-                  className={inputClassName}
-                  aria-invalid={Boolean(errors.delivery_type)}
-                >
-                  <option value="">選択してください</option>
-                  {DELIVERY_DESTINATION_TYPES.map((type) => (
-                    <option key={type} value={type}>
-                      {type}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-
-              <Field label="納品先名称">
-                <input
-                  type="text"
-                  name="delivery_name"
-                  value={form.delivery_name}
-                  onChange={handleChange}
-                  className={inputClassName}
-                />
-              </Field>
-
-              <Field label="納品先郵便番号">
-                <input
-                  type="text"
-                  name="delivery_postal_code"
-                  value={form.delivery_postal_code}
-                  onChange={handleChange}
-                  placeholder="123-4567"
-                  className={inputClassName}
-                />
-              </Field>
-
-              <Field
-                label="荷受け担当者"
-                required
-                error={errors.receiver_name}
-              >
-                <input
-                  type="text"
-                  name="receiver_name"
-                  value={form.receiver_name}
-                  onChange={handleChange}
-                  className={inputClassName}
-                  aria-invalid={Boolean(errors.receiver_name)}
-                />
-              </Field>
-
-              <div className="md:col-span-2">
                 <Field
-                  label="納品先住所"
+                  label="販売店担当者"
                   required
-                  error={errors.delivery_address}
-                  description={
-                    isSameAsSiteAddress
-                      ? "設置先住所と同じを選択中のため、設置先住所が自動反映されます。"
-                      : undefined
-                  }
+                  error={errors.dealer_contact}
                 >
                   <input
                     type="text"
-                    name="delivery_address"
-                    value={form.delivery_address}
+                    name="dealer_contact"
+                    value={form.dealer_contact}
                     onChange={handleChange}
-                    readOnly={isSameAsSiteAddress}
-                    className={
-                      isSameAsSiteAddress
-                        ? `${inputClassName} bg-gray-100 text-gray-600`
-                        : inputClassName
-                    }
-                    aria-invalid={Boolean(errors.delivery_address)}
+                    className={inputClassName}
+                    aria-invalid={Boolean(errors.dealer_contact)}
                   />
                 </Field>
               </div>
+            </SectionCard>
 
-              <Field
-                label="荷受け電話番号"
-                required
-                error={errors.receiver_phone}
-              >
-                <input
-                  type="tel"
-                  name="receiver_phone"
-                  value={form.receiver_phone}
-                  onChange={handleChange}
-                  className={inputClassName}
-                  aria-invalid={Boolean(errors.receiver_phone)}
-                />
-              </Field>
-
-              <Field label="荷受け可能時間">
-                <input
-                  type="text"
-                  name="receiving_hours"
-                  value={form.receiving_hours}
-                  onChange={handleChange}
-                  placeholder="例：平日 9:00〜17:00"
-                  className={inputClassName}
-                />
-              </Field>
-
-              <div className="md:col-span-2">
-                <Field label="納品時の注意事項">
-                  <textarea
-                    name="delivery_notes"
-                    value={form.delivery_notes}
+            <SectionCard title="顧客情報">
+              <div className="grid gap-5 md:grid-cols-2">
+                <Field
+                  label="顧客名"
+                  required
+                  error={errors.customer_name}
+                >
+                  <input
+                    type="text"
+                    name="customer_name"
+                    value={form.customer_name}
                     onChange={handleChange}
-                    rows={3}
+                    className={inputClassName}
+                    aria-invalid={Boolean(errors.customer_name)}
+                  />
+                </Field>
+
+                <Field label="顧客名カナ">
+                  <input
+                    type="text"
+                    name="customer_name_kana"
+                    value={form.customer_name_kana}
+                    onChange={handleChange}
+                    className={inputClassName}
+                  />
+                </Field>
+
+                <Field
+                  label="電話番号"
+                  required
+                  error={errors.customer_phone}
+                >
+                  <input
+                    type="tel"
+                    name="customer_phone"
+                    value={form.customer_phone}
+                    onChange={handleChange}
+                    className={inputClassName}
+                    aria-invalid={Boolean(errors.customer_phone)}
+                  />
+                </Field>
+
+                <Field label="郵便番号" description="例：123-4567">
+                  <input
+                    type="text"
+                    name="postal_code"
+                    value={form.postal_code}
+                    onChange={handleChange}
+                    placeholder="123-4567"
+                    className={inputClassName}
+                  />
+                </Field>
+
+                <div className="md:col-span-2">
+                  <Field
+                    label="設置先住所"
+                    required
+                    error={errors.site_address}
+                  >
+                    <input
+                      type="text"
+                      name="site_address"
+                      value={form.site_address}
+                      onChange={handleChange}
+                      className={inputClassName}
+                      aria-invalid={Boolean(errors.site_address)}
+                    />
+                  </Field>
+                </div>
+              </div>
+            </SectionCard>
+
+            <SectionCard title="日程情報">
+              {dateWarning ? (
+                <div
+                  role="alert"
+                  className="mb-5 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900"
+                >
+                  {dateWarning}
+                </div>
+              ) : null}
+
+              <div className="grid gap-5 md:grid-cols-2">
+                <Field
+                  label="希望納品日"
+                  required
+                  error={errors.desired_delivery_date}
+                >
+                  <input
+                    type="date"
+                    name="desired_delivery_date"
+                    value={form.desired_delivery_date}
+                    onChange={handleChange}
+                    className={inputClassName}
+                    aria-invalid={Boolean(errors.desired_delivery_date)}
+                  />
+                </Field>
+
+                <Field
+                  label="工事予定日"
+                  required
+                  error={errors.construction_date}
+                >
+                  <input
+                    type="date"
+                    name="construction_date"
+                    value={form.construction_date}
+                    onChange={handleChange}
+                    className={inputClassName}
+                    aria-invalid={Boolean(errors.construction_date)}
+                  />
+                </Field>
+              </div>
+            </SectionCard>
+
+            <SectionCard title="施工店情報">
+              <div className="grid gap-5 md:grid-cols-2">
+                <Field label="施工店名">
+                  <input
+                    type="text"
+                    name="contractor_name"
+                    value={form.contractor_name}
+                    onChange={handleChange}
+                    className={inputClassName}
+                  />
+                </Field>
+
+                <Field label="施工店担当者">
+                  <input
+                    type="text"
+                    name="contractor_contact"
+                    value={form.contractor_contact}
+                    onChange={handleChange}
+                    className={inputClassName}
+                  />
+                </Field>
+
+                <Field label="施工店電話番号">
+                  <input
+                    type="tel"
+                    name="contractor_phone"
+                    value={form.contractor_phone}
+                    onChange={handleChange}
                     className={inputClassName}
                   />
                 </Field>
               </div>
+            </SectionCard>
+
+            <SectionCard title="納品情報">
+              <div className="grid gap-5 md:grid-cols-2">
+                <Field
+                  label="納品先区分"
+                  required
+                  error={errors.delivery_type}
+                >
+                  <select
+                    name="delivery_type"
+                    value={form.delivery_type}
+                    onChange={handleChange}
+                    className={inputClassName}
+                    aria-invalid={Boolean(errors.delivery_type)}
+                  >
+                    <option value="">選択してください</option>
+                    {DELIVERY_DESTINATION_TYPES.map((type) => (
+                      <option key={type} value={type}>
+                        {type}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+
+                <Field label="納品先名称">
+                  <input
+                    type="text"
+                    name="delivery_name"
+                    value={form.delivery_name}
+                    onChange={handleChange}
+                    className={inputClassName}
+                  />
+                </Field>
+
+                <Field label="納品先郵便番号">
+                  <input
+                    type="text"
+                    name="delivery_postal_code"
+                    value={form.delivery_postal_code}
+                    onChange={handleChange}
+                    placeholder="123-4567"
+                    className={inputClassName}
+                  />
+                </Field>
+
+                <Field
+                  label="荷受け担当者"
+                  required
+                  error={errors.receiver_name}
+                >
+                  <input
+                    type="text"
+                    name="receiver_name"
+                    value={form.receiver_name}
+                    onChange={handleChange}
+                    className={inputClassName}
+                    aria-invalid={Boolean(errors.receiver_name)}
+                  />
+                </Field>
+
+                <div className="md:col-span-2">
+                  <Field
+                    label="納品先住所"
+                    required
+                    error={errors.delivery_address}
+                    description={
+                      isSameAsSiteAddress
+                        ? "設置先住所と同じを選択中のため、設置先住所が自動反映されます。"
+                        : undefined
+                    }
+                  >
+                    <input
+                      type="text"
+                      name="delivery_address"
+                      value={form.delivery_address}
+                      onChange={handleChange}
+                      readOnly={isSameAsSiteAddress}
+                      className={
+                        isSameAsSiteAddress
+                          ? `${inputClassName} bg-gray-100 text-gray-600`
+                          : inputClassName
+                      }
+                      aria-invalid={Boolean(errors.delivery_address)}
+                    />
+                  </Field>
+                </div>
+
+                <Field
+                  label="荷受け電話番号"
+                  required
+                  error={errors.receiver_phone}
+                >
+                  <input
+                    type="tel"
+                    name="receiver_phone"
+                    value={form.receiver_phone}
+                    onChange={handleChange}
+                    className={inputClassName}
+                    aria-invalid={Boolean(errors.receiver_phone)}
+                  />
+                </Field>
+
+                <Field label="荷受け可能時間">
+                  <input
+                    type="text"
+                    name="receiving_hours"
+                    value={form.receiving_hours}
+                    onChange={handleChange}
+                    placeholder="例：平日 9:00〜17:00"
+                    className={inputClassName}
+                  />
+                </Field>
+
+                <div className="md:col-span-2">
+                  <Field label="納品時の注意事項">
+                    <textarea
+                      name="delivery_notes"
+                      value={form.delivery_notes}
+                      onChange={handleChange}
+                      rows={3}
+                      className={inputClassName}
+                    />
+                  </Field>
+                </div>
+              </div>
+            </SectionCard>
+
+            <SectionCard title="備考">
+              <Field label="案件備考">
+                <textarea
+                  name="case_memo"
+                  value={form.case_memo}
+                  onChange={handleChange}
+                  rows={4}
+                  className={inputClassName}
+                />
+              </Field>
+            </SectionCard>
+
+            <div className="flex flex-col-reverse gap-3 border-t border-gray-200 pt-6 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={handleDraftSave}
+                className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-6 py-3 text-sm font-bold text-gray-700 hover:bg-gray-50"
+              >
+                下書き保存
+              </button>
+
+              <button
+                type="submit"
+                className="inline-flex items-center justify-center rounded-lg bg-gray-900 px-6 py-3 text-sm font-bold text-white hover:bg-gray-700"
+              >
+                次へ
+              </button>
             </div>
-          </SectionCard>
+          </form>
+        ) : null}
 
-          <SectionCard title="備考">
-            <Field label="案件備考">
-              <textarea
-                name="case_memo"
-                value={form.case_memo}
-                onChange={handleChange}
-                rows={4}
-                className={inputClassName}
-              />
-            </Field>
-          </SectionCard>
+        {currentStep === 2 ? (
+          <Step2ProductForm
+            productForm={productForm}
+            onProductFormChange={setProductForm}
+            onBack={() => setCurrentStep(1)}
+            onNext={() => setCurrentStep(3)}
+          />
+        ) : null}
 
-          <div className="flex flex-col-reverse gap-3 border-t border-gray-200 pt-6 sm:flex-row sm:justify-end">
-            <button
-              type="button"
-              onClick={handleDraftSave}
-              className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-6 py-3 text-sm font-bold text-gray-700 hover:bg-gray-50"
-            >
-              下書き保存
-            </button>
+        {currentStep === 3 ? (
+          <Step3AttachmentsForm
+            onBack={() => setCurrentStep(2)}
+            onConfirm={() => setCurrentStep(4)}
+          />
+        ) : null}
 
-            <button
-              type="submit"
-              className="inline-flex items-center justify-center rounded-lg bg-gray-900 px-6 py-3 text-sm font-bold text-white hover:bg-gray-700"
-            >
-              次へ
-            </button>
-          </div>
-        </form>
-        ) : (
-        <Step2ProductForm
-          productForm={productForm}
-          onProductFormChange={setProductForm}
-          onBack={handleBackToStep1}
-        />
-        )}
+        {currentStep === 4 ? (
+          <Step4ConfirmForm
+            caseForm={form}
+            productForm={productForm}
+            onBack={() => setCurrentStep(3)}
+            onSubmit={handleSubmitOrder}
+            submitting={submitting}
+          />
+        ) : null}
       </main>
+
+      {saveError ? (
+        <ErrorDialog
+          message={saveError}
+          onClose={() => setSaveError("")}
+        />
+      ) : null}
+
+      {successMessage ? (
+        <SuccessDialog message={successMessage} />
+      ) : null}
     </>
   );
 }
@@ -669,5 +739,66 @@ function Field({
         </span>
       ) : null}
     </label>
+  );
+}
+
+function ErrorDialog({
+  message,
+  onClose,
+}: {
+  message: string;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="save-error-title"
+    >
+      <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-lg">
+        <h2
+          id="save-error-title"
+          className="text-lg font-bold text-gray-900"
+        >
+          保存に失敗しました
+        </h2>
+        <p className="mt-3 text-sm text-gray-700 whitespace-pre-wrap">
+          {message}
+        </p>
+        <div className="mt-6 flex justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex items-center justify-center rounded-lg bg-gray-900 px-5 py-2.5 text-sm font-bold text-white hover:bg-gray-700"
+          >
+            閉じる
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SuccessDialog({ message }: { message: string }) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="save-success-title"
+    >
+      <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-lg">
+        <h2
+          id="save-success-title"
+          className="text-lg font-bold text-gray-900"
+        >
+          {message}
+        </h2>
+        <p className="mt-3 text-sm text-gray-600">
+          案件一覧へ移動します...
+        </p>
+      </div>
+    </div>
   );
 }
