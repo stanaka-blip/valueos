@@ -39,14 +39,35 @@ export const ORDER_CATEGORIES = [
 
 export type OrderCategory = (typeof ORDER_CATEGORIES)[number];
 
-export type DealerOrderProductForm = {
-  order_category: OrderCategory | "";
-  manufacturer: string;
-  series: string;
-  package_name: string;
-  product_part: string;
+export type PartLine = {
+  local_id: string;
+  manufacturer_id: string;
+  product_id: string;
   quantity: string;
   product_memo: string;
+};
+
+export type DealerOrderProductForm = {
+  order_category: OrderCategory | "";
+  manufacturer_id: string;
+  series: string;
+  package_product_id: string;
+  quantity: string;
+  product_memo: string;
+  part_lines: PartLine[];
+};
+
+export type PartLineErrors = {
+  product_id?: string;
+  quantity?: string;
+};
+
+export type DealerOrderProductFormErrors = {
+  order_category?: string;
+  manufacturer_id?: string;
+  package_product_id?: string;
+  quantity?: string;
+  part_lines?: Record<string, PartLineErrors>;
 };
 
 export const ORDER_FORM_STEPS = [
@@ -60,10 +81,6 @@ export type OrderFormStepId = (typeof ORDER_FORM_STEPS)[number]["id"];
 
 export type DealerOrderCaseFormErrors = Partial<
   Record<keyof DealerOrderCaseForm, string>
->;
-
-export type DealerOrderProductFormErrors = Partial<
-  Record<keyof DealerOrderProductForm, string>
 >;
 
 export const REQUIRED_CASE_FORM_FIELDS = [
@@ -81,3 +98,21 @@ export const REQUIRED_CASE_FORM_FIELDS = [
 
 export type RequiredCaseFormField =
   (typeof REQUIRED_CASE_FORM_FIELDS)[number];
+
+export function createEmptyPartLine(): PartLine {
+  return {
+    local_id: `part-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+    manufacturer_id: "",
+    product_id: "",
+    quantity: "1",
+    product_memo: "",
+  };
+}
+
+export const INITIAL_PART_LINE: PartLine = {
+  local_id: "part-initial",
+  manufacturer_id: "",
+  product_id: "",
+  quantity: "1",
+  product_memo: "",
+};
