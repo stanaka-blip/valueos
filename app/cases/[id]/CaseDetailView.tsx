@@ -161,6 +161,7 @@ export default function CaseDetailView({
   errors,
 }: CaseDetailViewProps) {
   const [tab, setTab] = useState<CaseDetailTabId>("basic");
+  const [viewMode, setViewMode] = useState<"detail" | "simple">("detail");
 
   const totals = useMemo(() => {
     const sales = products.reduce((s, p) => s + p.salesPrice, 0);
@@ -202,6 +203,12 @@ export default function CaseDetailView({
     return 0;
   }
 
+  const deliverySummary = useMemo(
+    () => summarizeDeliveries(orders),
+    [orders]
+  );
+  const paymentSummary = useMemo(() => summarizePayments(orders), [orders]);
+
   return (
     <div className="min-h-full bg-[#f7f7f5] text-gray-900">
       <div className="border-b border-gray-200/80 bg-white">
@@ -213,6 +220,30 @@ export default function CaseDetailView({
             ← 案件一覧
           </Link>
           <div className="flex items-center gap-2">
+            <div className="mr-2 hidden items-center rounded-lg border border-gray-200 p-0.5 sm:flex">
+              <button
+                type="button"
+                onClick={() => setViewMode("detail")}
+                className={`rounded-md px-3 py-1 text-xs font-medium transition ${
+                  viewMode === "detail"
+                    ? "bg-gray-900 text-white"
+                    : "text-gray-600 hover:text-gray-900"
+                }`}
+              >
+                詳細
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("simple")}
+                className={`rounded-md px-3 py-1 text-xs font-medium transition ${
+                  viewMode === "simple"
+                    ? "bg-gray-900 text-white"
+                    : "text-gray-600 hover:text-gray-900"
+                }`}
+              >
+                簡易表示
+              </button>
+            </div>
             <Link
               href={`/cases/${caseData.id}/products/new`}
               className="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 transition hover:bg-gray-50"
@@ -279,6 +310,10 @@ export default function CaseDetailView({
                 value={formatDate(caseData.desiredDeliveryDate)}
               />
               <MetaRow label="住所" value={caseData.deliveryAddress} />
+              <MetaRow
+                label="進捗"
+                value={`済 ${deliverySummary.delivered} / 遅延 ${deliverySummary.overdue}`}
+              />
             </MetaBlock>
 
             <Divider />
@@ -286,6 +321,15 @@ export default function CaseDetailView({
             <div className="grid grid-cols-2 gap-3">
               <MiniStat label="売上" value={formatYen(totals.sales)} />
               <MiniStat label="粗利" value={formatYen(totals.profit)} />
+              <MiniStat
+                label="未入金"
+                value={formatYen(totals.unpaid)}
+                alert={totals.unpaid > 0}
+              />
+              <MiniStat
+                label="支払目安"
+                value={formatYen(paymentSummary.targetAmount)}
+              />
             </div>
 
             <p className="text-xs text-gray-400">
@@ -294,7 +338,7 @@ export default function CaseDetailView({
           </div>
         </aside>
 
-        {/* Right: tabs */}
+        {/* Right: tabs / simple */}
         <main className="min-w-0 flex-1">
           {/* Mobile case summary */}
           <div className="border-b border-gray-200/80 bg-white px-6 py-4 lg:hidden">
@@ -308,45 +352,88 @@ export default function CaseDetailView({
                 currentStatus={caseData.status}
               />
             </div>
+            <div className="mt-3 flex items-center rounded-lg border border-gray-200 p-0.5">
+              <button
+                type="button"
+                onClick={() => setViewMode("detail")}
+                className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium ${
+                  viewMode === "detail"
+                    ? "bg-gray-900 text-white"
+                    : "text-gray-600"
+                }`}
+              >
+                詳細
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("simple")}
+                className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium ${
+                  viewMode === "simple"
+                    ? "bg-gray-900 text-white"
+                    : "text-gray-600"
+                }`}
+              >
+                簡易表示
+              </button>
+            </div>
           </div>
 
-          <div className="sticky top-0 z-10 border-b border-gray-200/80 bg-[#f7f7f5]/80 backdrop-blur">
-            <nav className="flex gap-0 overflow-x-auto px-4 md:px-6">
-              {TABS.map((item) => {
-                const active = tab === item.id;
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => setTab(item.id)}
-                    className={`relative shrink-0 px-3 py-3 text-sm transition ${
-                      active
-                        ? "font-medium text-gray-900"
-                        : "text-gray-500 hover:text-gray-800"
-                    }`}
-                  >
-                    {item.label}
-                    {active ? (
-                      <span className="absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-gray-900" />
-                    ) : null}
-                  </button>
-                );
-              })}
-            </nav>
-          </div>
+          {viewMode === "detail" ? (
+            <div className="sticky top-0 z-10 border-b border-gray-200/80 bg-[#f7f7f5]/80 backdrop-blur">
+              <nav className="flex gap-0 overflow-x-auto px-4 md:px-6">
+                {TABS.map((item) => {
+                  const active = tab === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => setTab(item.id)}
+                      className={`relative shrink-0 px-3 py-3 text-sm transition ${
+                        active
+                          ? "font-medium text-gray-900"
+                          : "text-gray-500 hover:text-gray-800"
+                      }`}
+                    >
+                      {item.label}
+                      {active ? (
+                        <span className="absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-gray-900" />
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </nav>
+            </div>
+          ) : null}
 
           <div className="p-6 md:p-8">
-            {tab === "basic" ? (
+            {viewMode === "simple" ? (
+              <SimpleOverview
+                caseData={caseData}
+                products={products}
+                orders={orders}
+                invoices={invoices}
+                payments={payments}
+                settlement={settlement}
+                totals={totals}
+                deliverySummary={deliverySummary}
+                paymentSummary={paymentSummary}
+                onOpenTab={(next) => {
+                  setTab(next);
+                  setViewMode("detail");
+                }}
+              />
+            ) : null}
+            {viewMode === "detail" && tab === "basic" ? (
               <BasicTab caseData={caseData} tasks={tasks} tasksError={errors.tasks} />
             ) : null}
-            {tab === "products" ? (
+            {viewMode === "detail" && tab === "products" ? (
               <ProductsTab
                 caseId={caseData.id}
                 products={products}
                 error={errors.products}
               />
             ) : null}
-            {tab === "settlement" ? (
+            {viewMode === "detail" && tab === "settlement" ? (
               <SettlementTab
                 caseId={caseData.id}
                 settlement={settlement}
@@ -354,17 +441,17 @@ export default function CaseDetailView({
                 dealerPaymentType={dealerPaymentType}
               />
             ) : null}
-            {tab === "purchase" ? (
+            {viewMode === "detail" && tab === "purchase" ? (
               <PurchaseTab
                 caseId={caseData.id}
                 orders={orders}
                 error={errors.orders}
               />
             ) : null}
-            {tab === "delivery" ? (
+            {viewMode === "detail" && tab === "delivery" ? (
               <DeliveryTab orders={orders} caseData={caseData} />
             ) : null}
-            {tab === "invoice" ? (
+            {viewMode === "detail" && tab === "invoice" ? (
               <InvoiceTab
                 caseId={caseData.id}
                 invoices={invoices}
@@ -372,7 +459,7 @@ export default function CaseDetailView({
                 error={errors.invoices}
               />
             ) : null}
-            {tab === "receipt" ? (
+            {viewMode === "detail" && tab === "receipt" ? (
               <ReceiptTab
                 caseId={caseData.id}
                 payments={payments}
@@ -381,8 +468,10 @@ export default function CaseDetailView({
                 error={errors.payments}
               />
             ) : null}
-            {tab === "payment" ? <PaymentTab orders={orders} /> : null}
-            {tab === "profit" ? (
+            {viewMode === "detail" && tab === "payment" ? (
+              <PaymentTab orders={orders} />
+            ) : null}
+            {viewMode === "detail" && tab === "profit" ? (
               <ProfitTab
                 totals={totals}
                 settlement={settlement}
@@ -391,6 +480,258 @@ export default function CaseDetailView({
             ) : null}
           </div>
         </main>
+      </div>
+    </div>
+  );
+}
+
+function getTodayString(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+type DeliveryStatusLabel = "納品済" | "納品予定" | "遅延" | "未納品" | "対象外";
+
+function getDeliveryStatus(order: OrderRow): DeliveryStatusLabel {
+  if (order.status === "キャンセル" || order.status === "取消") {
+    return "対象外";
+  }
+  if (order.deliveredDate || order.status === "納品済") {
+    return "納品済";
+  }
+  const today = getTodayString();
+  if (
+    order.expectedDeliveryDate &&
+    order.expectedDeliveryDate < today &&
+    order.status !== "一部納品"
+  ) {
+    return "遅延";
+  }
+  if (
+    order.expectedDeliveryDate ||
+    order.status === "納期確定" ||
+    order.status === "一部納品" ||
+    order.status === "納期回答待ち"
+  ) {
+    return "納品予定";
+  }
+  return "未納品";
+}
+
+function summarizeDeliveries(orders: OrderRow[]) {
+  const active = orders.filter(
+    (order) => order.status !== "キャンセル" && order.status !== "取消"
+  );
+  let delivered = 0;
+  let scheduled = 0;
+  let overdue = 0;
+  let pending = 0;
+
+  for (const order of active) {
+    const status = getDeliveryStatus(order);
+    if (status === "納品済") delivered += 1;
+    else if (status === "遅延") overdue += 1;
+    else if (status === "納品予定") scheduled += 1;
+    else pending += 1;
+  }
+
+  return {
+    total: active.length,
+    delivered,
+    scheduled,
+    overdue,
+    pending,
+  };
+}
+
+function summarizePayments(orders: OrderRow[]) {
+  const active = orders.filter(
+    (order) => order.status !== "キャンセル" && order.status !== "取消"
+  );
+  let targetAmount = 0;
+  let readyAmount = 0;
+  let pendingAmount = 0;
+
+  for (const order of active) {
+    targetAmount += order.orderAmount;
+    if (getDeliveryStatus(order) === "納品済") {
+      readyAmount += order.orderAmount;
+    } else {
+      pendingAmount += order.orderAmount;
+    }
+  }
+
+  return { targetAmount, readyAmount, pendingAmount };
+}
+
+function SimpleOverview({
+  caseData,
+  products,
+  orders,
+  invoices,
+  payments,
+  settlement,
+  totals,
+  deliverySummary,
+  paymentSummary,
+  onOpenTab,
+}: {
+  caseData: CaseDetailViewData;
+  products: CaseProductRow[];
+  orders: OrderRow[];
+  invoices: InvoiceRow[];
+  payments: PaymentRow[];
+  settlement: SettlementViewData | null;
+  totals: {
+    sales: number;
+    purchase: number;
+    profit: number;
+    rate: number | null;
+    orderAmount: number;
+    invoiceAmount: number;
+    paidIn: number;
+    unpaid: number;
+  };
+  deliverySummary: ReturnType<typeof summarizeDeliveries>;
+  paymentSummary: ReturnType<typeof summarizePayments>;
+  onOpenTab: (tab: CaseDetailTabId) => void;
+}) {
+  return (
+    <div className="space-y-6">
+      <Section
+        title="簡易表示"
+        description="案件の要点を1画面で確認"
+        action={
+          <button
+            type="button"
+            onClick={() => onOpenTab("basic")}
+            className="text-sm text-gray-600 hover:text-gray-900"
+          >
+            詳細タブへ
+          </button>
+        }
+      >
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <Field label="案件番号" value={caseData.caseNo} />
+          <Field label="販売店" value={caseData.dealerName} />
+          <Field label="顧客名" value={caseData.customerName} />
+          <Field
+            label="希望納品日"
+            value={formatDate(caseData.desiredDeliveryDate)}
+          />
+          <Field label="決済区分" value={settlement?.settlementType || ""} />
+          <Field label="商品数" value={`${products.length}件`} />
+          <Field label="発注数" value={`${orders.length}件`} />
+          <Field label="請求数" value={`${invoices.length}件`} />
+        </div>
+      </Section>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Section
+          title="納品"
+          description={`済 ${deliverySummary.delivered} / 遅延 ${deliverySummary.overdue}`}
+          action={
+            <button
+              type="button"
+              onClick={() => onOpenTab("delivery")}
+              className="text-sm text-gray-600 hover:text-gray-900"
+            >
+              詳細
+            </button>
+          }
+        >
+          <div className="grid grid-cols-2 gap-3">
+            <MiniStat label="対象" value={`${deliverySummary.total}件`} />
+            <MiniStat label="予定" value={`${deliverySummary.scheduled}件`} />
+            <MiniStat label="済" value={`${deliverySummary.delivered}件`} />
+            <MiniStat
+              label="遅延"
+              value={`${deliverySummary.overdue}件`}
+              alert={deliverySummary.overdue > 0}
+            />
+          </div>
+        </Section>
+
+        <Section
+          title="支払"
+          description="発注ベースの支払目安"
+          action={
+            <button
+              type="button"
+              onClick={() => onOpenTab("payment")}
+              className="text-sm text-gray-600 hover:text-gray-900"
+            >
+              詳細
+            </button>
+          }
+        >
+          <div className="grid grid-cols-1 gap-3">
+            <MiniStat
+              label="支払対象合計"
+              value={formatYen(paymentSummary.targetAmount)}
+            />
+            <MiniStat
+              label="支払準備OK"
+              value={formatYen(paymentSummary.readyAmount)}
+            />
+            <MiniStat
+              label="支払待ち"
+              value={formatYen(paymentSummary.pendingAmount)}
+            />
+          </div>
+        </Section>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Section
+          title="請求・入金"
+          action={
+            <button
+              type="button"
+              onClick={() => onOpenTab("invoice")}
+              className="text-sm text-gray-600 hover:text-gray-900"
+            >
+              詳細
+            </button>
+          }
+        >
+          <div className="grid grid-cols-3 gap-3">
+            <MiniStat label="請求" value={formatYen(totals.invoiceAmount)} />
+            <MiniStat label="入金" value={formatYen(totals.paidIn)} />
+            <MiniStat
+              label="未入金"
+              value={formatYen(totals.unpaid)}
+              alert={totals.unpaid > 0}
+            />
+          </div>
+          <p className="mt-3 text-xs text-gray-400">
+            入金実績 {payments.length}件
+          </p>
+        </Section>
+
+        <Section
+          title="粗利"
+          action={
+            <button
+              type="button"
+              onClick={() => onOpenTab("profit")}
+              className="text-sm text-gray-600 hover:text-gray-900"
+            >
+              詳細
+            </button>
+          }
+        >
+          <div className="grid grid-cols-2 gap-3">
+            <MiniStat label="売上" value={formatYen(totals.sales)} />
+            <MiniStat label="仕入" value={formatYen(totals.purchase)} />
+            <MiniStat label="粗利" value={formatYen(totals.profit)} />
+            <MiniStat
+              label="粗利率"
+              value={
+                totals.rate == null ? "—" : `${totals.rate.toFixed(1)}%`
+              }
+            />
+          </div>
+        </Section>
       </div>
     </div>
   );
@@ -744,55 +1085,87 @@ function DeliveryTab({
   orders: OrderRow[];
   caseData: CaseDetailViewData;
 }) {
+  const summary = summarizeDeliveries(orders);
+  const activeOrders = orders.filter(
+    (order) => order.status !== "キャンセル" && order.status !== "取消"
+  );
+
   return (
     <Section title="納品" description="施工店倉庫への納品予定・実績">
-      <div className="mb-6 grid gap-4 sm:grid-cols-2">
+      <div className="mb-5 grid gap-4 sm:grid-cols-2">
         <Field label="納品先（案件）" value={caseData.deliveryAddress} />
         <Field
           label="希望納品日"
           value={formatDate(caseData.desiredDeliveryDate)}
         />
       </div>
-      {orders.length === 0 ? (
-        <Empty text="仕入発注がないため、納品対象はまだありません" />
+
+      <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <MiniStat label="対象発注" value={`${summary.total}件`} />
+        <MiniStat label="納品済" value={`${summary.delivered}件`} />
+        <MiniStat label="納品予定" value={`${summary.scheduled}件`} />
+        <MiniStat
+          label="遅延"
+          value={`${summary.overdue}件`}
+          alert={summary.overdue > 0}
+        />
+      </div>
+
+      {activeOrders.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-gray-200 bg-[#f7f7f5] px-4 py-8 text-center">
+          <p className="text-sm text-gray-500">
+            仕入発注がないため、納品対象はまだありません。
+          </p>
+          <Link
+            href={`/cases/${caseData.id}/orders/new`}
+            className="mt-4 inline-flex rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
+          >
+            発注を作成する
+          </Link>
+        </div>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[560px] text-left text-sm">
-            <thead>
-              <tr className="border-b border-gray-200 text-xs text-gray-400">
-                <th className="pb-2 pr-4 font-medium">仕入先</th>
-                <th className="pb-2 pr-4 font-medium">予定日</th>
-                <th className="pb-2 pr-4 font-medium">納品日</th>
-                <th className="pb-2 font-medium">状態</th>
-              </tr>
-            </thead>
-            <tbody>
-              {orders.map((order) => (
-                <tr key={order.id} className="border-b border-gray-100">
-                  <td className="py-3 pr-4">
-                    {display(order.supplierName)}
-                  </td>
-                  <td className="py-3 pr-4">
-                    {formatDate(order.expectedDeliveryDate)}
-                  </td>
-                  <td className="py-3 pr-4">
-                    {formatDate(order.deliveredDate)}
-                  </td>
-                  <td className="py-3">
-                    {order.deliveredDate
-                      ? "納品済"
-                      : order.expectedDeliveryDate
-                        ? "納品予定"
-                        : "未納品"}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="space-y-3">
+          {activeOrders.map((order) => {
+            const deliveryStatus = getDeliveryStatus(order);
+            return (
+              <div
+                key={order.id}
+                className="rounded-lg border border-gray-200 p-4"
+              >
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+                  <Field label="仕入先" value={order.supplierName} />
+                  <Field label="発注番号" value={order.orderNo} />
+                  <Field
+                    label="納品予定日"
+                    value={formatDate(order.expectedDeliveryDate)}
+                  />
+                  <Field
+                    label="納品日"
+                    value={formatDate(order.deliveredDate)}
+                  />
+                  <div>
+                    <p className="text-xs font-medium text-gray-400">納品状況</p>
+                    <div className="mt-1.5">
+                      <DeliveryStatusBadge status={deliveryStatus} />
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-4 flex flex-wrap justify-end gap-2 border-t border-gray-100 pt-4">
+                  <Link
+                    href={`/orders/${order.id}`}
+                    className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                  >
+                    発注詳細
+                  </Link>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
+
       <p className="mt-4 text-xs text-gray-400">
-        分納対応の deliveries テーブル連携後、商品単位の実績登録に拡張します。
+        分納対応の deliveries テーブル連携後、商品単位の実績登録に拡張します。現在は発注の納品予定日・納品日を参照しています。
       </p>
     </Section>
   );
@@ -1080,39 +1453,76 @@ function ReceiptTab({
 }
 
 function PaymentTab({ orders }: { orders: OrderRow[] }) {
-  const purchaseTotal = orders
-    .filter((o) => o.status !== "キャンセル")
-    .reduce((s, o) => s + o.orderAmount, 0);
+  const summary = summarizePayments(orders);
+  const activeOrders = orders.filter(
+    (order) => order.status !== "キャンセル" && order.status !== "取消"
+  );
 
   return (
-    <Section title="支払" description="仕入先などへの支払">
-      <div className="mb-6">
-        <MiniStat label="発注合計（支払対象目安）" value={formatYen(purchaseTotal)} />
+    <Section title="支払" description="仕入先への支払目安（発注ベース）">
+      <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <MiniStat label="支払対象合計" value={formatYen(summary.targetAmount)} />
+        <MiniStat
+          label="納品済（支払準備）"
+          value={formatYen(summary.readyAmount)}
+        />
+        <MiniStat
+          label="未納品（支払待ち）"
+          value={formatYen(summary.pendingAmount)}
+        />
       </div>
-      <EmptyState
-        title="支払実績は未連携です"
-        body="supplier_payments テーブル追加後、発注単位の支払予定・実績をここに表示します。現在は仕入発注額を参照用に表示しています。"
-      />
-      {orders.length > 0 ? (
-        <ul className="mt-6 divide-y divide-gray-100">
-          {orders.map((order) => (
-            <li
-              key={order.id}
-              className="flex justify-between gap-3 py-3 text-sm"
-            >
-              <span className="text-gray-700">
-                {display(order.supplierName)}
-              </span>
-              <span className="text-gray-900">
-                {formatYen(order.orderAmount)}
-                <span className="ml-2 text-xs text-gray-400">
-                  {order.status}
-                </span>
-              </span>
-            </li>
-          ))}
-        </ul>
-      ) : null}
+
+      {activeOrders.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-gray-200 bg-[#f7f7f5] px-4 py-8 text-center">
+          <p className="text-sm text-gray-500">支払対象の発注はまだありません。</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {activeOrders.map((order) => {
+            const deliveryStatus = getDeliveryStatus(order);
+            const paymentLabel =
+              deliveryStatus === "納品済" ? "支払準備OK" : "支払待ち（納品前）";
+
+            return (
+              <div
+                key={order.id}
+                className="rounded-lg border border-gray-200 p-4"
+              >
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+                  <Field label="仕入先" value={order.supplierName} />
+                  <Field label="発注番号" value={order.orderNo} />
+                  <Field label="発注金額" value={formatYen(order.orderAmount)} />
+                  <div>
+                    <p className="text-xs font-medium text-gray-400">発注状況</p>
+                    <div className="mt-1.5">
+                      <OrderStatusBadge status={order.status} />
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-gray-400">支払目安</p>
+                    <div className="mt-1.5">
+                      <PaymentReadyBadge ready={deliveryStatus === "納品済"} />
+                    </div>
+                    <p className="mt-1 text-xs text-gray-400">{paymentLabel}</p>
+                  </div>
+                </div>
+                <div className="mt-4 flex flex-wrap justify-end gap-2 border-t border-gray-100 pt-4">
+                  <Link
+                    href={`/orders/${order.id}`}
+                    className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                  >
+                    発注詳細
+                  </Link>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <p className="mt-4 text-xs text-gray-400">
+        supplier_payments 連携前のため、発注金額を支払目安として表示しています。実績登録は後続で追加します。
+      </p>
     </Section>
   );
 }
@@ -1447,6 +1857,38 @@ function PaymentStatusBadge({ status }: { status: string | null }) {
       }`}
     >
       {currentStatus}
+    </span>
+  );
+}
+
+function DeliveryStatusBadge({ status }: { status: DeliveryStatusLabel }) {
+  const styles: Record<DeliveryStatusLabel, string> = {
+    納品済: "bg-green-100 text-green-700",
+    納品予定: "bg-blue-100 text-blue-700",
+    遅延: "bg-red-100 text-red-700",
+    未納品: "bg-gray-100 text-gray-700",
+    対象外: "bg-gray-200 text-gray-500",
+  };
+
+  return (
+    <span
+      className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${styles[status]}`}
+    >
+      {status}
+    </span>
+  );
+}
+
+function PaymentReadyBadge({ ready }: { ready: boolean }) {
+  return (
+    <span
+      className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${
+        ready
+          ? "bg-emerald-100 text-emerald-800"
+          : "bg-amber-100 text-amber-800"
+      }`}
+    >
+      {ready ? "支払準備OK" : "支払待ち"}
     </span>
   );
 }
