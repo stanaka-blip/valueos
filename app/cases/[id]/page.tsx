@@ -25,6 +25,7 @@ type ManufacturerRelation = {
 type ProductRelation = {
   name: string | null;
   model_no: string | null;
+  category: string | null;
   manufacturers: ManufacturerRelation | ManufacturerRelation[] | null;
 };
 
@@ -114,6 +115,7 @@ export default async function CaseDetailPage({
         products (
           name,
           model_no,
+          category,
           manufacturers (
             name
           )
@@ -241,6 +243,7 @@ export default async function CaseDetailPage({
       id: row.id as string,
       productName: product?.name || "",
       modelNo: product?.model_no || "",
+      category: product?.category || "",
       manufacturerName: manufacturer?.name || "",
       supplierName: supplier?.name || "",
       quantity: row.quantity != null ? String(row.quantity) : "",

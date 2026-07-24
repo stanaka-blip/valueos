@@ -56,6 +56,7 @@ export type CaseProductRow = {
   id: string;
   productName: string;
   modelNo: string;
+  category: string;
   manufacturerName: string;
   supplierName: string;
   quantity: string;
@@ -449,10 +450,21 @@ function ProductsTab({
   products: CaseProductRow[];
   error?: string;
 }) {
+  const salesTotal = products.reduce((sum, row) => sum + row.salesPrice, 0);
+  const purchaseTotal = products.reduce(
+    (sum, row) => sum + row.purchasePrice,
+    0
+  );
+  const profitTotal = products.reduce((sum, row) => sum + row.grossProfit, 0);
+
   return (
     <Section
       title="商品"
-      description="案件に紐づく商品明細"
+      description={
+        products.length > 0
+          ? `売上 ${formatYen(salesTotal)} · 仕入 ${formatYen(purchaseTotal)} · 粗利 ${formatYen(profitTotal)}`
+          : "案件に紐づく商品明細"
+      }
       action={
         <Link
           href={`/cases/${caseId}/products/new`}
@@ -464,44 +476,49 @@ function ProductsTab({
     >
       {error ? <ErrorText text={error} /> : null}
       {!error && products.length === 0 ? (
-        <Empty text="商品が登録されていません" />
+        <div className="rounded-lg border border-dashed border-gray-200 bg-[#f7f7f5] px-4 py-8 text-center">
+          <p className="text-sm text-gray-500">まだ商品が追加されていません。</p>
+          <Link
+            href={`/cases/${caseId}/products/new`}
+            className="mt-4 inline-flex rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
+          >
+            最初の商品を追加する
+          </Link>
+        </div>
       ) : null}
       {!error && products.length > 0 ? (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[720px] text-left text-sm">
-            <thead>
-              <tr className="border-b border-gray-200 text-xs text-gray-400">
-                <th className="pb-2 pr-4 font-medium">メーカー</th>
-                <th className="pb-2 pr-4 font-medium">商品</th>
-                <th className="pb-2 pr-4 font-medium">型番</th>
-                <th className="pb-2 pr-4 font-medium">数量</th>
-                <th className="pb-2 pr-4 font-medium">仕入先</th>
-                <th className="pb-2 pr-4 font-medium">売価</th>
-                <th className="pb-2 font-medium">仕入</th>
-              </tr>
-            </thead>
-            <tbody>
-              {products.map((row) => (
-                <tr key={row.id} className="border-b border-gray-100">
-                  <td className="py-3 pr-4 text-gray-600">
-                    {display(row.manufacturerName)}
-                  </td>
-                  <td className="py-3 pr-4 font-medium text-gray-900">
-                    {display(row.productName)}
-                  </td>
-                  <td className="py-3 pr-4 text-gray-600">
-                    {display(row.modelNo)}
-                  </td>
-                  <td className="py-3 pr-4">{display(row.quantity)}</td>
-                  <td className="py-3 pr-4 text-gray-600">
-                    {display(row.supplierName)}
-                  </td>
-                  <td className="py-3 pr-4">{formatYen(row.salesPrice)}</td>
-                  <td className="py-3">{formatYen(row.purchasePrice)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="space-y-3">
+          {products.map((row) => {
+            const profitRate =
+              row.salesPrice > 0
+                ? `${((row.grossProfit / row.salesPrice) * 100).toFixed(1)}%`
+                : "—";
+
+            return (
+              <div
+                key={row.id}
+                className="rounded-lg border border-gray-200 p-4"
+              >
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+                  <Field label="メーカー" value={row.manufacturerName} />
+                  <Field label="カテゴリ" value={row.category} />
+                  <Field label="品番" value={row.modelNo} />
+                  <Field label="商品名" value={row.productName} />
+                  <Field label="仕入先" value={row.supplierName} />
+                  <Field label="数量" value={row.quantity} />
+                  <Field label="仕入価格" value={formatYen(row.purchasePrice)} />
+                  <Field label="販売価格" value={formatYen(row.salesPrice)} />
+                  <Field label="粗利" value={formatYen(row.grossProfit)} />
+                  <Field label="粗利率" value={profitRate} />
+                </div>
+                {row.memo.trim() ? (
+                  <p className="mt-4 whitespace-pre-wrap border-t border-gray-100 pt-4 text-sm text-gray-600">
+                    {row.memo}
+                  </p>
+                ) : null}
+              </div>
+            );
+          })}
         </div>
       ) : null}
     </Section>
@@ -528,10 +545,18 @@ function PurchaseTab({
   orders: OrderRow[];
   error?: string;
 }) {
+  const totalOrderAmount = orders
+    .filter((order) => order.status !== "キャンセル" && order.status !== "取消")
+    .reduce((sum, order) => sum + order.orderAmount, 0);
+
   return (
     <Section
       title="仕入"
-      description="仕入先ごとの発注"
+      description={
+        orders.length > 0
+          ? `発注合計：${formatYen(totalOrderAmount)}`
+          : "仕入先ごとの発注"
+      }
       action={
         <Link
           href={`/cases/${caseId}/orders/new`}
@@ -543,35 +568,67 @@ function PurchaseTab({
     >
       {error ? <ErrorText text={error} /> : null}
       {!error && orders.length === 0 ? (
-        <Empty text="仕入発注はまだありません" />
-      ) : null}
-      <div className="space-y-3">
-        {orders.map((order) => (
+        <div className="rounded-lg border border-dashed border-gray-200 bg-[#f7f7f5] px-4 py-8 text-center">
+          <p className="text-sm text-gray-500">
+            発注情報はまだ登録されていません。
+          </p>
           <Link
-            key={order.id}
-            href={`/orders/${order.id}`}
-            className="block rounded-lg border border-gray-200 bg-white px-4 py-3 transition hover:border-gray-300"
+            href={`/cases/${caseId}/orders/new`}
+            className="mt-4 inline-flex rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
           >
-            <div className="flex flex-wrap items-start justify-between gap-2">
-              <div>
-                <p className="text-sm font-medium text-gray-900">
-                  {display(order.supplierName)}
-                </p>
-                <p className="mt-0.5 text-xs text-gray-500">
-                  発注日 {formatDate(order.orderDate)} ·{" "}
-                  {display(order.orderNo)}
-                </p>
+            最初の発注を登録する
+          </Link>
+        </div>
+      ) : null}
+      {!error && orders.length > 0 ? (
+        <div className="space-y-3">
+          {orders.map((order) => (
+            <div
+              key={order.id}
+              className="rounded-lg border border-gray-200 p-4"
+            >
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
+                <Field label="発注番号" value={order.orderNo} />
+                <Field label="仕入先" value={order.supplierName} />
+                <Field label="発注日" value={formatDate(order.orderDate)} />
+                <Field
+                  label="納品予定日"
+                  value={formatDate(order.expectedDeliveryDate)}
+                />
+                <Field label="発注金額" value={formatYen(order.orderAmount)} />
+                <div>
+                  <p className="text-xs font-medium text-gray-400">発注状況</p>
+                  <div className="mt-1.5">
+                    <OrderStatusBadge status={order.status} />
+                  </div>
+                </div>
               </div>
-              <div className="text-right">
-                <StatusPill text={order.status} />
-                <p className="mt-1 text-sm font-medium text-gray-900">
-                  {formatYen(order.orderAmount)}
+
+              {order.memo.trim() ? (
+                <p className="mt-4 whitespace-pre-wrap border-t border-gray-100 pt-4 text-sm text-gray-600">
+                  {order.memo}
                 </p>
+              ) : null}
+
+              <div className="mt-4 flex flex-wrap justify-end gap-2 border-t border-gray-100 pt-4">
+                <Link
+                  href={`/orders/${order.id}`}
+                  className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  発注詳細
+                </Link>
+                <Link
+                  href={`/orders/${order.id}/print`}
+                  target="_blank"
+                  className="rounded-lg bg-gray-900 px-4 py-2 text-xs font-medium text-white hover:bg-gray-800"
+                >
+                  発注書PDF
+                </Link>
               </div>
             </div>
-          </Link>
-        ))}
-      </div>
+          ))}
+        </div>
+      ) : null}
     </Section>
   );
 }
@@ -1004,6 +1061,30 @@ function StatusPill({ text }: { text: string }) {
   return (
     <span className="inline-flex rounded-md bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
       {text || "—"}
+    </span>
+  );
+}
+
+function OrderStatusBadge({ status }: { status: string | null }) {
+  const currentStatus = status || "未発注";
+  const styles: Record<string, string> = {
+    未発注: "bg-gray-100 text-gray-700",
+    発注済: "bg-blue-100 text-blue-700",
+    納期回答待ち: "bg-yellow-100 text-yellow-800",
+    納期確定: "bg-purple-100 text-purple-700",
+    一部納品: "bg-orange-100 text-orange-700",
+    納品済: "bg-green-100 text-green-700",
+    取消: "bg-gray-200 text-gray-600",
+    キャンセル: "bg-gray-200 text-gray-600",
+  };
+
+  return (
+    <span
+      className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${
+        styles[currentStatus] || "bg-gray-100 text-gray-700"
+      }`}
+    >
+      {currentStatus}
     </span>
   );
 }
