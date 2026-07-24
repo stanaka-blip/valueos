@@ -60,25 +60,32 @@ export default function DealerNewOrderPage() {
   const [errors, setErrors] = useState<DealerOrderCaseFormErrors>({});
   const [submitted, setSubmitted] = useState(false);
 
+  const isSameAsSiteAddress = form.delivery_type === "設置先住所と同じ";
+
   const dateWarning =
     form.desired_delivery_date &&
     form.construction_date &&
     form.desired_delivery_date > form.construction_date
-      ? "希望納品日が工事予定日より後になっています。納品・工事のスケジュールをご確認ください。"
+      ? "希望納品日が工事予定日より後になっています。日付をご確認ください。"
       : null;
 
-  function updateForm(partial: Partial<DealerOrderCaseForm>) {
-    setForm((current) => {
-      const next = { ...current, ...partial };
+  function clearFieldErrors(fields: Array<keyof DealerOrderCaseForm>) {
+    if (!submitted) {
+      return;
+    }
 
-      if (
-        next.delivery_type === "設置先住所と同じ" &&
-        Object.prototype.hasOwnProperty.call(partial, "site_address")
-      ) {
-        next.delivery_address = next.site_address;
+    setErrors((current) => {
+      let changed = false;
+      const next = { ...current };
+
+      for (const field of fields) {
+        if (next[field]) {
+          delete next[field];
+          changed = true;
+        }
       }
 
-      return next;
+      return changed ? next : current;
     });
   }
 
@@ -91,41 +98,64 @@ export default function DealerNewOrderPage() {
     const fieldName = name as keyof DealerOrderCaseForm;
 
     if (fieldName === "delivery_type") {
-      if (value === "設置先住所と同じ") {
-        updateForm({
-          delivery_type: value,
-          delivery_address: form.site_address,
-        });
+      const nextType = value as DealerOrderCaseForm["delivery_type"];
+
+      if (nextType === "設置先住所と同じ") {
+        setForm((current) => ({
+          ...current,
+          delivery_type: nextType,
+          delivery_address: current.site_address,
+        }));
+        clearFieldErrors(["delivery_type", "delivery_address"]);
       } else {
-        updateForm({
-          delivery_type: value as DealerOrderCaseForm["delivery_type"],
-        });
+        setForm((current) => ({
+          ...current,
+          delivery_type: nextType,
+        }));
+        clearFieldErrors(["delivery_type"]);
       }
-    } else {
-      updateForm({ [fieldName]: value });
+
+      return;
     }
 
-    if (submitted) {
-      setErrors((current) => {
-        if (!current[fieldName]) {
-          return current;
+    if (fieldName === "site_address") {
+      setForm((current) => {
+        const next: DealerOrderCaseForm = {
+          ...current,
+          site_address: value,
+        };
+
+        if (current.delivery_type === "設置先住所と同じ") {
+          next.delivery_address = value;
         }
 
-        const next = { ...current };
-        delete next[fieldName];
         return next;
       });
+
+      if (form.delivery_type === "設置先住所と同じ") {
+        clearFieldErrors(["site_address", "delivery_address"]);
+      } else {
+        clearFieldErrors(["site_address"]);
+      }
+
+      return;
     }
+
+    setForm((current) => ({
+      ...current,
+      [fieldName]: value,
+    }));
+    clearFieldErrors([fieldName]);
   }
 
-  function validateForm(): DealerOrderCaseFormErrors {
+  function validateForm(currentForm: DealerOrderCaseForm): DealerOrderCaseFormErrors {
     const nextErrors: DealerOrderCaseFormErrors = {};
 
     for (const field of REQUIRED_CASE_FORM_FIELDS) {
-      const value = form[field].trim();
+      const value = currentForm[field].trim();
 
       if (!value) {
-        nextErrors[field] = `${FIELD_LABELS[field]}は必須です。`;
+        nextErrors[field] = `${FIELD_LABELS[field]}は必須です`;
       }
     }
 
@@ -136,7 +166,7 @@ export default function DealerNewOrderPage() {
     event.preventDefault();
     setSubmitted(true);
 
-    const nextErrors = validateForm();
+    const nextErrors = validateForm(form);
     setErrors(nextErrors);
 
     if (Object.keys(nextErrors).length > 0) {
@@ -168,12 +198,6 @@ export default function DealerNewOrderPage() {
           {hasErrors ? (
             <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
               必須項目に未入力があります。入力内容をご確認ください。
-            </div>
-          ) : null}
-
-          {dateWarning ? (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-              {dateWarning}
             </div>
           ) : null}
 
@@ -279,6 +303,15 @@ export default function DealerNewOrderPage() {
           </SectionCard>
 
           <SectionCard title="日程情報">
+            {dateWarning ? (
+              <div
+                role="alert"
+                className="mb-5 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900"
+              >
+                {dateWarning}
+              </div>
+            ) : null}
+
             <div className="grid gap-5 md:grid-cols-2">
               <Field
                 label="希望納品日"
@@ -411,7 +444,7 @@ export default function DealerNewOrderPage() {
                   required
                   error={errors.delivery_address}
                   description={
-                    form.delivery_type === "設置先住所と同じ"
+                    isSameAsSiteAddress
                       ? "設置先住所と同じを選択中のため、設置先住所が自動反映されます。"
                       : undefined
                   }
@@ -421,9 +454,9 @@ export default function DealerNewOrderPage() {
                     name="delivery_address"
                     value={form.delivery_address}
                     onChange={handleChange}
-                    readOnly={form.delivery_type === "設置先住所と同じ"}
+                    readOnly={isSameAsSiteAddress}
                     className={
-                      form.delivery_type === "設置先住所と同じ"
+                      isSameAsSiteAddress
                         ? `${inputClassName} bg-gray-100 text-gray-600`
                         : inputClassName
                     }
@@ -600,7 +633,9 @@ function Field({
       <div className="mt-2">{children}</div>
 
       {error ? (
-        <span className="mt-1 block text-xs text-red-600">{error}</span>
+        <span className="mt-1.5 block text-sm font-medium text-red-600">
+          {error}
+        </span>
       ) : null}
     </label>
   );
