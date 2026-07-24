@@ -13,6 +13,7 @@ import {
   DealerOrderCaseForm,
   DealerOrderCaseFormErrors,
   DealerOrderProductForm,
+  DealerOrderSettlementType,
   INITIAL_PART_LINE,
   ORDER_FORM_STEPS,
   OrderFormStepId,
@@ -20,7 +21,7 @@ import {
   RequiredCaseFormField,
 } from "./types";
 import Step2ProductForm from "./Step2ProductForm";
-import Step3AttachmentsForm from "./Step3AttachmentsForm";
+import Step3SettlementForm from "./Step3SettlementForm";
 import Step4ConfirmForm from "./Step4ConfirmForm";
 import { saveDealerOrder } from "./saveDealerOrder";
 
@@ -42,7 +43,7 @@ const FIELD_LABELS: Record<RequiredCaseFormField, string> = {
 const STEP_DESCRIPTIONS: Record<OrderFormStepId, string> = {
   1: "案件情報を入力してください",
   2: "商品情報を入力してください",
-  3: "添付資料があれば追加してください",
+  3: "決済区分を選択してください",
   4: "内容を確認して発注依頼を送信してください",
 };
 
@@ -88,6 +89,9 @@ export default function DealerNewOrderPage() {
   const [submitted, setSubmitted] = useState(false);
   const [productForm, setProductForm] =
     useState<DealerOrderProductForm>(INITIAL_PRODUCT_FORM);
+  const [settlementType, setSettlementType] = useState<
+    DealerOrderSettlementType | ""
+  >("");
   const [submitting, setSubmitting] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
@@ -219,12 +223,19 @@ export default function DealerNewOrderPage() {
       return;
     }
 
+    if (!settlementType) {
+      setSaveError("決済区分が選択されていません。STEP3へ戻って選択してください。");
+      setCurrentStep(3);
+      return;
+    }
+
     setSubmitting(true);
     setSaveError("");
 
     const result = await saveDealerOrder({
       caseForm: form,
       productForm,
+      settlementType,
     });
 
     if (!result.ok) {
@@ -609,9 +620,11 @@ export default function DealerNewOrderPage() {
         ) : null}
 
         {currentStep === 3 ? (
-          <Step3AttachmentsForm
+          <Step3SettlementForm
+            settlementType={settlementType}
+            onSettlementTypeChange={setSettlementType}
             onBack={() => setCurrentStep(2)}
-            onConfirm={() => setCurrentStep(4)}
+            onNext={() => setCurrentStep(4)}
           />
         ) : null}
 
@@ -619,6 +632,7 @@ export default function DealerNewOrderPage() {
           <Step4ConfirmForm
             caseForm={form}
             productForm={productForm}
+            settlementType={settlementType}
             onBack={() => setCurrentStep(3)}
             onSubmit={handleSubmitOrder}
             submitting={submitting}

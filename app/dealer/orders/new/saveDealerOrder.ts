@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import type {
   DealerOrderCaseForm,
   DealerOrderProductForm,
+  DealerOrderSettlementType,
 } from "./types";
 
 export type SaveDealerOrderResult =
@@ -106,20 +107,46 @@ async function cleanupCase(
   }
 
   await client.from("case_products").delete().eq("case_id", caseId);
+  await client.from("case_settlements").delete().eq("case_id", caseId);
   await client.from("cases").delete().eq("id", caseId);
+}
+
+async function insertCaseSettlement(
+  client: SupabaseClient,
+  caseId: string,
+  settlementType: DealerOrderSettlementType,
+  casePackageId?: string | null
+): Promise<SaveDealerOrderResult | null> {
+  const { error } = await client.from("case_settlements").insert({
+    case_id: caseId,
+    settlement_type: settlementType,
+    fee_amount: 0,
+  });
+
+  if (error) {
+    await cleanupCase(client, caseId, casePackageId);
+    return {
+      ok: false,
+      errorMessage: error.message || "決済区分の保存に失敗しました。",
+    };
+  }
+
+  return null;
 }
 
 /**
  * STEP4 送信時の保存。
  * - ステータスは Phase0 正式値「新規受付」を書き込む
  * - memo / construction_detail の【ラベル】形式は admin parseCaseExtras と互換
- * - 既知ギャップ（販売店フォールバック、パッケージ時 case_products 空など）は未改修
+ * - cases 保存後に case_settlements（settlement_type）を保存
+ * - 失敗時は cleanupCase で案件を残さない
  */
 export async function saveDealerOrder(params: {
   caseForm: DealerOrderCaseForm;
   productForm: DealerOrderProductForm;
+  settlementType: DealerOrderSettlementType;
 }): Promise<SaveDealerOrderResult> {
-  const { caseForm, productForm } = params;
+  const { caseForm, productForm, settlementType } = params;
   const client = supabase;
 
   try {
@@ -304,6 +331,16 @@ export async function saveDealerOrder(params: {
         }
       }
 
+      const settlementError = await insertCaseSettlement(
+        client,
+        caseId,
+        settlementType,
+        casePackageId
+      );
+      if (settlementError) {
+        return settlementError;
+      }
+
       return {
         ok: true,
         caseId,
@@ -398,6 +435,15 @@ export async function saveDealerOrder(params: {
           errorMessage:
             partsError.message || "部材情報の保存に失敗しました。",
         };
+      }
+
+      const settlementError = await insertCaseSettlement(
+        client,
+        caseId,
+        settlementType
+      );
+      if (settlementError) {
+        return settlementError;
       }
 
       return {

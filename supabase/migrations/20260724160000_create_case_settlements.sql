@@ -64,5 +64,22 @@ CREATE TRIGGER case_settlements_set_updated_at
 -- RLS は既存テーブル運用に合わせ当面無効（後続で強化可能）
 ALTER TABLE public.case_settlements DISABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS case_settlements_anon_all ON public.case_settlements;
+DROP POLICY IF EXISTS case_settlements_authenticated_all ON public.case_settlements;
+
+CREATE POLICY case_settlements_anon_all
+  ON public.case_settlements
+  FOR ALL
+  TO anon
+  USING (true)
+  WITH CHECK (true);
+
+CREATE POLICY case_settlements_authenticated_all
+  ON public.case_settlements
+  FOR ALL
+  TO authenticated
+  USING (true)
+  WITH CHECK (true);
+
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.case_settlements TO anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.case_settlements TO service_role;

@@ -5,6 +5,7 @@ import { ReactNode, useEffect, useState } from "react";
 import {
   DealerOrderCaseForm,
   DealerOrderProductForm,
+  DealerOrderSettlementType,
 } from "./types";
 import {
   fetchActiveManufacturers,
@@ -21,6 +22,7 @@ import {
 type Step4ConfirmFormProps = {
   caseForm: DealerOrderCaseForm;
   productForm: DealerOrderProductForm;
+  settlementType: DealerOrderSettlementType | "";
   onBack: () => void;
   onSubmit: () => void;
   submitting: boolean;
@@ -29,6 +31,7 @@ type Step4ConfirmFormProps = {
 export default function Step4ConfirmForm({
   caseForm,
   productForm,
+  settlementType,
   onBack,
   onSubmit,
   submitting,
@@ -182,6 +185,10 @@ export default function Step4ConfirmForm({
                 label="納品時の注意事項"
                 value={caseForm.delivery_notes || "-"}
               />
+            </ConfirmBlock>
+
+            <ConfirmBlock title="決済情報">
+              <ConfirmRow label="決済区分" value={settlementType || "-"} />
             </ConfirmBlock>
 
             <ConfirmBlock title="商品情報">
