@@ -6,7 +6,8 @@
     "dev": "next dev --port 3001 --hostname 0.0.0.0",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "gen:db-types": "bash scripts/generate-database-types.sh"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.0",
