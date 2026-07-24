@@ -68,6 +68,23 @@ export type CaseProductRow = {
   memo: string;
 };
 
+export type CasePackageItemView = {
+  id: string;
+  productName: string;
+  modelNo: string;
+  quantity: string;
+};
+
+export type CasePackageView = {
+  id: string;
+  manufacturerName: string;
+  seriesName: string;
+  packageName: string;
+  quantity: string;
+  memo: string;
+  items: CasePackageItemView[];
+};
+
 export type OrderRow = {
   id: string;
   orderNo: string;
@@ -110,6 +127,7 @@ export type TaskRow = {
 type CaseDetailViewProps = {
   caseData: CaseDetailViewData;
   products: CaseProductRow[];
+  packages?: CasePackageView[];
   orders: OrderRow[];
   invoices: InvoiceRow[];
   payments: PaymentRow[];
@@ -152,6 +170,7 @@ function display(value: string | null | undefined): string {
 export default function CaseDetailView({
   caseData,
   products,
+  packages = [],
   orders,
   invoices,
   payments,
@@ -430,6 +449,7 @@ export default function CaseDetailView({
               <ProductsTab
                 caseId={caseData.id}
                 products={products}
+                packages={packages}
                 error={errors.products}
               />
             ) : null}
@@ -839,10 +859,12 @@ function BasicTab({
 function ProductsTab({
   caseId,
   products,
+  packages,
   error,
 }: {
   caseId: string;
   products: CaseProductRow[];
+  packages: CasePackageView[];
   error?: string;
 }) {
   const salesTotal = products.reduce((sum, row) => sum + row.salesPrice, 0);
@@ -851,15 +873,20 @@ function ProductsTab({
     0
   );
   const profitTotal = products.reduce((sum, row) => sum + row.grossProfit, 0);
+  const hasPackages = packages.length > 0;
+  const hasProducts = products.length > 0;
+  const isEmpty = !hasPackages && !hasProducts;
+
+  const description = hasProducts
+    ? `売上 ${formatYen(salesTotal)} · 仕入 ${formatYen(purchaseTotal)} · 粗利 ${formatYen(profitTotal)}`
+    : hasPackages
+      ? `パッケージ ${packages.length}件`
+      : "案件に紐づく商品明細";
 
   return (
     <Section
       title="商品"
-      description={
-        products.length > 0
-          ? `売上 ${formatYen(salesTotal)} · 仕入 ${formatYen(purchaseTotal)} · 粗利 ${formatYen(profitTotal)}`
-          : "案件に紐づく商品明細"
-      }
+      description={description}
       action={
         <Link
           href={`/cases/${caseId}/products/new`}
@@ -870,7 +897,7 @@ function ProductsTab({
       }
     >
       {error ? <ErrorText text={error} /> : null}
-      {!error && products.length === 0 ? (
+      {!error && isEmpty ? (
         <div className="rounded-lg border border-dashed border-gray-200 bg-[#f7f7f5] px-4 py-8 text-center">
           <p className="text-sm text-gray-500">まだ商品が追加されていません。</p>
           <Link
@@ -881,8 +908,80 @@ function ProductsTab({
           </Link>
         </div>
       ) : null}
-      {!error && products.length > 0 ? (
-        <div className="space-y-3">
+
+      {!error && hasPackages ? (
+        <div className="space-y-6">
+          {packages.map((pkg, index) => (
+            <div
+              key={pkg.id}
+              className="space-y-4 rounded-lg border border-gray-200 p-4"
+            >
+              {packages.length > 1 ? (
+                <h3 className="text-sm font-semibold text-gray-800">
+                  パッケージ {index + 1}
+                </h3>
+              ) : null}
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <Field label="メーカー" value={pkg.manufacturerName} />
+                <Field label="シリーズ" value={pkg.seriesName} />
+                <Field label="パッケージ名" value={pkg.packageName} />
+                <Field label="数量" value={pkg.quantity} />
+              </div>
+              {pkg.memo.trim() ? (
+                <p className="whitespace-pre-wrap border-t border-gray-100 pt-4 text-sm text-gray-600">
+                  {pkg.memo}
+                </p>
+              ) : null}
+              <div>
+                <h4 className="mb-2 text-sm font-semibold text-gray-800">
+                  パッケージ構成商品
+                </h4>
+                {pkg.items.length === 0 ? (
+                  <p className="text-sm text-gray-500">
+                    構成商品は登録されていません。
+                  </p>
+                ) : (
+                  <div className="overflow-x-auto rounded-lg border border-gray-200">
+                    <table className="w-full min-w-[480px] text-left text-sm">
+                      <thead className="border-b bg-[#f7f7f5] text-gray-500">
+                        <tr>
+                          <th className="px-4 py-3 font-medium">商品名</th>
+                          <th className="px-4 py-3 font-medium">型番</th>
+                          <th className="px-4 py-3 font-medium">数量</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {pkg.items.map((item) => (
+                          <tr
+                            key={item.id}
+                            className="border-b last:border-b-0"
+                          >
+                            <td className="px-4 py-3 text-gray-900">
+                              {display(item.productName)}
+                            </td>
+                            <td className="px-4 py-3 text-gray-700">
+                              {display(item.modelNo)}
+                            </td>
+                            <td className="px-4 py-3 text-gray-700">
+                              {display(item.quantity)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {!error && hasProducts ? (
+        <div className={`space-y-3 ${hasPackages ? "mt-6" : ""}`}>
+          {hasPackages ? (
+            <h3 className="text-sm font-semibold text-gray-800">部材・商品明細</h3>
+          ) : null}
           {products.map((row) => {
             const profitRate =
               row.salesPrice > 0

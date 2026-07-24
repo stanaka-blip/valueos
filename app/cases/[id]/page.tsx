@@ -4,6 +4,7 @@ import { supabase } from "@/lib/supabase";
 
 import CaseDetailView, {
   type CaseDetailViewData,
+  type CasePackageView,
   type CaseProductRow,
   type InvoiceRow,
   type OrderRow,
@@ -34,6 +35,44 @@ type ProductRelation = {
 
 type SupplierRelation = {
   name: string | null;
+};
+
+type PackageRelation = {
+  name: string | null;
+  package_code: string | null;
+};
+
+type CasePackageItemRelation = {
+  id: string;
+  quantity: number | string | null;
+  is_selected: boolean | null;
+  is_added_manually: boolean | null;
+  is_hidden: boolean | null;
+  product_name_snapshot: string | null;
+  model_no_snapshot: string | null;
+  display_name_snapshot: string | null;
+  products:
+    | {
+        name: string | null;
+        model_no: string | null;
+      }
+    | {
+        name: string | null;
+        model_no: string | null;
+      }[]
+    | null;
+};
+
+type CasePackageRelation = {
+  id: string;
+  quantity: number | string | null;
+  memo: string | null;
+  package_name_snapshot: string | null;
+  package_code_snapshot: string | null;
+  manufacturer_name_snapshot: string | null;
+  series_name_snapshot: string | null;
+  packages: PackageRelation | PackageRelation[] | null;
+  case_package_items: CasePackageItemRelation[] | CasePackageItemRelation | null;
 };
 
 function getSingleRelation<T>(
@@ -70,6 +109,7 @@ export default async function CaseDetailPage({
     { data: caseData, error: caseError },
     { data: tasksData, error: tasksError },
     { data: caseProductsData, error: caseProductsError },
+    { data: casePackagesData, error: casePackagesError },
     { data: ordersData, error: ordersError },
     { data: invoicesData, error: invoicesError },
     { data: paymentsData, error: paymentsError },
@@ -127,6 +167,40 @@ export default async function CaseDetailPage({
         ),
         suppliers (
           name
+        )
+      `
+      )
+      .eq("case_id", id)
+      .order("created_at", { ascending: true }),
+
+    supabase
+      .from("case_packages")
+      .select(
+        `
+        id,
+        quantity,
+        memo,
+        package_name_snapshot,
+        package_code_snapshot,
+        manufacturer_name_snapshot,
+        series_name_snapshot,
+        packages (
+          name,
+          package_code
+        ),
+        case_package_items (
+          id,
+          quantity,
+          is_selected,
+          is_added_manually,
+          is_hidden,
+          product_name_snapshot,
+          model_no_snapshot,
+          display_name_snapshot,
+          products (
+            name,
+            model_no
+          )
         )
       `
       )
@@ -261,6 +335,56 @@ export default async function CaseDetailPage({
     };
   });
 
+  const packages: CasePackageView[] = (
+    (casePackagesData || []) as CasePackageRelation[]
+  ).map((pkg) => {
+    const relatedPackage = getSingleRelation(pkg.packages);
+    const rawItems = Array.isArray(pkg.case_package_items)
+      ? pkg.case_package_items
+      : pkg.case_package_items
+        ? [pkg.case_package_items]
+        : [];
+
+    const items = rawItems
+      .filter(
+        (item) =>
+          item.is_added_manually !== true &&
+          item.is_selected !== false &&
+          item.is_hidden !== true
+      )
+      .map((item) => {
+        const relatedProduct = getSingleRelation(item.products);
+        const productName =
+          item.display_name_snapshot ||
+          item.product_name_snapshot ||
+          relatedProduct?.name ||
+          "";
+        const modelNo =
+          item.model_no_snapshot || relatedProduct?.model_no || "";
+
+        return {
+          id: item.id,
+          productName,
+          modelNo,
+          quantity: item.quantity != null ? String(item.quantity) : "",
+        };
+      });
+
+    return {
+      id: pkg.id,
+      manufacturerName: pkg.manufacturer_name_snapshot || "",
+      seriesName: pkg.series_name_snapshot || "",
+      packageName:
+        pkg.package_name_snapshot || relatedPackage?.name || "",
+      quantity: pkg.quantity != null ? String(pkg.quantity) : "",
+      memo: pkg.memo || "",
+      items,
+    };
+  });
+
+  const productsErrorMessage =
+    caseProductsError?.message || casePackagesError?.message;
+
   const orders: OrderRow[] = (ordersData || []).map((row) => {
     const supplier = getSingleRelation(
       row.suppliers as SupplierRelation | SupplierRelation[] | null
@@ -314,6 +438,7 @@ export default async function CaseDetailPage({
     <CaseDetailView
       caseData={viewCase}
       products={products}
+      packages={packages}
       orders={orders}
       invoices={invoices}
       payments={payments}
@@ -321,7 +446,7 @@ export default async function CaseDetailPage({
       settlement={settlement}
       dealerPaymentType={dealer?.payment_type || undefined}
       errors={{
-        products: caseProductsError?.message,
+        products: productsErrorMessage,
         orders: ordersError?.message,
         invoices: invoicesError?.message,
         payments: paymentsError?.message,
