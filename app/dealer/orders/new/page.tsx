@@ -11,7 +11,11 @@ import {
   DELIVERY_DESTINATION_TYPES,
   DealerOrderCaseForm,
   DealerOrderCaseFormErrors,
+  DealerOrderProductForm,
+  DealerOrderProductFormErrors,
+  ORDER_CATEGORIES,
   ORDER_FORM_STEPS,
+  OrderFormStepId,
   REQUIRED_CASE_FORM_FIELDS,
   RequiredCaseFormField,
 } from "./types";
@@ -55,10 +59,26 @@ const INITIAL_FORM: DealerOrderCaseForm = {
   case_memo: "",
 };
 
+const INITIAL_PRODUCT_FORM: DealerOrderProductForm = {
+  order_category: "",
+  manufacturer: "",
+  series: "",
+  package_name: "",
+  product_part: "",
+  quantity: "",
+  product_memo: "",
+};
+
 export default function DealerNewOrderPage() {
+  const [currentStep, setCurrentStep] = useState<OrderFormStepId>(1);
   const [form, setForm] = useState<DealerOrderCaseForm>(INITIAL_FORM);
   const [errors, setErrors] = useState<DealerOrderCaseFormErrors>({});
   const [submitted, setSubmitted] = useState(false);
+  const [productForm, setProductForm] =
+    useState<DealerOrderProductForm>(INITIAL_PRODUCT_FORM);
+  const [productErrors, setProductErrors] =
+    useState<DealerOrderProductFormErrors>({});
+  const [productSubmitted, setProductSubmitted] = useState(false);
 
   const isSameAsSiteAddress = form.delivery_type === "設置先住所と同じ";
 
@@ -162,7 +182,33 @@ export default function DealerNewOrderPage() {
     return nextErrors;
   }
 
-  function handleNext(event: FormEvent<HTMLFormElement>) {
+  function handleProductChange(
+    event: ChangeEvent<
+      HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
+    >
+  ) {
+    const { name, value } = event.target;
+    const fieldName = name as keyof DealerOrderProductForm;
+
+    setProductForm((current) => ({
+      ...current,
+      [fieldName]: value,
+    }));
+
+    if (productSubmitted) {
+      setProductErrors((current) => {
+        if (!current[fieldName]) {
+          return current;
+        }
+
+        const next = { ...current };
+        delete next[fieldName];
+        return next;
+      });
+    }
+  }
+
+  function handleStep1Next(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSubmitted(true);
 
@@ -173,7 +219,26 @@ export default function DealerNewOrderPage() {
       return;
     }
 
-    console.log("新規発注 STEP1 案件情報:", form);
+    setCurrentStep(2);
+  }
+
+  function handleStep2Next(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setProductSubmitted(true);
+
+    if (!productForm.order_category) {
+      setProductErrors({
+        order_category: "発注区分は必須です",
+      });
+      return;
+    }
+
+    setProductErrors({});
+    console.log("新規発注 STEP2 商品情報:", productForm);
+  }
+
+  function handleBackToStep1() {
+    setCurrentStep(1);
   }
 
   function handleDraftSave() {
@@ -181,20 +246,26 @@ export default function DealerNewOrderPage() {
   }
 
   const hasErrors = Object.keys(errors).length > 0;
+  const hasProductErrors = Object.keys(productErrors).length > 0;
+  const isPackageOrder = productForm.order_category === "パッケージで発注";
+  const isPartsOrder = productForm.order_category === "部材のみ発注";
 
   return (
     <>
       <header className="border-b bg-white px-4 py-5 md:px-8">
         <h1 className="text-2xl font-bold text-gray-900">新規発注</h1>
         <p className="mt-1 text-sm text-gray-500">
-          案件情報を入力してください
+          {currentStep === 1
+            ? "案件情報を入力してください"
+            : "商品情報を入力してください"}
         </p>
       </header>
 
       <main className="space-y-6 p-4 md:p-8">
-        <StepIndicator currentStep={1} />
+        <StepIndicator currentStep={currentStep} />
 
-        <form onSubmit={handleNext} className="space-y-6" noValidate>
+        {currentStep === 1 ? (
+        <form onSubmit={handleStep1Next} className="space-y-6" noValidate>
           {hasErrors ? (
             <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
               必須項目に未入力があります。入力内容をご確認ください。
@@ -534,6 +605,178 @@ export default function DealerNewOrderPage() {
             </button>
           </div>
         </form>
+        ) : (
+        <form onSubmit={handleStep2Next} className="space-y-6" noValidate>
+          {hasProductErrors ? (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+              入力内容をご確認ください。
+            </div>
+          ) : null}
+
+          <SectionCard title="商品情報">
+            <div className="grid gap-5 md:grid-cols-2">
+              <Field
+                label="発注区分"
+                required
+                error={productErrors.order_category}
+              >
+                <select
+                  name="order_category"
+                  value={productForm.order_category}
+                  onChange={handleProductChange}
+                  className={inputClassName}
+                  aria-invalid={Boolean(productErrors.order_category)}
+                >
+                  <option value="">選択してください</option>
+                  {ORDER_CATEGORIES.map((category) => (
+                    <option key={category} value={category}>
+                      {category}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+
+            {isPackageOrder ? (
+              <div className="mt-5 grid gap-5 md:grid-cols-2">
+                <Field label="メーカー">
+                  <select
+                    name="manufacturer"
+                    value={productForm.manufacturer}
+                    onChange={handleProductChange}
+                    className={inputClassName}
+                  >
+                    <option value="">選択してください</option>
+                  </select>
+                </Field>
+
+                <Field
+                  label="シリーズ"
+                  description="シリーズがない場合は選択不要"
+                >
+                  <select
+                    name="series"
+                    value={productForm.series}
+                    onChange={handleProductChange}
+                    className={inputClassName}
+                  >
+                    <option value="">選択してください</option>
+                  </select>
+                </Field>
+
+                <Field label="パッケージ">
+                  <select
+                    name="package_name"
+                    value={productForm.package_name}
+                    onChange={handleProductChange}
+                    className={inputClassName}
+                  >
+                    <option value="">選択してください</option>
+                  </select>
+                </Field>
+
+                <Field label="数量">
+                  <input
+                    type="number"
+                    name="quantity"
+                    value={productForm.quantity}
+                    onChange={handleProductChange}
+                    min="1"
+                    className={inputClassName}
+                  />
+                </Field>
+
+                <div className="md:col-span-2">
+                  <Field label="商品備考">
+                    <textarea
+                      name="product_memo"
+                      value={productForm.product_memo}
+                      onChange={handleProductChange}
+                      rows={3}
+                      className={inputClassName}
+                    />
+                  </Field>
+                </div>
+              </div>
+            ) : null}
+
+            {isPartsOrder ? (
+              <div className="mt-5 grid gap-5 md:grid-cols-2">
+                <Field label="メーカー">
+                  <select
+                    name="manufacturer"
+                    value={productForm.manufacturer}
+                    onChange={handleProductChange}
+                    className={inputClassName}
+                  >
+                    <option value="">選択してください</option>
+                  </select>
+                </Field>
+
+                <Field label="商品・部材">
+                  <select
+                    name="product_part"
+                    value={productForm.product_part}
+                    onChange={handleProductChange}
+                    className={inputClassName}
+                  >
+                    <option value="">選択してください</option>
+                  </select>
+                </Field>
+
+                <Field label="数量">
+                  <input
+                    type="number"
+                    name="quantity"
+                    value={productForm.quantity}
+                    onChange={handleProductChange}
+                    min="1"
+                    className={inputClassName}
+                  />
+                </Field>
+
+                <div className="md:col-span-2">
+                  <Field label="商品備考">
+                    <textarea
+                      name="product_memo"
+                      value={productForm.product_memo}
+                      onChange={handleProductChange}
+                      rows={3}
+                      className={inputClassName}
+                    />
+                  </Field>
+                </div>
+
+                <div className="md:col-span-2">
+                  <button
+                    type="button"
+                    className="inline-flex items-center justify-center rounded-lg border border-dashed border-gray-400 bg-white px-5 py-3 text-sm font-bold text-gray-700 hover:bg-gray-50"
+                  >
+                    ＋部材を追加
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </SectionCard>
+
+          <div className="flex flex-col-reverse gap-3 border-t border-gray-200 pt-6 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              onClick={handleBackToStep1}
+              className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-6 py-3 text-sm font-bold text-gray-700 hover:bg-gray-50"
+            >
+              戻る
+            </button>
+
+            <button
+              type="submit"
+              className="inline-flex items-center justify-center rounded-lg bg-gray-900 px-6 py-3 text-sm font-bold text-white hover:bg-gray-700"
+            >
+              次へ
+            </button>
+          </div>
+        </form>
+        )}
       </main>
     </>
   );
