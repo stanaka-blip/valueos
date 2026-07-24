@@ -5,6 +5,8 @@ import { ReactNode, useMemo, useState } from "react";
 
 import StatusSelect from "../StatusSelect";
 import TaskStatusSelect from "../../tasks/TaskStatusSelect";
+import SettlementForm from "./SettlementForm";
+import type { SettlementViewData } from "./settlementView";
 
 export type CaseDetailTabId =
   | "basic"
@@ -112,12 +114,15 @@ type CaseDetailViewProps = {
   invoices: InvoiceRow[];
   payments: PaymentRow[];
   tasks: TaskRow[];
+  settlement: SettlementViewData | null;
+  dealerPaymentType?: string;
   errors: {
     products?: string;
     orders?: string;
     invoices?: string;
     payments?: string;
     tasks?: string;
+    settlement?: string;
   };
 };
 
@@ -151,6 +156,8 @@ export default function CaseDetailView({
   invoices,
   payments,
   tasks,
+  settlement,
+  dealerPaymentType,
   errors,
 }: CaseDetailViewProps) {
   const [tab, setTab] = useState<CaseDetailTabId>("basic");
@@ -181,6 +188,19 @@ export default function CaseDetailView({
       unpaid: Math.max(invoiceAmount - paidIn, 0),
     };
   }, [products, orders, invoices, payments]);
+
+  function resolveFee(baseAmount: number): number {
+    if (!settlement) {
+      return 0;
+    }
+    if (settlement.feeAmount > 0) {
+      return settlement.feeAmount;
+    }
+    if (settlement.feeRate != null && settlement.feeRate > 0) {
+      return (baseAmount * settlement.feeRate) / 100;
+    }
+    return 0;
+  }
 
   return (
     <div className="min-h-full bg-[#f7f7f5] text-gray-900">
@@ -326,7 +346,14 @@ export default function CaseDetailView({
                 error={errors.products}
               />
             ) : null}
-            {tab === "settlement" ? <SettlementTab /> : null}
+            {tab === "settlement" ? (
+              <SettlementTab
+                caseId={caseData.id}
+                settlement={settlement}
+                loadError={errors.settlement}
+                dealerPaymentType={dealerPaymentType}
+              />
+            ) : null}
             {tab === "purchase" ? (
               <PurchaseTab
                 caseId={caseData.id}
@@ -355,7 +382,13 @@ export default function CaseDetailView({
               />
             ) : null}
             {tab === "payment" ? <PaymentTab orders={orders} /> : null}
-            {tab === "profit" ? <ProfitTab totals={totals} /> : null}
+            {tab === "profit" ? (
+              <ProfitTab
+                totals={totals}
+                settlement={settlement}
+                resolveFee={resolveFee}
+              />
+            ) : null}
           </div>
         </main>
       </div>
@@ -546,12 +579,62 @@ function ProductsTab({
   );
 }
 
-function SettlementTab() {
+function SettlementTab({
+  caseId,
+  settlement,
+  loadError,
+  dealerPaymentType,
+}: {
+  caseId: string;
+  settlement: SettlementViewData | null;
+  loadError?: string;
+  dealerPaymentType?: string;
+}) {
   return (
     <Section title="決済" description="決済フローと入金・請求の条件">
-      <EmptyState
-        title="決済条件は未設定です"
-        body="Ver1.0では case_settlements 連携後に、3社間 / 前金 / 掛売 / カードをここで設定します。"
+      {settlement ? (
+        <div className="mb-6 grid gap-4 rounded-lg border border-gray-200 p-4 sm:grid-cols-2 xl:grid-cols-4">
+          <Field label="決済区分" value={settlement.settlementType} />
+          <Field
+            label="手数料率"
+            value={
+              settlement.feeRate != null ? `${settlement.feeRate}%` : ""
+            }
+          />
+          <Field label="手数料額" value={formatYen(settlement.feeAmount)} />
+          <Field
+            label="前金率"
+            value={
+              settlement.depositRate != null
+                ? `${settlement.depositRate}%`
+                : ""
+            }
+          />
+          <Field
+            label="前金額"
+            value={
+              settlement.depositAmount != null
+                ? formatYen(settlement.depositAmount)
+                : ""
+            }
+          />
+          <Field label="カード" value={settlement.cardBrand} />
+          <div className="sm:col-span-2">
+            <Field label="支払条件" value={settlement.paymentTerms} />
+          </div>
+          {settlement.memo.trim() ? (
+            <div className="sm:col-span-2 xl:col-span-4">
+              <Field label="備考" value={settlement.memo} multiline />
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      <SettlementForm
+        caseId={caseId}
+        settlement={settlement}
+        loadError={loadError}
+        dealerPaymentType={dealerPaymentType}
       />
     </Section>
   );
@@ -1036,6 +1119,8 @@ function PaymentTab({ orders }: { orders: OrderRow[] }) {
 
 function ProfitTab({
   totals,
+  settlement,
+  resolveFee,
 }: {
   totals: {
     sales: number;
@@ -1046,11 +1131,16 @@ function ProfitTab({
     orderAmount: number;
     unpaid: number;
   };
+  settlement: SettlementViewData | null;
+  resolveFee: (baseAmount: number) => number;
 }) {
-  const fee = 0;
   const other = 0;
-  const forecastProfit = totals.sales - totals.purchase - other - fee;
-  const actualProfit = totals.paidIn - totals.orderAmount - other - fee;
+  const forecastFee = resolveFee(totals.sales);
+  const actualFee = resolveFee(totals.paidIn);
+  const forecastProfit =
+    totals.sales - totals.purchase - other - forecastFee;
+  const actualProfit =
+    totals.paidIn - totals.orderAmount - other - actualFee;
   const forecastRate =
     totals.sales > 0 ? (forecastProfit / totals.sales) * 100 : null;
   const actualRate =
@@ -1058,13 +1148,44 @@ function ProfitTab({
 
   return (
     <div className="space-y-6">
+      <Section
+        title="決済条件の反映"
+        description="粗利計算に使う決済手数料・前金"
+      >
+        {settlement ? (
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <Field label="決済区分" value={settlement.settlementType} />
+            <Field
+              label="手数料率"
+              value={
+                settlement.feeRate != null ? `${settlement.feeRate}%` : ""
+              }
+            />
+            <Field label="手数料額" value={formatYen(settlement.feeAmount)} />
+            <Field
+              label="前金額"
+              value={
+                settlement.depositAmount != null
+                  ? formatYen(settlement.depositAmount)
+                  : ""
+              }
+            />
+          </div>
+        ) : (
+          <EmptyState
+            title="決済条件は未設定です"
+            body="決済タブで条件を保存すると、手数料が粗利計算に反映されます。"
+          />
+        )}
+      </Section>
+
       <Section title="確定粗利（参考）" description="入金・発注額ベースの簡易計算">
         <ProfitLines
           rows={[
             { label: "売上（入金合計）", value: totals.paidIn },
             { label: "仕入原価（発注合計）", value: -totals.orderAmount },
             { label: "その他支払", value: -other },
-            { label: "決済手数料", value: -fee },
+            { label: "決済手数料", value: -actualFee },
           ]}
           profit={actualProfit}
           rate={actualRate}
@@ -1082,7 +1203,7 @@ function ProfitTab({
             { label: "売上（商品売価）", value: totals.sales },
             { label: "仕入原価（商品仕入）", value: -totals.purchase },
             { label: "その他支払", value: -other },
-            { label: "決済手数料", value: -fee },
+            { label: "決済手数料", value: -forecastFee },
           ]}
           profit={forecastProfit}
           rate={forecastRate}
