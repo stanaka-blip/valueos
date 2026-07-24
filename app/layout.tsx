@@ -10,6 +10,7 @@ export const metadata: Metadata = {
 const menuItems = [
   { name: "ダッシュボード", href: "/" },
   { name: "案件管理", href: "/cases" },
+  { name: "受注管理", href: "/admin/orders" },
   { name: "販売店マスタ", href: "/dealers" },
   { name: "メーカーマスタ", href: "/manufacturers" },
   { name: "商品マスタ", href: "/products" },
