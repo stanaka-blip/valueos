@@ -32,6 +32,23 @@ export type DealerOrderCaseForm = {
   case_memo: string;
 };
 
+export const ORDER_CATEGORIES = [
+  "パッケージで発注",
+  "部材のみ発注",
+] as const;
+
+export type OrderCategory = (typeof ORDER_CATEGORIES)[number];
+
+export type DealerOrderProductForm = {
+  order_category: OrderCategory | "";
+  manufacturer: string;
+  series: string;
+  package_name: string;
+  product_part: string;
+  quantity: string;
+  product_memo: string;
+};
+
 export const ORDER_FORM_STEPS = [
   { id: 1, label: "案件情報" },
   { id: 2, label: "商品情報" },
@@ -39,10 +56,14 @@ export const ORDER_FORM_STEPS = [
   { id: 4, label: "確認・送信" },
 ] as const;
 
-export type OrderFormStep = (typeof ORDER_FORM_STEPS)[number];
+export type OrderFormStepId = (typeof ORDER_FORM_STEPS)[number]["id"];
 
 export type DealerOrderCaseFormErrors = Partial<
   Record<keyof DealerOrderCaseForm, string>
+>;
+
+export type DealerOrderProductFormErrors = Partial<
+  Record<keyof DealerOrderProductForm, string>
 >;
 
 export const REQUIRED_CASE_FORM_FIELDS = [

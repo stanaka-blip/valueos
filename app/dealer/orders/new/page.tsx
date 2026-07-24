@@ -11,7 +11,11 @@ import {
   DELIVERY_DESTINATION_TYPES,
   DealerOrderCaseForm,
   DealerOrderCaseFormErrors,
+  DealerOrderProductForm,
+  DealerOrderProductFormErrors,
+  ORDER_CATEGORIES,
   ORDER_FORM_STEPS,
+  OrderFormStepId,
   REQUIRED_CASE_FORM_FIELDS,
   RequiredCaseFormField,
 } from "./types";
@@ -55,30 +59,53 @@ const INITIAL_FORM: DealerOrderCaseForm = {
   case_memo: "",
 };
 
+const INITIAL_PRODUCT_FORM: DealerOrderProductForm = {
+  order_category: "",
+  manufacturer: "",
+  series: "",
+  package_name: "",
+  product_part: "",
+  quantity: "",
+  product_memo: "",
+};
+
 export default function DealerNewOrderPage() {
+  const [currentStep, setCurrentStep] = useState<OrderFormStepId>(1);
   const [form, setForm] = useState<DealerOrderCaseForm>(INITIAL_FORM);
   const [errors, setErrors] = useState<DealerOrderCaseFormErrors>({});
   const [submitted, setSubmitted] = useState(false);
+  const [productForm, setProductForm] =
+    useState<DealerOrderProductForm>(INITIAL_PRODUCT_FORM);
+  const [productErrors, setProductErrors] =
+    useState<DealerOrderProductFormErrors>({});
+  const [productSubmitted, setProductSubmitted] = useState(false);
+
+  const isSameAsSiteAddress = form.delivery_type === "設置先住所と同じ";
 
   const dateWarning =
     form.desired_delivery_date &&
     form.construction_date &&
     form.desired_delivery_date > form.construction_date
-      ? "希望納品日が工事予定日より後になっています。納品・工事のスケジュールをご確認ください。"
+      ? "希望納品日が工事予定日より後になっています。日付をご確認ください。"
       : null;
 
-  function updateForm(partial: Partial<DealerOrderCaseForm>) {
-    setForm((current) => {
-      const next = { ...current, ...partial };
+  function clearFieldErrors(fields: Array<keyof DealerOrderCaseForm>) {
+    if (!submitted) {
+      return;
+    }
 
-      if (
-        next.delivery_type === "設置先住所と同じ" &&
-        Object.prototype.hasOwnProperty.call(partial, "site_address")
-      ) {
-        next.delivery_address = next.site_address;
+    setErrors((current) => {
+      let changed = false;
+      const next = { ...current };
+
+      for (const field of fields) {
+        if (next[field]) {
+          delete next[field];
+          changed = true;
+        }
       }
 
-      return next;
+      return changed ? next : current;
     });
   }
 
@@ -91,22 +118,85 @@ export default function DealerNewOrderPage() {
     const fieldName = name as keyof DealerOrderCaseForm;
 
     if (fieldName === "delivery_type") {
-      if (value === "設置先住所と同じ") {
-        updateForm({
-          delivery_type: value,
-          delivery_address: form.site_address,
-        });
+      const nextType = value as DealerOrderCaseForm["delivery_type"];
+
+      if (nextType === "設置先住所と同じ") {
+        setForm((current) => ({
+          ...current,
+          delivery_type: nextType,
+          delivery_address: current.site_address,
+        }));
+        clearFieldErrors(["delivery_type", "delivery_address"]);
       } else {
-        updateForm({
-          delivery_type: value as DealerOrderCaseForm["delivery_type"],
-        });
+        setForm((current) => ({
+          ...current,
+          delivery_type: nextType,
+        }));
+        clearFieldErrors(["delivery_type"]);
       }
-    } else {
-      updateForm({ [fieldName]: value });
+
+      return;
     }
 
-    if (submitted) {
-      setErrors((current) => {
+    if (fieldName === "site_address") {
+      setForm((current) => {
+        const next: DealerOrderCaseForm = {
+          ...current,
+          site_address: value,
+        };
+
+        if (current.delivery_type === "設置先住所と同じ") {
+          next.delivery_address = value;
+        }
+
+        return next;
+      });
+
+      if (form.delivery_type === "設置先住所と同じ") {
+        clearFieldErrors(["site_address", "delivery_address"]);
+      } else {
+        clearFieldErrors(["site_address"]);
+      }
+
+      return;
+    }
+
+    setForm((current) => ({
+      ...current,
+      [fieldName]: value,
+    }));
+    clearFieldErrors([fieldName]);
+  }
+
+  function validateForm(currentForm: DealerOrderCaseForm): DealerOrderCaseFormErrors {
+    const nextErrors: DealerOrderCaseFormErrors = {};
+
+    for (const field of REQUIRED_CASE_FORM_FIELDS) {
+      const value = currentForm[field].trim();
+
+      if (!value) {
+        nextErrors[field] = `${FIELD_LABELS[field]}は必須です`;
+      }
+    }
+
+    return nextErrors;
+  }
+
+  function handleProductChange(
+    event: ChangeEvent<
+      HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
+    >
+  ) {
+    const { name, value } = event.target;
+    const fieldName = name as keyof DealerOrderProductForm;
+
+    setProductForm((current) => ({
+      ...current,
+      [fieldName]: value,
+    }));
+
+    if (productSubmitted) {
+      setProductErrors((current) => {
         if (!current[fieldName]) {
           return current;
         }
@@ -118,32 +208,37 @@ export default function DealerNewOrderPage() {
     }
   }
 
-  function validateForm(): DealerOrderCaseFormErrors {
-    const nextErrors: DealerOrderCaseFormErrors = {};
-
-    for (const field of REQUIRED_CASE_FORM_FIELDS) {
-      const value = form[field].trim();
-
-      if (!value) {
-        nextErrors[field] = `${FIELD_LABELS[field]}は必須です。`;
-      }
-    }
-
-    return nextErrors;
-  }
-
-  function handleNext(event: FormEvent<HTMLFormElement>) {
+  function handleStep1Next(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSubmitted(true);
 
-    const nextErrors = validateForm();
+    const nextErrors = validateForm(form);
     setErrors(nextErrors);
 
     if (Object.keys(nextErrors).length > 0) {
       return;
     }
 
-    console.log("新規発注 STEP1 案件情報:", form);
+    setCurrentStep(2);
+  }
+
+  function handleStep2Next(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setProductSubmitted(true);
+
+    if (!productForm.order_category) {
+      setProductErrors({
+        order_category: "発注区分は必須です",
+      });
+      return;
+    }
+
+    setProductErrors({});
+    console.log("新規発注 STEP2 商品情報:", productForm);
+  }
+
+  function handleBackToStep1() {
+    setCurrentStep(1);
   }
 
   function handleDraftSave() {
@@ -151,29 +246,29 @@ export default function DealerNewOrderPage() {
   }
 
   const hasErrors = Object.keys(errors).length > 0;
+  const hasProductErrors = Object.keys(productErrors).length > 0;
+  const isPackageOrder = productForm.order_category === "パッケージで発注";
+  const isPartsOrder = productForm.order_category === "部材のみ発注";
 
   return (
     <>
       <header className="border-b bg-white px-4 py-5 md:px-8">
         <h1 className="text-2xl font-bold text-gray-900">新規発注</h1>
         <p className="mt-1 text-sm text-gray-500">
-          案件情報を入力してください
+          {currentStep === 1
+            ? "案件情報を入力してください"
+            : "商品情報を入力してください"}
         </p>
       </header>
 
       <main className="space-y-6 p-4 md:p-8">
-        <StepIndicator currentStep={1} />
+        <StepIndicator currentStep={currentStep} />
 
-        <form onSubmit={handleNext} className="space-y-6" noValidate>
+        {currentStep === 1 ? (
+        <form onSubmit={handleStep1Next} className="space-y-6" noValidate>
           {hasErrors ? (
             <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
               必須項目に未入力があります。入力内容をご確認ください。
-            </div>
-          ) : null}
-
-          {dateWarning ? (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-              {dateWarning}
             </div>
           ) : null}
 
@@ -279,6 +374,15 @@ export default function DealerNewOrderPage() {
           </SectionCard>
 
           <SectionCard title="日程情報">
+            {dateWarning ? (
+              <div
+                role="alert"
+                className="mb-5 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900"
+              >
+                {dateWarning}
+              </div>
+            ) : null}
+
             <div className="grid gap-5 md:grid-cols-2">
               <Field
                 label="希望納品日"
@@ -411,7 +515,7 @@ export default function DealerNewOrderPage() {
                   required
                   error={errors.delivery_address}
                   description={
-                    form.delivery_type === "設置先住所と同じ"
+                    isSameAsSiteAddress
                       ? "設置先住所と同じを選択中のため、設置先住所が自動反映されます。"
                       : undefined
                   }
@@ -421,9 +525,9 @@ export default function DealerNewOrderPage() {
                     name="delivery_address"
                     value={form.delivery_address}
                     onChange={handleChange}
-                    readOnly={form.delivery_type === "設置先住所と同じ"}
+                    readOnly={isSameAsSiteAddress}
                     className={
-                      form.delivery_type === "設置先住所と同じ"
+                      isSameAsSiteAddress
                         ? `${inputClassName} bg-gray-100 text-gray-600`
                         : inputClassName
                     }
@@ -501,6 +605,178 @@ export default function DealerNewOrderPage() {
             </button>
           </div>
         </form>
+        ) : (
+        <form onSubmit={handleStep2Next} className="space-y-6" noValidate>
+          {hasProductErrors ? (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+              入力内容をご確認ください。
+            </div>
+          ) : null}
+
+          <SectionCard title="商品情報">
+            <div className="grid gap-5 md:grid-cols-2">
+              <Field
+                label="発注区分"
+                required
+                error={productErrors.order_category}
+              >
+                <select
+                  name="order_category"
+                  value={productForm.order_category}
+                  onChange={handleProductChange}
+                  className={inputClassName}
+                  aria-invalid={Boolean(productErrors.order_category)}
+                >
+                  <option value="">選択してください</option>
+                  {ORDER_CATEGORIES.map((category) => (
+                    <option key={category} value={category}>
+                      {category}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+
+            {isPackageOrder ? (
+              <div className="mt-5 grid gap-5 md:grid-cols-2">
+                <Field label="メーカー">
+                  <select
+                    name="manufacturer"
+                    value={productForm.manufacturer}
+                    onChange={handleProductChange}
+                    className={inputClassName}
+                  >
+                    <option value="">選択してください</option>
+                  </select>
+                </Field>
+
+                <Field
+                  label="シリーズ"
+                  description="シリーズがない場合は選択不要"
+                >
+                  <select
+                    name="series"
+                    value={productForm.series}
+                    onChange={handleProductChange}
+                    className={inputClassName}
+                  >
+                    <option value="">選択してください</option>
+                  </select>
+                </Field>
+
+                <Field label="パッケージ">
+                  <select
+                    name="package_name"
+                    value={productForm.package_name}
+                    onChange={handleProductChange}
+                    className={inputClassName}
+                  >
+                    <option value="">選択してください</option>
+                  </select>
+                </Field>
+
+                <Field label="数量">
+                  <input
+                    type="number"
+                    name="quantity"
+                    value={productForm.quantity}
+                    onChange={handleProductChange}
+                    min="1"
+                    className={inputClassName}
+                  />
+                </Field>
+
+                <div className="md:col-span-2">
+                  <Field label="商品備考">
+                    <textarea
+                      name="product_memo"
+                      value={productForm.product_memo}
+                      onChange={handleProductChange}
+                      rows={3}
+                      className={inputClassName}
+                    />
+                  </Field>
+                </div>
+              </div>
+            ) : null}
+
+            {isPartsOrder ? (
+              <div className="mt-5 grid gap-5 md:grid-cols-2">
+                <Field label="メーカー">
+                  <select
+                    name="manufacturer"
+                    value={productForm.manufacturer}
+                    onChange={handleProductChange}
+                    className={inputClassName}
+                  >
+                    <option value="">選択してください</option>
+                  </select>
+                </Field>
+
+                <Field label="商品・部材">
+                  <select
+                    name="product_part"
+                    value={productForm.product_part}
+                    onChange={handleProductChange}
+                    className={inputClassName}
+                  >
+                    <option value="">選択してください</option>
+                  </select>
+                </Field>
+
+                <Field label="数量">
+                  <input
+                    type="number"
+                    name="quantity"
+                    value={productForm.quantity}
+                    onChange={handleProductChange}
+                    min="1"
+                    className={inputClassName}
+                  />
+                </Field>
+
+                <div className="md:col-span-2">
+                  <Field label="商品備考">
+                    <textarea
+                      name="product_memo"
+                      value={productForm.product_memo}
+                      onChange={handleProductChange}
+                      rows={3}
+                      className={inputClassName}
+                    />
+                  </Field>
+                </div>
+
+                <div className="md:col-span-2">
+                  <button
+                    type="button"
+                    className="inline-flex items-center justify-center rounded-lg border border-dashed border-gray-400 bg-white px-5 py-3 text-sm font-bold text-gray-700 hover:bg-gray-50"
+                  >
+                    ＋部材を追加
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </SectionCard>
+
+          <div className="flex flex-col-reverse gap-3 border-t border-gray-200 pt-6 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              onClick={handleBackToStep1}
+              className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-6 py-3 text-sm font-bold text-gray-700 hover:bg-gray-50"
+            >
+              戻る
+            </button>
+
+            <button
+              type="submit"
+              className="inline-flex items-center justify-center rounded-lg bg-gray-900 px-6 py-3 text-sm font-bold text-white hover:bg-gray-700"
+            >
+              次へ
+            </button>
+          </div>
+        </form>
+        )}
       </main>
     </>
   );
@@ -600,7 +876,9 @@ function Field({
       <div className="mt-2">{children}</div>
 
       {error ? (
-        <span className="mt-1 block text-xs text-red-600">{error}</span>
+        <span className="mt-1.5 block text-sm font-medium text-red-600">
+          {error}
+        </span>
       ) : null}
     </label>
   );
