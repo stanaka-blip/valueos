@@ -124,7 +124,8 @@ export default function SettlementForm({
         <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
           決済テーブル未適用または取得エラー：{loadError}
           <span className="mt-1 block text-xs text-amber-700">
-            Phase1 の DDL（case_settlements）適用後に保存できます。
+            supabase/migrations/20260724160000_create_case_settlements.sql
+            を Supabase SQL Editor で実行後に保存できます。
           </span>
         </p>
       ) : null}
