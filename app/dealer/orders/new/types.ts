@@ -50,8 +50,8 @@ export type PartLine = {
 export type DealerOrderProductForm = {
   order_category: OrderCategory | "";
   manufacturer_id: string;
-  series: string;
-  package_product_id: string;
+  series_id: string;
+  package_id: string;
   quantity: string;
   product_memo: string;
   part_lines: PartLine[];
@@ -65,7 +65,7 @@ export type PartLineErrors = {
 export type DealerOrderProductFormErrors = {
   order_category?: string;
   manufacturer_id?: string;
-  package_product_id?: string;
+  package_id?: string;
   quantity?: string;
   part_lines?: Record<string, PartLineErrors>;
 };

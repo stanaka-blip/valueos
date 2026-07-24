@@ -17,20 +17,27 @@ import {
 } from "./types";
 import {
   ManufacturerOption,
+  PackageItemOption,
+  PackageOption,
   ProductOption,
+  SeriesOption,
   fetchActiveManufacturers,
+  fetchActivePackages,
+  fetchActiveProductSeries,
   fetchActiveProducts,
+  fetchPackageItems,
+  formatPackageItemLabel,
+  formatPackageLabel,
   formatProductLabel,
-  getPackageProducts,
+  getPackagesForSelection,
   getPartProducts,
-  getSeriesOptionsForManufacturer,
+  getSeriesForManufacturer,
 } from "./productMaster";
 
 const inputClassName =
   "w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-gray-900 focus:ring-1 focus:ring-gray-900 disabled:cursor-not-allowed disabled:bg-gray-100";
 
-const errorInputClassName =
-  `${inputClassName} border-red-500 focus:border-red-600 focus:ring-red-600`;
+const errorInputClassName = `${inputClassName} border-red-500 focus:border-red-600 focus:ring-red-600`;
 
 type Step2ProductFormProps = {
   productForm: DealerOrderProductForm;
@@ -46,7 +53,12 @@ export default function Step2ProductForm({
   const [manufacturers, setManufacturers] = useState<ManufacturerOption[]>(
     []
   );
+  const [seriesList, setSeriesList] = useState<SeriesOption[]>([]);
+  const [packages, setPackages] = useState<PackageOption[]>([]);
   const [products, setProducts] = useState<ProductOption[]>([]);
+  const [packageItems, setPackageItems] = useState<PackageItemOption[]>([]);
+  const [packageItemsLoading, setPackageItemsLoading] = useState(false);
+  const [packageItemsError, setPackageItemsError] = useState("");
   const [masterLoading, setMasterLoading] = useState(true);
   const [masterError, setMasterError] = useState("");
   const [errors, setErrors] = useState<DealerOrderProductFormErrors>({});
@@ -59,8 +71,15 @@ export default function Step2ProductForm({
       setMasterLoading(true);
       setMasterError("");
 
-      const [manufacturerResult, productResult] = await Promise.all([
+      const [
+        manufacturerResult,
+        seriesResult,
+        packageResult,
+        productResult,
+      ] = await Promise.all([
         fetchActiveManufacturers(),
+        fetchActiveProductSeries(),
+        fetchActivePackages(),
         fetchActiveProducts(),
       ]);
 
@@ -68,8 +87,15 @@ export default function Step2ProductForm({
         return;
       }
 
-      if (manufacturerResult.errorMessage || productResult.errorMessage) {
+      if (
+        manufacturerResult.errorMessage ||
+        seriesResult.errorMessage ||
+        packageResult.errorMessage ||
+        productResult.errorMessage
+      ) {
         setManufacturers([]);
+        setSeriesList([]);
+        setPackages([]);
         setProducts([]);
         setMasterError("商品マスタの取得に失敗しました");
         setMasterLoading(false);
@@ -77,6 +103,8 @@ export default function Step2ProductForm({
       }
 
       setManufacturers(manufacturerResult.data);
+      setSeriesList(seriesResult.data);
+      setPackages(packageResult.data);
       setProducts(productResult.data);
       setMasterLoading(false);
     }
@@ -88,18 +116,59 @@ export default function Step2ProductForm({
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadPackageItems() {
+      if (
+        productForm.order_category !== "パッケージで発注" ||
+        !productForm.package_id
+      ) {
+        setPackageItems([]);
+        setPackageItemsError("");
+        setPackageItemsLoading(false);
+        return;
+      }
+
+      setPackageItemsLoading(true);
+      setPackageItemsError("");
+
+      const result = await fetchPackageItems(productForm.package_id);
+
+      if (cancelled) {
+        return;
+      }
+
+      if (result.errorMessage) {
+        setPackageItems([]);
+        setPackageItemsError(result.errorMessage);
+        setPackageItemsLoading(false);
+        return;
+      }
+
+      setPackageItems(result.data);
+      setPackageItemsLoading(false);
+    }
+
+    loadPackageItems();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [productForm.order_category, productForm.package_id]);
+
   const isPackageOrder = productForm.order_category === "パッケージで発注";
   const isPartsOrder = productForm.order_category === "部材のみ発注";
 
-  const seriesOptions = getSeriesOptionsForManufacturer(
-    products,
+  const seriesOptions = getSeriesForManufacturer(
+    seriesList,
     productForm.manufacturer_id
   );
 
-  const packageOptions = getPackageProducts({
-    products,
+  const packageOptions = getPackagesForSelection({
+    packages,
     manufacturerId: productForm.manufacturer_id,
-    series: productForm.series,
+    seriesId: productForm.series_id,
   });
 
   const hasSeriesOptions = seriesOptions.length > 0;
@@ -131,8 +200,8 @@ export default function Step2ProductForm({
     updateForm({
       order_category: value as DealerOrderProductForm["order_category"],
       manufacturer_id: "",
-      series: "",
-      package_product_id: "",
+      series_id: "",
+      package_id: "",
       quantity: productForm.quantity || "1",
       product_memo: "",
       part_lines:
@@ -142,7 +211,7 @@ export default function Step2ProductForm({
     });
     clearError("order_category");
     clearError("manufacturer_id");
-    clearError("package_product_id");
+    clearError("package_id");
     clearError("quantity");
     setErrors((current) => {
       if (!current.part_lines) {
@@ -157,19 +226,19 @@ export default function Step2ProductForm({
   function handlePackageManufacturerChange(value: string) {
     updateForm({
       manufacturer_id: value,
-      series: "",
-      package_product_id: "",
+      series_id: "",
+      package_id: "",
     });
     clearError("manufacturer_id");
-    clearError("package_product_id");
+    clearError("package_id");
   }
 
   function handleSeriesChange(value: string) {
     updateForm({
-      series: value,
-      package_product_id: "",
+      series_id: value,
+      package_id: "",
     });
-    clearError("package_product_id");
+    clearError("package_id");
   }
 
   function handlePackageFieldChange(
@@ -179,9 +248,9 @@ export default function Step2ProductForm({
   ) {
     const { name, value } = event.target;
 
-    if (name === "package_product_id") {
-      updateForm({ package_product_id: value });
-      clearError("package_product_id");
+    if (name === "package_id") {
+      updateForm({ package_id: value });
+      clearError("package_id");
       return;
     }
 
@@ -283,8 +352,8 @@ export default function Step2ProductForm({
         nextErrors.manufacturer_id = "メーカーは必須です";
       }
 
-      if (!productForm.package_product_id) {
-        nextErrors.package_product_id = "パッケージは必須です";
+      if (!productForm.package_id) {
+        nextErrors.package_id = "パッケージは必須です";
       }
 
       const quantity = Number(productForm.quantity);
@@ -432,72 +501,50 @@ export default function Step2ProductForm({
               </select>
             </Field>
 
-            {productForm.manufacturer_id ? (
-              hasSeriesOptions ? (
-                <Field
-                  label="シリーズ"
-                  description="シリーズがない場合は選択不要"
-                >
-                  <select
-                    name="series"
-                    value={productForm.series}
-                    onChange={(event) =>
-                      handleSeriesChange(event.target.value)
-                    }
-                    className={inputClassName}
-                  >
+            <Field
+              label="シリーズ"
+              description="シリーズがない場合は選択不要"
+            >
+              <select
+                name="series_id"
+                value={productForm.series_id}
+                onChange={(event) => handleSeriesChange(event.target.value)}
+                className={inputClassName}
+                disabled={
+                  masterLoading ||
+                  Boolean(masterError) ||
+                  !productForm.manufacturer_id ||
+                  !hasSeriesOptions
+                }
+              >
+                {!productForm.manufacturer_id ? (
+                  <option value="">メーカーを先に選択</option>
+                ) : hasSeriesOptions ? (
+                  <>
                     <option value="">シリーズなし</option>
                     {seriesOptions.map((series) => (
-                      <option key={series} value={series}>
-                        {series}
+                      <option key={series.id} value={series.id}>
+                        {series.name}
                       </option>
                     ))}
-                  </select>
-                </Field>
-              ) : (
-                <Field
-                  label="シリーズ"
-                  description="シリーズがない場合は選択不要"
-                >
-                  <select
-                    name="series"
-                    value=""
-                    disabled
-                    className={inputClassName}
-                  >
-                    <option value="">シリーズなし</option>
-                  </select>
-                </Field>
-              )
-            ) : (
-              <Field
-                label="シリーズ"
-                description="シリーズがない場合は選択不要"
-              >
-                <select
-                  name="series"
-                  value=""
-                  disabled
-                  className={inputClassName}
-                >
-                  <option value="">メーカーを先に選択</option>
-                </select>
-              </Field>
-            )}
+                  </>
+                ) : (
+                  <option value="">シリーズなし</option>
+                )}
+              </select>
+            </Field>
 
             <Field
               label="パッケージ"
               required
-              error={errors.package_product_id}
+              error={errors.package_id}
             >
               <select
-                name="package_product_id"
-                value={productForm.package_product_id}
+                name="package_id"
+                value={productForm.package_id}
                 onChange={handlePackageFieldChange}
                 className={
-                  errors.package_product_id
-                    ? errorInputClassName
-                    : inputClassName
+                  errors.package_id ? errorInputClassName : inputClassName
                 }
                 disabled={
                   masterLoading ||
@@ -515,9 +562,9 @@ export default function Step2ProductForm({
                     選択できるデータがありません
                   </option>
                 ) : (
-                  packageOptions.map((product) => (
-                    <option key={product.id} value={product.id}>
-                      {formatProductLabel(product)}
+                  packageOptions.map((pkg) => (
+                    <option key={pkg.id} value={pkg.id}>
+                      {formatPackageLabel(pkg)}
                     </option>
                   ))
                 )}
@@ -549,6 +596,51 @@ export default function Step2ProductForm({
                 />
               </Field>
             </div>
+
+            {productForm.package_id ? (
+              <div className="md:col-span-2">
+                <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+                  <p className="text-sm font-bold text-gray-800">
+                    パッケージ内容
+                  </p>
+                  {packageItemsLoading ? (
+                    <p className="mt-3 text-sm text-gray-600">読み込み中...</p>
+                  ) : null}
+                  {packageItemsError ? (
+                    <p className="mt-3 text-sm text-red-600">
+                      {packageItemsError}
+                    </p>
+                  ) : null}
+                  {!packageItemsLoading &&
+                  !packageItemsError &&
+                  packageItems.length === 0 ? (
+                    <p className="mt-3 text-sm text-gray-600">
+                      このパッケージに紐づく商品はありません。
+                    </p>
+                  ) : null}
+                  {!packageItemsLoading &&
+                  !packageItemsError &&
+                  packageItems.length > 0 ? (
+                    <ul className="mt-3 space-y-2">
+                      {packageItems.map((item) => (
+                        <li
+                          key={item.id}
+                          className="flex flex-wrap items-baseline justify-between gap-2 text-sm text-gray-800"
+                        >
+                          <span>{formatPackageItemLabel(item)}</span>
+                          <span className="text-gray-600">
+                            × {item.quantity}
+                            {item.requirement_type
+                              ? `（${item.requirement_type}）`
+                              : ""}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
           </div>
         ) : null}
 

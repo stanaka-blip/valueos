@@ -62,8 +62,8 @@ const INITIAL_FORM: DealerOrderCaseForm = {
 const INITIAL_PRODUCT_FORM: DealerOrderProductForm = {
   order_category: "",
   manufacturer_id: "",
-  series: "",
-  package_product_id: "",
+  series_id: "",
+  package_id: "",
   quantity: "1",
   product_memo: "",
   part_lines: [INITIAL_PART_LINE],
