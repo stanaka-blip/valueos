@@ -341,11 +341,13 @@ export default function CaseDetailView({
               <InvoiceTab
                 caseId={caseData.id}
                 invoices={invoices}
+                payments={payments}
                 error={errors.invoices}
               />
             ) : null}
             {tab === "receipt" ? (
               <ReceiptTab
+                caseId={caseData.id}
                 payments={payments}
                 invoices={invoices}
                 totals={totals}
@@ -371,30 +373,48 @@ function BasicTab({
   tasksError?: string;
 }) {
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <Section title="基本情報" description="案件の身元と納期">
-        <div className="grid gap-x-8 gap-y-5 sm:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-2">
           <Field label="案件番号" value={caseData.caseNo} />
-          <Field label="登録日時" value={formatDateTime(caseData.createdAt)} />
+          <Field label="登録日" value={formatDateTime(caseData.createdAt)} />
           <Field label="販売店" value={caseData.dealerName} />
-          <Field label="担当者" value={caseData.assignedUser} />
+          <Field label="販売店担当者" value={caseData.dealerContact} />
           <Field label="顧客名" value={caseData.customerName} />
           <Field label="電話番号" value={caseData.customerPhone} />
+          <Field label="施工先住所" value={caseData.siteAddress} />
           <Field label="発注区分" value={caseData.orderType} />
           <Field
-            label="希望納品日"
+            label="希望納期"
             value={formatDate(caseData.desiredDeliveryDate)}
           />
+          <Field label="配送先" value={caseData.deliveryAddress} />
+          <Field label="社内担当" value={caseData.assignedUser} />
+          <Field label="部署" value={caseData.department} />
+          <Field label="優先度" value={caseData.priority} />
+        </div>
+      </Section>
+
+      <Section title="工事情報" description="工事希望と内容">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field
+            label="工事希望日"
+            value={formatDate(caseData.constructionDate)}
+          />
           <div className="sm:col-span-2">
-            <Field label="納品先住所" value={caseData.deliveryAddress} />
-          </div>
-          <div className="sm:col-span-2">
-            <Field label="設置先住所" value={caseData.siteAddress} />
-          </div>
-          <div className="sm:col-span-2">
-            <Field label="備考" value={caseData.memo} multiline />
+            <Field
+              label="工事内容"
+              value={caseData.constructionDetail}
+              multiline
+            />
           </div>
         </div>
+      </Section>
+
+      <Section title="備考">
+        <p className="whitespace-pre-wrap text-sm text-gray-700">
+          {caseData.memo.trim() ? caseData.memo : "備考はありません。"}
+        </p>
       </Section>
 
       <Section
@@ -405,37 +425,38 @@ function BasicTab({
             href={`/tasks/new?case_id=${caseData.id}`}
             className="text-sm text-gray-600 hover:text-gray-900"
           >
-            ＋ 追加
+            ＋ タスク追加
           </Link>
         }
       >
-        {tasksError ? (
-          <ErrorText text={tasksError} />
-        ) : tasks.length === 0 ? (
-          <Empty text="タスクはまだありません" />
-        ) : (
-          <ul className="divide-y divide-gray-100">
+        {tasksError ? <ErrorText text={tasksError} /> : null}
+        {!tasksError && tasks.length === 0 ? (
+          <Empty text="この案件に紐づくタスクはまだありません。" />
+        ) : null}
+        {!tasksError && tasks.length > 0 ? (
+          <div className="space-y-3">
             {tasks.map((task) => (
-              <li
+              <div
                 key={task.id}
-                className="flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between"
+                className="flex flex-col gap-4 rounded-lg border border-gray-200 p-4 sm:flex-row sm:items-center sm:justify-between"
               >
                 <div>
                   <p className="text-sm font-medium text-gray-900">
                     {display(task.title)}
                   </p>
-                  <p className="mt-0.5 text-xs text-gray-500">
-                    期限 {formatDate(task.dueDate)} · {display(task.assignedUser)}
+                  <p className="mt-1 text-xs text-gray-500">
+                    期限：{formatDate(task.dueDate)} / 担当：
+                    {display(task.assignedUser)}
                   </p>
                 </div>
                 <TaskStatusSelect
                   taskId={task.id}
                   currentStatus={task.status}
                 />
-              </li>
+              </div>
             ))}
-          </ul>
-        )}
+          </div>
+        ) : null}
       </Section>
     </div>
   );
@@ -697,69 +718,154 @@ function DeliveryTab({
 function InvoiceTab({
   caseId,
   invoices,
+  payments,
   error,
 }: {
   caseId: string;
   invoices: InvoiceRow[];
+  payments: PaymentRow[];
   error?: string;
 }) {
+  const totalInvoiceAmount = invoices
+    .filter((invoice) => invoice.status !== "取消")
+    .reduce((sum, invoice) => sum + invoice.invoiceAmount, 0);
+  const totalPaidAmount = payments
+    .filter((payment) => payment.status !== "取消")
+    .reduce((sum, payment) => sum + payment.paymentAmount, 0);
+  const unpaidAmount = Math.max(totalInvoiceAmount - totalPaidAmount, 0);
+
   return (
     <Section
       title="請求"
-      description="請求書の作成と状況"
+      description="請求・入金状況をこの案件単位で管理します"
       action={
         <Link
           href={`/cases/${caseId}/invoices/new`}
           className="text-sm text-gray-600 hover:text-gray-900"
         >
-          ＋ 請求を作成
+          ＋ 請求登録
         </Link>
       }
     >
-      {error ? <ErrorText text={error} /> : null}
-      {!error && invoices.length === 0 ? (
-        <Empty text="請求はまだありません" />
-      ) : null}
-      <div className="space-y-3">
-        {invoices.map((invoice) => (
-          <div
-            key={invoice.id}
-            className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3"
-          >
-            <div>
-              <p className="text-sm font-medium text-gray-900">
-                {display(invoice.invoiceNo)}
-              </p>
-              <p className="mt-0.5 text-xs text-gray-500">
-                請求日 {formatDate(invoice.invoiceDate)} · 期限{" "}
-                {formatDate(invoice.dueDate)}
-              </p>
-            </div>
-            <div className="flex items-center gap-3">
-              <StatusPill text={invoice.status} />
-              <span className="text-sm font-medium">
-                {formatYen(invoice.invoiceAmount)}
-              </span>
-              <Link
-                href={`/invoices/${invoice.id}/print`}
-                className="text-xs text-gray-500 hover:text-gray-900"
-              >
-                PDF
-              </Link>
-            </div>
-          </div>
-        ))}
+      <div className="mb-5 grid grid-cols-3 gap-3">
+        <MiniStat label="請求合計" value={formatYen(totalInvoiceAmount)} />
+        <MiniStat label="入金済み" value={formatYen(totalPaidAmount)} />
+        <MiniStat
+          label="未入金残高"
+          value={formatYen(unpaidAmount)}
+          alert={unpaidAmount > 0}
+        />
       </div>
+
+      {error ? <ErrorText text={error} /> : null}
+
+      {!error && invoices.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-gray-200 bg-[#f7f7f5] px-4 py-8 text-center">
+          <p className="text-sm text-gray-500">
+            請求情報はまだ登録されていません。
+          </p>
+          <Link
+            href={`/cases/${caseId}/invoices/new`}
+            className="mt-4 inline-flex rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
+          >
+            最初の請求を登録する
+          </Link>
+        </div>
+      ) : null}
+
+      {!error && invoices.length > 0 ? (
+        <div className="space-y-3">
+          {invoices.map((invoice) => {
+            const invoicePaidAmount = payments.reduce((sum, payment) => {
+              if (
+                payment.invoiceId !== invoice.id ||
+                payment.status === "取消"
+              ) {
+                return sum;
+              }
+              return sum + payment.paymentAmount;
+            }, 0);
+            const invoiceRemainingAmount = Math.max(
+              invoice.invoiceAmount - invoicePaidAmount,
+              0
+            );
+
+            return (
+              <div
+                key={invoice.id}
+                className="rounded-lg border border-gray-200 p-4"
+              >
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
+                  <Field label="請求番号" value={invoice.invoiceNo} />
+                  <Field
+                    label="請求日"
+                    value={formatDate(invoice.invoiceDate)}
+                  />
+                  <Field label="支払期限" value={formatDate(invoice.dueDate)} />
+                  <Field
+                    label="請求金額"
+                    value={formatYen(invoice.invoiceAmount)}
+                  />
+                  <Field
+                    label="入金残高"
+                    value={formatYen(invoiceRemainingAmount)}
+                  />
+                  <div>
+                    <p className="text-xs font-medium text-gray-400">
+                      ステータス
+                    </p>
+                    <div className="mt-1.5">
+                      <InvoiceStatusBadge status={invoice.status} />
+                    </div>
+                  </div>
+                </div>
+
+                {invoice.memo.trim() ? (
+                  <p className="mt-4 whitespace-pre-wrap border-t border-gray-100 pt-4 text-sm text-gray-600">
+                    {invoice.memo}
+                  </p>
+                ) : null}
+
+                <div className="mt-4 flex flex-wrap justify-end gap-2 border-t border-gray-100 pt-4">
+                  <Link
+                    href={`/invoices/${invoice.id}`}
+                    className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                  >
+                    請求詳細
+                  </Link>
+                  <Link
+                    href={`/invoices/${invoice.id}/print`}
+                    target="_blank"
+                    className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                  >
+                    請求書PDF
+                  </Link>
+                  {invoiceRemainingAmount > 0 && invoice.status !== "取消" ? (
+                    <Link
+                      href={`/invoices/${invoice.id}/payments/new`}
+                      className="rounded-lg bg-gray-900 px-4 py-2 text-xs font-medium text-white hover:bg-gray-800"
+                    >
+                      ＋ 入金登録
+                    </Link>
+                  ) : null}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
     </Section>
   );
 }
 
 function ReceiptTab({
+  caseId,
   payments,
   invoices,
   totals,
   error,
 }: {
+  caseId: string;
   payments: PaymentRow[];
   invoices: InvoiceRow[];
   totals: { invoiceAmount: number; paidIn: number; unpaid: number };
@@ -773,38 +879,119 @@ function ReceiptTab({
     return map;
   }, [invoices]);
 
+  const openInvoice = invoices.find((invoice) => {
+    if (invoice.status === "取消") {
+      return false;
+    }
+    const paid = payments.reduce((sum, payment) => {
+      if (payment.invoiceId !== invoice.id || payment.status === "取消") {
+        return sum;
+      }
+      return sum + payment.paymentAmount;
+    }, 0);
+    return invoice.invoiceAmount - paid > 0;
+  });
+
   return (
-    <Section title="入金" description="請求に対する入金実績">
-      <div className="mb-6 grid grid-cols-3 gap-3">
-        <MiniStat label="請求合計" value={formatYen(totals.invoiceAmount)} />
-        <MiniStat label="入金合計" value={formatYen(totals.paidIn)} />
-        <MiniStat label="未入金" value={formatYen(totals.unpaid)} />
-      </div>
-      {error ? <ErrorText text={error} /> : null}
-      {!error && payments.length === 0 ? (
-        <Empty text="入金実績はまだありません" />
-      ) : null}
-      <ul className="divide-y divide-gray-100">
-        {payments.map((payment) => (
-          <li
-            key={payment.id}
-            className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm"
+    <Section
+      title="入金"
+      description="請求に対する入金実績"
+      action={
+        openInvoice ? (
+          <Link
+            href={`/invoices/${openInvoice.id}/payments/new`}
+            className="text-sm text-gray-600 hover:text-gray-900"
           >
-            <div>
-              <p className="font-medium text-gray-900">
-                {formatYen(payment.paymentAmount)}
-              </p>
-              <p className="text-xs text-gray-500">
-                {formatDate(payment.paymentDate)} · 請求{" "}
-                {payment.invoiceId
-                  ? display(invoiceNoById.get(payment.invoiceId))
-                  : "—"}
-              </p>
+            ＋ 入金登録
+          </Link>
+        ) : invoices.length === 0 ? (
+          <Link
+            href={`/cases/${caseId}/invoices/new`}
+            className="text-sm text-gray-600 hover:text-gray-900"
+          >
+            ＋ 先に請求を作成
+          </Link>
+        ) : undefined
+      }
+    >
+      <div className="mb-5 grid grid-cols-3 gap-3">
+        <MiniStat label="請求合計" value={formatYen(totals.invoiceAmount)} />
+        <MiniStat label="入金済み" value={formatYen(totals.paidIn)} />
+        <MiniStat
+          label="未入金残高"
+          value={formatYen(totals.unpaid)}
+          alert={totals.unpaid > 0}
+        />
+      </div>
+
+      {error ? <ErrorText text={error} /> : null}
+
+      {!error && payments.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-gray-200 bg-[#f7f7f5] px-4 py-8 text-center">
+          <p className="text-sm text-gray-500">入金実績はまだありません。</p>
+          {openInvoice ? (
+            <Link
+              href={`/invoices/${openInvoice.id}/payments/new`}
+              className="mt-4 inline-flex rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
+            >
+              最初の入金を登録する
+            </Link>
+          ) : null}
+        </div>
+      ) : null}
+
+      {!error && payments.length > 0 ? (
+        <div className="space-y-3">
+          {payments.map((payment) => (
+            <div
+              key={payment.id}
+              className="rounded-lg border border-gray-200 p-4"
+            >
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <Field
+                  label="入金日"
+                  value={formatDate(payment.paymentDate)}
+                />
+                <Field
+                  label="入金金額"
+                  value={formatYen(payment.paymentAmount)}
+                />
+                <Field
+                  label="請求番号"
+                  value={
+                    payment.invoiceId
+                      ? invoiceNoById.get(payment.invoiceId) || payment.invoiceId
+                      : ""
+                  }
+                />
+                <div>
+                  <p className="text-xs font-medium text-gray-400">
+                    ステータス
+                  </p>
+                  <div className="mt-1.5">
+                    <PaymentStatusBadge status={payment.status} />
+                  </div>
+                </div>
+              </div>
+              {payment.memo.trim() ? (
+                <p className="mt-4 whitespace-pre-wrap border-t border-gray-100 pt-4 text-sm text-gray-600">
+                  {payment.memo}
+                </p>
+              ) : null}
+              {payment.invoiceId ? (
+                <div className="mt-4 flex flex-wrap justify-end gap-2 border-t border-gray-100 pt-4">
+                  <Link
+                    href={`/invoices/${payment.invoiceId}`}
+                    className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                  >
+                    請求詳細
+                  </Link>
+                </div>
+              ) : null}
             </div>
-            <StatusPill text={payment.status || "有効"} />
-          </li>
-        ))}
-      </ul>
+          ))}
+        </div>
+      ) : null}
     </Section>
   );
 }
@@ -1019,11 +1206,31 @@ function MetaRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function MiniStat({ label, value }: { label: string; value: string }) {
+function MiniStat({
+  label,
+  value,
+  alert = false,
+}: {
+  label: string;
+  value: string;
+  alert?: boolean;
+}) {
   return (
-    <div className="rounded-lg border border-gray-100 bg-[#f7f7f5] px-3 py-2">
-      <p className="text-[11px] text-gray-400">{label}</p>
-      <p className="mt-0.5 text-sm font-medium tabular-nums text-gray-900">
+    <div
+      className={`rounded-lg border px-3 py-2 ${
+        alert
+          ? "border-amber-200 bg-amber-50"
+          : "border-gray-100 bg-[#f7f7f5]"
+      }`}
+    >
+      <p className={`text-[11px] ${alert ? "text-amber-700" : "text-gray-400"}`}>
+        {label}
+      </p>
+      <p
+        className={`mt-0.5 text-sm font-medium tabular-nums ${
+          alert ? "text-amber-900" : "text-gray-900"
+        }`}
+      >
         {value}
       </p>
     </div>
@@ -1057,14 +1264,6 @@ function ErrorText({ text }: { text: string }) {
   );
 }
 
-function StatusPill({ text }: { text: string }) {
-  return (
-    <span className="inline-flex rounded-md bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
-      {text || "—"}
-    </span>
-  );
-}
-
 function OrderStatusBadge({ status }: { status: string | null }) {
   const currentStatus = status || "未発注";
   const styles: Record<string, string> = {
@@ -1076,6 +1275,48 @@ function OrderStatusBadge({ status }: { status: string | null }) {
     納品済: "bg-green-100 text-green-700",
     取消: "bg-gray-200 text-gray-600",
     キャンセル: "bg-gray-200 text-gray-600",
+  };
+
+  return (
+    <span
+      className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${
+        styles[currentStatus] || "bg-gray-100 text-gray-700"
+      }`}
+    >
+      {currentStatus}
+    </span>
+  );
+}
+
+function InvoiceStatusBadge({ status }: { status: string | null }) {
+  const currentStatus = status || "未請求";
+  const styles: Record<string, string> = {
+    未請求: "bg-gray-100 text-gray-700",
+    請求書作成済: "bg-yellow-100 text-yellow-700",
+    請求済: "bg-blue-100 text-blue-700",
+    入金待ち: "bg-red-100 text-red-700",
+    一部入金: "bg-orange-100 text-orange-700",
+    入金済: "bg-green-100 text-green-700",
+    取消: "bg-gray-200 text-gray-600",
+  };
+
+  return (
+    <span
+      className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${
+        styles[currentStatus] || "bg-gray-100 text-gray-700"
+      }`}
+    >
+      {currentStatus}
+    </span>
+  );
+}
+
+function PaymentStatusBadge({ status }: { status: string | null }) {
+  const currentStatus = status || "入金確認済";
+  const styles: Record<string, string> = {
+    入金確認済: "bg-green-100 text-green-700",
+    入金確認中: "bg-yellow-100 text-yellow-800",
+    取消: "bg-gray-200 text-gray-600",
   };
 
   return (
