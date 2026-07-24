@@ -32,6 +32,44 @@ export type DealerOrderCaseForm = {
   case_memo: string;
 };
 
+export const ORDER_CATEGORIES = [
+  "パッケージで発注",
+  "部材のみ発注",
+] as const;
+
+export type OrderCategory = (typeof ORDER_CATEGORIES)[number];
+
+export type PartLine = {
+  local_id: string;
+  manufacturer_id: string;
+  product_id: string;
+  quantity: string;
+  product_memo: string;
+};
+
+export type DealerOrderProductForm = {
+  order_category: OrderCategory | "";
+  manufacturer_id: string;
+  series_id: string;
+  package_id: string;
+  quantity: string;
+  product_memo: string;
+  part_lines: PartLine[];
+};
+
+export type PartLineErrors = {
+  product_id?: string;
+  quantity?: string;
+};
+
+export type DealerOrderProductFormErrors = {
+  order_category?: string;
+  manufacturer_id?: string;
+  package_id?: string;
+  quantity?: string;
+  part_lines?: Record<string, PartLineErrors>;
+};
+
 export const ORDER_FORM_STEPS = [
   { id: 1, label: "案件情報" },
   { id: 2, label: "商品情報" },
@@ -39,7 +77,7 @@ export const ORDER_FORM_STEPS = [
   { id: 4, label: "確認・送信" },
 ] as const;
 
-export type OrderFormStep = (typeof ORDER_FORM_STEPS)[number];
+export type OrderFormStepId = (typeof ORDER_FORM_STEPS)[number]["id"];
 
 export type DealerOrderCaseFormErrors = Partial<
   Record<keyof DealerOrderCaseForm, string>
@@ -60,3 +98,21 @@ export const REQUIRED_CASE_FORM_FIELDS = [
 
 export type RequiredCaseFormField =
   (typeof REQUIRED_CASE_FORM_FIELDS)[number];
+
+export function createEmptyPartLine(): PartLine {
+  return {
+    local_id: `part-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+    manufacturer_id: "",
+    product_id: "",
+    quantity: "1",
+    product_memo: "",
+  };
+}
+
+export const INITIAL_PART_LINE: PartLine = {
+  local_id: "part-initial",
+  manufacturer_id: "",
+  product_id: "",
+  quantity: "1",
+  product_memo: "",
+};
