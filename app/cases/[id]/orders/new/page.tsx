@@ -11,8 +11,9 @@ import {
 } from "react";
 import { useParams, useRouter } from "next/navigation";
 
-import { supabase } from "@/lib/supabase";
+import { fetchActivePurchaseUnitPrices } from "@/lib/purchasePrices";
 import { insertOrderItems } from "@/lib/repositories/orderItems";
+import { supabase } from "@/lib/supabase";
 
 import {
   getCaseStatusFromOrderStatus,
@@ -57,6 +58,8 @@ type LineDraft = {
   unit_price: string;
   memo: string;
   sort_order: number;
+  /** 案件スナップショットから正の単価が取れたか（フォールバック対象外） */
+  has_case_snapshot: boolean;
 };
 
 type OrderForm = {
@@ -234,17 +237,25 @@ export default function NewOrderPage() {
         ? dealerRelation[0] || null
         : dealerRelation;
 
-      const nextLines = buildInitialLines(
+      const supplierId =
+        dealer?.default_supplier_id || "";
+      let nextLines = buildInitialLines(
         (rawCaseProducts || []) as CaseProductSource[],
         (rawCasePackages || []) as CasePackageSource[]
       );
+
+      nextLines = await applyPurchasePriceFallback(nextLines, supplierId);
+
+      if (cancelled) {
+        return;
+      }
 
       setSuppliers((supplierData || []) as Supplier[]);
       setCaseData(normalizedCase);
       setLines(nextLines);
       setForm((current) => ({
         ...current,
-        supplier_id: current.supplier_id || dealer?.default_supplier_id || "",
+        supplier_id: current.supplier_id || supplierId,
         order_no:
           current.order_no || generateOrderNumber(normalizedCase.case_no),
         expected_delivery_date:
@@ -269,6 +280,14 @@ export default function NewOrderPage() {
   ) {
     const { name, value } = event.target;
     setForm((current) => ({ ...current, [name]: value }));
+
+    // スナップショットがない明細のみ、仕入先変更時に価格マスタで再補完
+    if (name === "supplier_id") {
+      setLines((current) => {
+        void applyPurchasePriceFallback(current, value).then(setLines);
+        return current;
+      });
+    }
   }
 
   function handleLineChange(
@@ -786,7 +805,9 @@ function buildInitialLines(
     const quantity = Math.max(toNumber(row.quantity), 1);
     const purchaseTotal = toNumber(row.purchase_price);
     const unitPrice =
-      quantity > 0 ? Math.round(purchaseTotal / quantity) : purchaseTotal;
+      purchaseTotal > 0 && quantity > 0
+        ? Math.round(purchaseTotal / quantity)
+        : 0;
 
     lines.push({
       local_id: `cp-${row.id}`,
@@ -798,6 +819,7 @@ function buildInitialLines(
       unit_price: String(unitPrice),
       memo: row.memo || "",
       sort_order: lines.length,
+      has_case_snapshot: unitPrice > 0,
     });
   }
 
@@ -825,7 +847,7 @@ function buildInitialLines(
       const unitPrice =
         unitFromField > 0
           ? unitFromField
-          : quantity > 0
+          : total > 0 && quantity > 0
             ? Math.round(total / quantity)
             : 0;
 
@@ -843,11 +865,70 @@ function buildInitialLines(
         unit_price: String(unitPrice),
         memo: item.memo || "",
         sort_order: lines.length,
+        has_case_snapshot: unitPrice > 0,
       });
     }
   }
 
   return lines;
+}
+
+/**
+ * 案件スナップショットが null/0 の明細のみ purchase_prices で補完。
+ * 優先: 1.案件スナップショット 2.価格マスタ 3.0円
+ */
+async function applyPurchasePriceFallback(
+  lines: LineDraft[],
+  supplierId: string
+): Promise<LineDraft[]> {
+  const targets = lines.filter(
+    (line) => !line.has_case_snapshot && Boolean(line.product_id)
+  );
+
+  if (targets.length === 0) {
+    return lines;
+  }
+
+  if (!supplierId) {
+    console.warn(
+      "[orders/new] 仕入先未選択のため、スナップショットなし明細は 0円のままです。"
+    );
+    return lines.map((line) =>
+      line.has_case_snapshot
+        ? line
+        : { ...line, unit_price: "0" }
+    );
+  }
+
+  const priceResult = await fetchActivePurchaseUnitPrices(supabase, {
+    productIds: targets.map((line) => line.product_id),
+    supplierId,
+  });
+
+  if (priceResult.error) {
+    console.warn(
+      "[orders/new] 価格マスタフォールバック取得エラー:",
+      priceResult.error
+    );
+  }
+
+  if (priceResult.missingProductIds.length > 0) {
+    console.warn(
+      "[orders/new] 価格マスタ未取得（0円）product_ids:",
+      priceResult.missingProductIds
+    );
+  }
+
+  return lines.map((line) => {
+    if (line.has_case_snapshot) {
+      return line;
+    }
+    const unit = priceResult.unitPriceByProductId.get(line.product_id) || 0;
+    return {
+      ...line,
+      unit_price: String(unit),
+    };
+  });
 }
 
 function PageHeader({

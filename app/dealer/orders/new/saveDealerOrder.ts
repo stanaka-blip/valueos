@@ -1,5 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import {
+  fetchActivePurchaseUnitPrices,
+  resolveDealerDefaultSupplierId,
+} from "@/lib/purchasePrices";
 import { supabase } from "@/lib/supabase";
 
 import type {
@@ -9,7 +13,13 @@ import type {
 } from "./types";
 
 export type SaveDealerOrderResult =
-  | { ok: true; caseId: string; caseNo: string }
+  | {
+      ok: true;
+      caseId: string;
+      caseNo: string;
+      /** 価格マスタ未取得などで 0円スナップショットした product_id */
+      missingPurchasePriceProductIds?: string[];
+    }
   | { ok: false; errorMessage: string };
 
 function buildCaseMemo(form: DealerOrderCaseForm): string {
@@ -214,6 +224,7 @@ export async function saveDealerOrder(params: {
       }
 
       const caseId = caseRow.id as string;
+      const supplierId = await resolveDealerDefaultSupplierId(client, dealerId);
 
       const [{ data: manufacturer }, { data: series }] = await Promise.all([
         pkg.manufacturer_id
@@ -286,7 +297,45 @@ export async function saveDealerOrder(params: {
         (item) => item.is_hidden !== true
       );
 
+      let missingPurchasePriceProductIds: string[] = [];
+
       if (visibleItems.length > 0) {
+        const productIds = visibleItems
+          .map((item) => item.product_id as string | null)
+          .filter((id): id is string => Boolean(id));
+
+        const priceResult = supplierId
+          ? await fetchActivePurchaseUnitPrices(client, {
+              productIds,
+              supplierId,
+            })
+          : {
+              unitPriceByProductId: new Map<string, number>(),
+              missingProductIds: productIds,
+              error: null as string | null,
+            };
+
+        if (priceResult.error) {
+          console.warn(
+            "[saveDealerOrder] パッケージ構成の仕入価格取得エラー:",
+            priceResult.error
+          );
+        }
+
+        if (!supplierId) {
+          console.warn(
+            "[saveDealerOrder] 販売店の default_supplier_id が未設定のため、仕入価格を 0円でスナップショットします。"
+          );
+        }
+
+        missingPurchasePriceProductIds = priceResult.missingProductIds;
+        if (missingPurchasePriceProductIds.length > 0) {
+          console.warn(
+            "[saveDealerOrder] 価格マスタ未取得（0円保存）product_ids:",
+            missingPurchasePriceProductIds
+          );
+        }
+
         const rows = visibleItems.map((item) => {
           const rawProduct = item.products as unknown;
           const product = Array.isArray(rawProduct)
@@ -294,12 +343,20 @@ export async function saveDealerOrder(params: {
             : rawProduct;
 
           const itemQty = Number(item.quantity) || 0;
+          const lineQty = itemQty * quantity;
+          const productId = (item.product_id as string | null) || "";
+          const unitPurchasePrice = productId
+            ? priceResult.unitPriceByProductId.get(productId) || 0
+            : 0;
+          const totalPurchasePrice = Math.round(unitPurchasePrice * lineQty);
 
           return {
             case_package_id: casePackageId,
             product_id: item.product_id,
             source_package_item_id: item.id,
-            quantity: itemQty * quantity,
+            quantity: lineQty,
+            unit_purchase_price: unitPurchasePrice,
+            total_purchase_price: totalPurchasePrice,
             requirement_type: item.requirement_type,
             selection_group: item.selection_group,
             product_name_snapshot: product?.name || null,
@@ -345,6 +402,7 @@ export async function saveDealerOrder(params: {
         ok: true,
         caseId,
         caseNo: (caseRow.case_no as string) || caseNo,
+        missingPurchasePriceProductIds,
       };
     }
 
@@ -416,13 +474,55 @@ export async function saveDealerOrder(params: {
       }
 
       const caseId = caseRow.id as string;
+      const supplierId = await resolveDealerDefaultSupplierId(client, dealerId);
 
-      const rows = productForm.part_lines.map((line) => ({
-        case_id: caseId,
-        product_id: line.product_id,
-        quantity: Number(line.quantity) || 1,
-        memo: line.product_memo.trim() || null,
-      }));
+      const priceResult = supplierId
+        ? await fetchActivePurchaseUnitPrices(client, {
+            productIds,
+            supplierId,
+          })
+        : {
+            unitPriceByProductId: new Map<string, number>(),
+            missingProductIds: productIds,
+            error: null as string | null,
+          };
+
+      if (priceResult.error) {
+        console.warn(
+          "[saveDealerOrder] 部材の仕入価格取得エラー:",
+          priceResult.error
+        );
+      }
+
+      if (!supplierId) {
+        console.warn(
+          "[saveDealerOrder] 販売店の default_supplier_id が未設定のため、仕入価格を 0円でスナップショットします。"
+        );
+      }
+
+      if (priceResult.missingProductIds.length > 0) {
+        console.warn(
+          "[saveDealerOrder] 価格マスタ未取得（0円保存）product_ids:",
+          priceResult.missingProductIds
+        );
+      }
+
+      const rows = productForm.part_lines.map((line) => {
+        const qty = Number(line.quantity) || 1;
+        const unitPrice =
+          priceResult.unitPriceByProductId.get(line.product_id) || 0;
+        // case_products.purchase_price は合計金額として扱う
+        const purchaseTotal = Math.round(unitPrice * qty);
+
+        return {
+          case_id: caseId,
+          product_id: line.product_id,
+          supplier_id: supplierId,
+          quantity: qty,
+          purchase_price: purchaseTotal,
+          memo: line.product_memo.trim() || null,
+        };
+      });
 
       const { error: partsError } = await client
         .from("case_products")
@@ -450,6 +550,7 @@ export async function saveDealerOrder(params: {
         ok: true,
         caseId,
         caseNo: (caseRow.case_no as string) || caseNo,
+        missingPurchasePriceProductIds: priceResult.missingProductIds,
       };
     }
 

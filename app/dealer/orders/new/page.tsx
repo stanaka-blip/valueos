@@ -244,6 +244,16 @@ export default function DealerNewOrderPage() {
       return;
     }
 
+    if (
+      result.missingPurchasePriceProductIds &&
+      result.missingPurchasePriceProductIds.length > 0
+    ) {
+      console.warn(
+        "[dealer/orders/new] 仕入価格マスタ未取得の商品がありました（0円で保存）:",
+        result.missingPurchasePriceProductIds
+      );
+    }
+
     setSuccessMessage("発注依頼を受け付けました");
     setSubmitting(false);
 
