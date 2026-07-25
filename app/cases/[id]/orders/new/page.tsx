@@ -7,6 +7,7 @@ import {
   ReactNode,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { useParams, useRouter } from "next/navigation";
@@ -103,6 +104,15 @@ export default function NewOrderPage() {
     status: "発注済",
     memo: "",
   });
+
+  /** 最新の lines を async 価格取得から参照するため */
+  const linesRef = useRef<LineDraft[]>([]);
+  /** 仕入先の連続変更で古い取得結果を捨てる */
+  const priceRequestIdRef = useRef(0);
+
+  useEffect(() => {
+    linesRef.current = lines;
+  }, [lines]);
 
   const orderAmount = useMemo(
     () =>
@@ -290,7 +300,33 @@ export default function NewOrderPage() {
     };
   }, [caseId, caseIdError]);
 
-  function handleChange(
+  async function refreshPurchasePricesForSupplier(supplierId: string) {
+    const requestId = ++priceRequestIdRef.current;
+    setPriceLoading(true);
+    setSubmitError("");
+    setMissingPriceNames([]);
+
+    try {
+      const priced = await applyPurchasePriceFallback(
+        linesRef.current,
+        supplierId
+      );
+
+      // より新しい仕入先変更が走っている場合は結果を捨てる
+      if (requestId !== priceRequestIdRef.current) {
+        return;
+      }
+
+      setLines(priced.lines);
+      setMissingPriceNames(priced.missingProductNames);
+    } finally {
+      if (requestId === priceRequestIdRef.current) {
+        setPriceLoading(false);
+      }
+    }
+  }
+
+  async function handleChange(
     event: ChangeEvent<
       HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
     >
@@ -300,20 +336,7 @@ export default function NewOrderPage() {
 
     // 仕入先選択・変更時: スナップショットがない明細のみ価格マスタを再取得
     if (name === "supplier_id") {
-      setPriceLoading(true);
-      setSubmitError("");
-      setMissingPriceNames([]);
-      setLines((current) => {
-        void applyPurchasePriceFallback(current, value)
-          .then((priced) => {
-            setLines(priced.lines);
-            setMissingPriceNames(priced.missingProductNames);
-          })
-          .finally(() => {
-            setPriceLoading(false);
-          });
-        return current;
-      });
+      await refreshPurchasePricesForSupplier(value);
     }
   }
 
