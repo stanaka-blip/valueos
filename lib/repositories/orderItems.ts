@@ -124,10 +124,7 @@ export async function deleteOrderItemsByOrderId(
   };
 }
 
-/**
- * 発注明細を全置換（既存行削除 → 新規挿入）。
- * 画面未接続。後続フェーズ用。
- */
+/** 発注明細を全置換（既存行削除 → 新規挿入）。編集画面で使用。 */
 export async function replaceOrderItemsForOrder(
   orderId: string,
   inputs: Omit<OrderItemInsert, "order_id">[]
