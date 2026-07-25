@@ -322,13 +322,16 @@ export async function saveDealerOrder(params: {
           );
         }
 
+        // default_supplier_id は任意。未設定でも案件作成は継続する。
         if (!supplierId) {
-          console.warn(
-            "[saveDealerOrder] 販売店の default_supplier_id が未設定のため、仕入価格を 0円でスナップショットします。"
+          console.info(
+            "[saveDealerOrder] default_supplier_id 未設定のため仕入価格スナップショットをスキップします（案件作成は継続）。"
           );
         }
 
-        missingPurchasePriceProductIds = priceResult.missingProductIds;
+        missingPurchasePriceProductIds = supplierId
+          ? priceResult.missingProductIds
+          : [];
         if (missingPurchasePriceProductIds.length > 0) {
           console.warn(
             "[saveDealerOrder] 価格マスタ未取得（0円保存）product_ids:",
@@ -345,10 +348,13 @@ export async function saveDealerOrder(params: {
           const itemQty = Number(item.quantity) || 0;
           const lineQty = itemQty * quantity;
           const productId = (item.product_id as string | null) || "";
-          const unitPurchasePrice = productId
-            ? priceResult.unitPriceByProductId.get(productId) || 0
+          const unitPurchasePrice =
+            supplierId && productId
+              ? priceResult.unitPriceByProductId.get(productId) || 0
+              : 0;
+          const totalPurchasePrice = supplierId
+            ? Math.round(unitPurchasePrice * lineQty)
             : 0;
-          const totalPurchasePrice = Math.round(unitPurchasePrice * lineQty);
 
           return {
             case_package_id: casePackageId,
@@ -494,13 +500,13 @@ export async function saveDealerOrder(params: {
         );
       }
 
+      // default_supplier_id は任意。未設定でも案件作成は継続し、
+      // 仕入発注画面で担当者が仕入先を選んで価格を取得する。
       if (!supplierId) {
-        console.warn(
-          "[saveDealerOrder] 販売店の default_supplier_id が未設定のため、仕入価格を 0円でスナップショットします。"
+        console.info(
+          "[saveDealerOrder] default_supplier_id 未設定のため仕入価格スナップショットをスキップします（案件作成は継続）。"
         );
-      }
-
-      if (priceResult.missingProductIds.length > 0) {
+      } else if (priceResult.missingProductIds.length > 0) {
         console.warn(
           "[saveDealerOrder] 価格マスタ未取得（0円保存）product_ids:",
           priceResult.missingProductIds
@@ -509,10 +515,14 @@ export async function saveDealerOrder(params: {
 
       const rows = productForm.part_lines.map((line) => {
         const qty = Number(line.quantity) || 1;
-        const unitPrice =
-          priceResult.unitPriceByProductId.get(line.product_id) || 0;
-        // case_products.purchase_price は合計金額として扱う
-        const purchaseTotal = Math.round(unitPrice * qty);
+        const unitPrice = supplierId
+          ? priceResult.unitPriceByProductId.get(line.product_id) || 0
+          : 0;
+        // case_products.purchase_price は合計金額として扱う。
+        // 仕入先未設定時は null（仕入発注画面で補完）。
+        const purchaseTotal = supplierId
+          ? Math.round(unitPrice * qty)
+          : null;
 
         return {
           case_id: caseId,

@@ -90,8 +90,11 @@ export default function NewOrderPage() {
   const [lines, setLines] = useState<LineDraft[]>([]);
   const [initialLoading, setInitialLoading] = useState(!caseIdError);
   const [submitting, setSubmitting] = useState(false);
+  const [priceLoading, setPriceLoading] = useState(false);
   const [loadError, setLoadError] = useState(caseIdError);
   const [submitError, setSubmitError] = useState("");
+  /** 仕入先選択後、価格マスタに無かった商品名 */
+  const [missingPriceNames, setMissingPriceNames] = useState<string[]>([]);
   const [form, setForm] = useState<OrderForm>({
     supplier_id: "",
     order_no: "",
@@ -108,6 +111,11 @@ export default function NewOrderPage() {
         const unit = toNumber(line.unit_price);
         return sum + calcLineAmount(qty, unit);
       }, 0),
+    [lines]
+  );
+
+  const zeroPriceLines = useMemo(
+    () => lines.filter((line) => toNumber(line.unit_price) <= 0),
     [lines]
   );
 
@@ -237,14 +245,22 @@ export default function NewOrderPage() {
         ? dealerRelation[0] || null
         : dealerRelation;
 
-      const supplierId =
-        dealer?.default_supplier_id || "";
+      // default_supplier_id は初期選択値のみ。未設定でも案件・発注画面は開ける。
+      const initialSupplierId = dealer?.default_supplier_id || "";
       let nextLines = buildInitialLines(
         (rawCaseProducts || []) as CaseProductSource[],
         (rawCasePackages || []) as CasePackageSource[]
       );
+      let missingNames: string[] = [];
 
-      nextLines = await applyPurchasePriceFallback(nextLines, supplierId);
+      if (initialSupplierId) {
+        const priced = await applyPurchasePriceFallback(
+          nextLines,
+          initialSupplierId
+        );
+        nextLines = priced.lines;
+        missingNames = priced.missingProductNames;
+      }
 
       if (cancelled) {
         return;
@@ -253,9 +269,10 @@ export default function NewOrderPage() {
       setSuppliers((supplierData || []) as Supplier[]);
       setCaseData(normalizedCase);
       setLines(nextLines);
+      setMissingPriceNames(missingNames);
       setForm((current) => ({
         ...current,
-        supplier_id: current.supplier_id || supplierId,
+        supplier_id: current.supplier_id || initialSupplierId,
         order_no:
           current.order_no || generateOrderNumber(normalizedCase.case_no),
         expected_delivery_date:
@@ -281,10 +298,20 @@ export default function NewOrderPage() {
     const { name, value } = event.target;
     setForm((current) => ({ ...current, [name]: value }));
 
-    // スナップショットがない明細のみ、仕入先変更時に価格マスタで再補完
+    // 仕入先選択・変更時: スナップショットがない明細のみ価格マスタを再取得
     if (name === "supplier_id") {
+      setPriceLoading(true);
+      setSubmitError("");
+      setMissingPriceNames([]);
       setLines((current) => {
-        void applyPurchasePriceFallback(current, value).then(setLines);
+        void applyPurchasePriceFallback(current, value)
+          .then((priced) => {
+            setLines(priced.lines);
+            setMissingPriceNames(priced.missingProductNames);
+          })
+          .finally(() => {
+            setPriceLoading(false);
+          });
         return current;
       });
     }
@@ -350,6 +377,21 @@ export default function NewOrderPage() {
       }
       if (toNumber(line.unit_price) < 0) {
         setSubmitError("単価は0以上で入力してください。");
+        return;
+      }
+    }
+
+    if (zeroPriceLines.length > 0) {
+      const names = zeroPriceLines
+        .map((line) => line.product_name || "名称未設定")
+        .join("、");
+      const ok = window.confirm(
+        `単価が0円の明細があります。このまま保存しますか？\n\n対象商品：${names}`
+      );
+      if (!ok) {
+        setSubmitError(
+          "単価0円の明細があります。単価を入力するか、確認のうえ再度保存してください。"
+        );
         return;
       }
     }
@@ -539,14 +581,43 @@ export default function NewOrderPage() {
             </div>
           ) : null}
 
+          {!form.supplier_id ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              仕入先を選択してください。選択後、価格マスタから単価を取得します。
+            </div>
+          ) : null}
+
+          {form.supplier_id && missingPriceNames.length > 0 ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              <p className="font-semibold">
+                価格マスタに単価がありません。手入力してください。
+              </p>
+              <ul className="mt-2 list-disc space-y-1 pl-5">
+                {missingPriceNames.map((name) => (
+                  <li key={name}>{name}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {priceLoading ? (
+            <div className="rounded-lg border border-gray-200 bg-[#f7f7f5] p-3 text-sm text-gray-600">
+              価格マスタを取得しています…
+            </div>
+          ) : null}
+
           <div className="grid gap-6 md:grid-cols-2">
-            <Field label="仕入先" required>
+            <Field
+              label="仕入先"
+              required
+              description="販売店の初期仕入先がある場合のみ自動選択されます。"
+            >
               <select
                 name="supplier_id"
                 value={form.supplier_id}
                 onChange={handleChange}
                 required
-                disabled={submitting}
+                disabled={submitting || priceLoading}
                 className={inputClassName}
               >
                 <option value="">仕入先を選択</option>
@@ -733,7 +804,12 @@ export default function NewOrderPage() {
             </Link>
             <button
               type="submit"
-              disabled={submitting || lines.length === 0}
+              disabled={
+                submitting ||
+                priceLoading ||
+                lines.length === 0 ||
+                !form.supplier_id
+              }
               className="inline-flex items-center justify-center rounded-lg bg-gray-900 px-6 py-3 text-sm font-bold text-white hover:bg-gray-700 disabled:cursor-not-allowed disabled:bg-gray-400"
             >
               {submitting ? "登録しています..." : "発注を登録する"}
@@ -873,31 +949,36 @@ function buildInitialLines(
   return lines;
 }
 
+type PurchasePriceApplyResult = {
+  lines: LineDraft[];
+  missingProductNames: string[];
+};
+
 /**
  * 案件スナップショットが null/0 の明細のみ purchase_prices で補完。
- * 優先: 1.案件スナップショット 2.価格マスタ 3.0円
+ * 優先: 1.案件スナップショット 2.価格マスタ 3.0円（手入力待ち）
+ *
+ * supplierId 未選択時は価格取得せず、スナップショットなし明細は 0円のまま。
  */
 async function applyPurchasePriceFallback(
   lines: LineDraft[],
   supplierId: string
-): Promise<LineDraft[]> {
+): Promise<PurchasePriceApplyResult> {
   const targets = lines.filter(
     (line) => !line.has_case_snapshot && Boolean(line.product_id)
   );
 
   if (targets.length === 0) {
-    return lines;
+    return { lines, missingProductNames: [] };
   }
 
   if (!supplierId) {
-    console.warn(
-      "[orders/new] 仕入先未選択のため、スナップショットなし明細は 0円のままです。"
-    );
-    return lines.map((line) =>
-      line.has_case_snapshot
-        ? line
-        : { ...line, unit_price: "0" }
-    );
+    return {
+      lines: lines.map((line) =>
+        line.has_case_snapshot ? line : { ...line, unit_price: "0" }
+      ),
+      missingProductNames: [],
+    };
   }
 
   const priceResult = await fetchActivePurchaseUnitPrices(supabase, {
@@ -912,14 +993,23 @@ async function applyPurchasePriceFallback(
     );
   }
 
-  if (priceResult.missingProductIds.length > 0) {
+  const missingIdSet = new Set(priceResult.missingProductIds);
+  const missingProductNames = Array.from(
+    new Set(
+      targets
+        .filter((line) => missingIdSet.has(line.product_id))
+        .map((line) => line.product_name || "名称未設定")
+    )
+  );
+
+  if (missingProductNames.length > 0) {
     console.warn(
-      "[orders/new] 価格マスタ未取得（0円）product_ids:",
-      priceResult.missingProductIds
+      "[orders/new] 価格マスタ未取得（手入力待ち）:",
+      missingProductNames
     );
   }
 
-  return lines.map((line) => {
+  const nextLines = lines.map((line) => {
     if (line.has_case_snapshot) {
       return line;
     }
@@ -929,6 +1019,11 @@ async function applyPurchasePriceFallback(
       unit_price: String(unit),
     };
   });
+
+  return {
+    lines: nextLines,
+    missingProductNames,
+  };
 }
 
 function PageHeader({
