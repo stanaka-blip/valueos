@@ -40,16 +40,16 @@ export default function OrderPrintPage() {
   const params = useParams();
   const orderId = typeof params.id === "string" ? params.id : "";
 
+  const orderIdError = !orderId ? "発注IDが不正です" : null;
+
   const [order, setOrder] = useState<OrderRow | null>(null);
   const [caseRow, setCaseRow] = useState<CaseRow | null>(null);
   const [items, setItems] = useState<PrintLine[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(!orderIdError);
+  const [error, setError] = useState<string | null>(orderIdError);
 
   useEffect(() => {
-    if (!orderId) {
-      setError("発注IDが不正です");
-      setLoading(false);
+    if (orderIdError) {
       return;
     }
 
@@ -128,7 +128,7 @@ export default function OrderPrintPage() {
     return () => {
       cancelled = true;
     };
-  }, [orderId]);
+  }, [orderId, orderIdError]);
 
   useEffect(() => {
     if (!loading && order && !error) {

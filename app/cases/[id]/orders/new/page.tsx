@@ -76,12 +76,18 @@ export default function NewOrderPage() {
   const params = useParams<{ id: string }>();
   const caseId = params?.id || "";
 
+  const caseIdError = !caseId
+    ? "案件IDを取得できませんでした。"
+    : !isUuid(caseId)
+      ? "案件IDの形式が正しくありません。案件一覧から開き直してください。"
+      : "";
+
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [caseData, setCaseData] = useState<CaseRelation | null>(null);
   const [lines, setLines] = useState<LineDraft[]>([]);
-  const [initialLoading, setInitialLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(!caseIdError);
   const [submitting, setSubmitting] = useState(false);
-  const [loadError, setLoadError] = useState("");
+  const [loadError, setLoadError] = useState(caseIdError);
   const [submitError, setSubmitError] = useState("");
   const [form, setForm] = useState<OrderForm>({
     supplier_id: "",
@@ -103,17 +109,7 @@ export default function NewOrderPage() {
   );
 
   useEffect(() => {
-    if (!caseId) {
-      setLoadError("案件IDを取得できませんでした。");
-      setInitialLoading(false);
-      return;
-    }
-
-    if (!isUuid(caseId)) {
-      setLoadError(
-        "案件IDの形式が正しくありません。案件一覧から開き直してください。"
-      );
-      setInitialLoading(false);
+    if (caseIdError) {
       return;
     }
 
@@ -264,7 +260,7 @@ export default function NewOrderPage() {
     return () => {
       cancelled = true;
     };
-  }, [caseId]);
+  }, [caseId, caseIdError]);
 
   function handleChange(
     event: ChangeEvent<

@@ -58,6 +58,9 @@ export default function EditOrderPage() {
   const params = useParams<{ id: string }>();
   const orderId = params?.id || "";
 
+  const orderIdError =
+    !orderId || !isUuid(orderId) ? "発注IDが不正です。" : "";
+
   const [form, setForm] = useState<OrderForm>({
     expected_delivery_date: "",
     status: "発注済",
@@ -67,9 +70,9 @@ export default function EditOrderPage() {
     order_no: "",
   });
   const [lines, setLines] = useState<LineDraft[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!orderIdError);
   const [submitting, setSubmitting] = useState(false);
-  const [loadError, setLoadError] = useState("");
+  const [loadError, setLoadError] = useState(orderIdError);
   const [submitError, setSubmitError] = useState("");
 
   const orderAmount = useMemo(
@@ -84,9 +87,7 @@ export default function EditOrderPage() {
   );
 
   useEffect(() => {
-    if (!orderId || !isUuid(orderId)) {
-      setLoadError("発注IDが不正です。");
-      setLoading(false);
+    if (orderIdError) {
       return;
     }
 
@@ -195,7 +196,7 @@ export default function EditOrderPage() {
     return () => {
       cancelled = true;
     };
-  }, [orderId]);
+  }, [orderId, orderIdError]);
 
   function handleChange(
     event: ChangeEvent<
