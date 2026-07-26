@@ -54,16 +54,13 @@ export default function DashboardClient({ data }: Props) {
 
   return (
     <div className="min-h-full bg-[#f4f5f7]">
-      <header className="border-b border-gray-200 bg-white px-6 py-5 md:px-8">
-        <h1 className="text-2xl font-bold tracking-tight text-gray-900">
+      <header className="border-b border-gray-200 bg-white px-6 py-4 md:px-8">
+        <h1 className="text-xl font-bold tracking-tight text-gray-900 md:text-2xl">
           経営ダッシュボード
         </h1>
-        <p className="mt-1 text-sm text-gray-500">
-          ValueOS Ver1.0 — 売上・粗利・業務アラートを一覧
-        </p>
       </header>
 
-      <main className={`space-y-6 p-6 md:p-8 ${pending ? "opacity-70" : ""}`}>
+      <main className={`space-y-4 p-5 md:space-y-4 md:p-6 ${pending ? "opacity-70" : ""}`}>
         {data.error ? (
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             {data.error}
@@ -71,8 +68,8 @@ export default function DashboardClient({ data }: Props) {
         ) : null}
 
         {/* ① 表示期間 */}
-        <section className="rounded-2xl border border-gray-200 bg-white p-4 md:p-5">
-          <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400">
+        <section className="rounded-xl border border-gray-200 bg-white px-4 py-3.5">
+          <div className="mb-2.5 text-xs font-semibold uppercase tracking-wide text-gray-400">
             表示期間
           </div>
           <div className="flex flex-wrap gap-2">
@@ -137,7 +134,7 @@ export default function DashboardClient({ data }: Props) {
 
         {/* ② KPI */}
         <section>
-          <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400">
+          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
             KPI
           </div>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -168,7 +165,7 @@ export default function DashboardClient({ data }: Props) {
 
         {/* ③ 業務アラート */}
         <section>
-          <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400">
+          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
             業務アラート（現在）
           </div>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -201,13 +198,13 @@ export default function DashboardClient({ data }: Props) {
         </section>
 
         {/* ④ 売上推移 */}
-        <section className="rounded-2xl border border-gray-200 bg-white p-4 md:p-5">
+        <section className="rounded-xl border border-gray-200 bg-white px-4 py-3.5">
           <div className="mb-1 flex flex-wrap items-end justify-between gap-2">
             <div>
               <div className="text-xs font-semibold uppercase tracking-wide text-gray-400">
                 売上推移
               </div>
-              <p className="mt-1 text-sm text-gray-500">売上 / 実粗利</p>
+              <p className="mt-0.5 text-sm text-gray-500">売上 / 実粗利</p>
             </div>
             <div className="flex gap-4 text-xs text-gray-500">
               <span className="inline-flex items-center gap-1.5">
@@ -243,17 +240,17 @@ function KpiCard({
   return (
     <Link
       href={href}
-      className="block rounded-2xl border border-gray-200 bg-white p-4 transition hover:border-gray-400 hover:shadow-sm"
+      className="block rounded-xl border border-gray-200 bg-white px-4 py-3 transition hover:border-gray-400 hover:shadow-sm"
     >
       <p className="text-xs font-medium text-gray-400">{label}</p>
       <p
-        className={`mt-2 text-2xl font-semibold tracking-tight ${
+        className={`mt-1 text-xl font-semibold tracking-tight ${
           alert ? "text-red-700" : "text-gray-900"
         }`}
       >
         {value}
       </p>
-      {hint ? <p className="mt-1 text-xs text-gray-400">{hint}</p> : null}
+      {hint ? <p className="mt-0.5 text-[11px] text-gray-400">{hint}</p> : null}
     </Link>
   );
 }
@@ -274,18 +271,18 @@ function AlertCard({
   return (
     <Link
       href={href}
-      className="block rounded-2xl border border-gray-200 bg-white p-4 transition hover:border-gray-400 hover:shadow-sm"
+      className="block rounded-xl border border-gray-200 bg-white px-4 py-3 transition hover:border-gray-400 hover:shadow-sm"
     >
       <p className="text-xs font-medium text-gray-400">{label}</p>
       <p
-        className={`mt-2 text-3xl font-semibold ${
+        className={`mt-1 text-2xl font-semibold ${
           alert && count > 0 ? "text-red-700" : "text-gray-900"
         }`}
       >
         {count}
         <span className="ml-1 text-sm font-medium text-gray-400">件</span>
       </p>
-      {hint ? <p className="mt-1 text-xs text-gray-400">{hint}</p> : null}
+      {hint ? <p className="mt-0.5 text-[11px] text-gray-400">{hint}</p> : null}
     </Link>
   );
 }
