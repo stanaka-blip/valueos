@@ -382,6 +382,8 @@ export type Database = {
           request_id: string;
           case_id: string | null;
           status: string;
+          payload_hash: string;
+          error_code: string | null;
           error_message: string | null;
           response: Json | null;
           created_at: string;
@@ -391,6 +393,8 @@ export type Database = {
           request_id: string;
           case_id?: string | null;
           status: string;
+          payload_hash: string;
+          error_code?: string | null;
           error_message?: string | null;
           response?: Json | null;
           created_at?: string;
@@ -400,6 +404,8 @@ export type Database = {
           request_id?: string;
           case_id?: string | null;
           status?: string;
+          payload_hash?: string;
+          error_code?: string | null;
           error_message?: string | null;
           response?: Json | null;
           created_at?: string;
