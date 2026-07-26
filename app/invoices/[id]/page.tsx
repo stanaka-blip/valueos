@@ -1,4 +1,6 @@
 import Link from "next/link";
+
+import { summarizeInvoicePayments } from "@/lib/payments";
 import { supabase } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
@@ -38,6 +40,9 @@ type Payment = {
   id: string;
   payment_date: string | null;
   payment_amount: number | string | null;
+  payment_method?: string | null;
+  payer_name?: string | null;
+  bank_account?: string | null;
   status: string | null;
   memo: string | null;
   created_at: string | null;
@@ -50,13 +55,9 @@ export default async function InvoiceDetailPage({
 }) {
   const { id } = await params;
 
-  const [
-    { data: invoiceData, error: invoiceError },
-    { data: paymentData, error: paymentError },
-  ] = await Promise.all([
-    supabase
-      .from("invoices")
-      .select(`
+  const invoiceResult = await supabase
+    .from("invoices")
+    .select(`
         id,
         case_id,
         invoice_no,
@@ -82,24 +83,59 @@ export default async function InvoiceDetailPage({
           )
         )
       `)
-      .eq("id", id)
-      .single(),
+    .eq("id", id)
+    .single();
 
-    supabase
-      .from("payments")
-      .select(`
+  const invoiceData = invoiceResult.data;
+  const invoiceError = invoiceResult.error;
+
+  let paymentData: Payment[] | null = null;
+  let paymentError: { message: string } | null = null;
+
+  const paymentWithCols = await supabase
+    .from("payments")
+    .select(`
         id,
         payment_date,
         payment_amount,
+        payment_method,
+        payer_name,
+        bank_account,
         status,
         memo,
         created_at
       `)
+    .eq("invoice_id", id)
+    .order("payment_date", {
+      ascending: false,
+    });
+
+  if (
+    paymentWithCols.error &&
+    /payment_method|payer_name|bank_account|schema cache/i.test(
+      paymentWithCols.error.message
+    )
+  ) {
+    const fallback = await supabase
+      .from("payments")
+      .select(`
+          id,
+          payment_date,
+          payment_amount,
+          status,
+          memo,
+          created_at
+        `)
       .eq("invoice_id", id)
       .order("payment_date", {
         ascending: false,
-      }),
-  ]);
+      });
+    paymentData = (fallback.data || []) as Payment[];
+    paymentError = fallback.error;
+  } else {
+    paymentData = (paymentWithCols.data || []) as Payment[];
+    paymentError = paymentWithCols.error;
+  }
 
   if (invoiceError || !invoiceData) {
     return (
@@ -133,24 +169,19 @@ export default async function InvoiceDetailPage({
   const caseData = getSingleRelation(invoice.cases);
   const dealer = getSingleRelation(caseData?.dealers);
 
-  const invoiceAmount = toNumber(invoice.invoice_amount);
+  const paymentSummary = summarizeInvoicePayments({
+    invoiceAmount: invoice.invoice_amount,
+    dueDate: invoice.due_date,
+    payments: payments.map((payment) => ({
+      paymentAmount: toNumber(payment.payment_amount),
+      status: payment.status,
+    })),
+  });
 
-  const paidAmount = payments.reduce((sum, payment) => {
-    if (payment.status === "取消") {
-      return sum;
-    }
-
-    return sum + toNumber(payment.payment_amount);
-  }, 0);
-
-  const remainingAmount = Math.max(invoiceAmount - paidAmount, 0);
-
-  const today = getTodayString();
-
-  const isOverdue =
-    remainingAmount > 0 &&
-    !!invoice.due_date &&
-    invoice.due_date < today;
+  const invoiceAmount = paymentSummary.invoiceAmount;
+  const paidAmount = paymentSummary.confirmedPaidAmount;
+  const remainingAmount = paymentSummary.unpaidAmount;
+  const isOverdue = paymentSummary.isOverdue;
 
   return (
     <>
@@ -200,28 +231,35 @@ export default async function InvoiceDetailPage({
           />
 
           <SummaryCard
-            label="入金済み"
+            label="入金済額"
             value={formatCurrency(paidAmount)}
           />
 
           <SummaryCard
-            label="入金残高"
+            label="未入金金額"
             value={formatCurrency(remainingAmount)}
             alert={remainingAmount > 0}
           />
 
           <SummaryCard
-            label="支払状況"
+            label="入金状況"
             value={
-              remainingAmount <= 0
-                ? "入金完了"
-                : isOverdue
-                ? "支払期限超過"
-                : "入金待ち"
+              paymentSummary.displayStatus +
+              (paymentSummary.delayDays > 0
+                ? `（遅延${paymentSummary.delayDays}日）`
+                : "")
             }
             alert={isOverdue}
           />
         </section>
+
+        {paymentSummary.warnings.length > 0 ? (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            {paymentSummary.warnings.map((w) => (
+              <p key={w}>{w}</p>
+            ))}
+          </div>
+        ) : null}
 
         <section className="rounded-xl bg-white p-5 shadow-sm md:p-6">
           <h2 className="mb-5 text-lg font-bold text-gray-900">
@@ -356,14 +394,12 @@ export default async function InvoiceDetailPage({
               </p>
             </div>
 
-            {remainingAmount > 0 ? (
-              <Link
-                href={`/invoices/${invoice.id}/payments/new`}
-                className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-bold text-white hover:bg-gray-700"
-              >
-                ＋ 入金登録
-              </Link>
-            ) : null}
+            <Link
+              href={`/invoices/${invoice.id}/payments/new`}
+              className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-bold text-white hover:bg-gray-700"
+            >
+              ＋ 入金登録
+            </Link>
           </div>
 
           {paymentError ? (
@@ -377,7 +413,7 @@ export default async function InvoiceDetailPage({
                   key={payment.id}
                   className="rounded-lg border border-gray-200 p-4"
                 >
-                  <div className="grid gap-4 md:grid-cols-4">
+                  <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-4">
                     <Info
                       label="入金日"
                       value={formatDate(payment.payment_date)}
@@ -389,8 +425,23 @@ export default async function InvoiceDetailPage({
                     />
 
                     <Info
+                      label="入金方法"
+                      value={payment.payment_method || "-"}
+                    />
+
+                    <Info
                       label="ステータス"
                       value={payment.status}
+                    />
+
+                    <Info
+                      label="振込名義"
+                      value={payment.payer_name || "-"}
+                    />
+
+                    <Info
+                      label="入金先口座"
+                      value={payment.bank_account || "-"}
                     />
 
                     <Info

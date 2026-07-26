@@ -6,7 +6,7 @@ const nextConfig: NextConfig = {
     "127.0.0.1",
     "localhost",
     "*.trycloudflare.com",
-    "proceeding-humidity-kilometers-alexander.trycloudflare.com",
+    "dans-var-gale-arena.trycloudflare.com",
   ],
 };
 

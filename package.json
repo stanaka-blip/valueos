@@ -7,6 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test:workflow": "tsx lib/workflow/WorkflowEngine.test.ts",
+    "test:payments": "tsx lib/payments/invoicePaymentStatus.test.ts",
     "gen:db-types": "bash scripts/generate-database-types.sh"
   },
   "dependencies": {
