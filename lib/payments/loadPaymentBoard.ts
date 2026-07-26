@@ -113,7 +113,7 @@ export async function loadPaymentBoard(today?: string): Promise<PaymentBoardData
       .from("payments")
       .select("id, invoice_id, payment_date, payment_amount, status, memo")
       .in("invoice_id", invoiceIds);
-    paymentRows = fallback.data || [];
+    paymentRows = (fallback.data || []) as typeof paymentRows;
   } else if (paymentError) {
     return {
       rows: [],

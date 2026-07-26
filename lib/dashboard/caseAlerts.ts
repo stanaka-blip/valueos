@@ -22,13 +22,12 @@ export async function loadWorkflowAlertCaseIds(): Promise<{
   error: string | null;
 }> {
   // construction_completed_date は環境により未適用のためフォールバック
-  let cases:
-    | {
-        id: string;
-        status: string | null;
-        construction_completed_date?: string | null;
-      }[]
-    | null = null;
+  type CaseRow = {
+    id: string;
+    status: string | null;
+    construction_completed_date?: string | null;
+  };
+  let cases: CaseRow[] = [];
   let casesError: { message: string } | null = null;
   const withCompleted = await supabase
     .from("cases")
@@ -38,10 +37,10 @@ export async function loadWorkflowAlertCaseIds(): Promise<{
     /construction_completed_date|schema cache/i.test(withCompleted.error.message)
   ) {
     const fallback = await supabase.from("cases").select("id, status");
-    cases = (fallback.data || []) as typeof cases;
+    cases = (fallback.data || []) as CaseRow[];
     casesError = fallback.error;
   } else {
-    cases = (withCompleted.data || []) as typeof cases;
+    cases = (withCompleted.data || []) as CaseRow[];
     casesError = withCompleted.error;
   }
 
@@ -74,7 +73,8 @@ export async function loadWorkflowAlertCaseIds(): Promise<{
   const ordersByCase = groupBy(orders || [], "case_id");
   const invoicesByCase = groupBy(invoices || [], "case_id");
   const paymentsByCase = groupBy(payments || [], "case_id");
-  const settlementByCase = new Map<string, (typeof settlements)[number]>();
+  type SettlementRow = NonNullable<typeof settlements>[number];
+  const settlementByCase = new Map<string, SettlementRow>();
   for (const s of settlements || []) {
     settlementByCase.set(s.case_id as string, s);
   }

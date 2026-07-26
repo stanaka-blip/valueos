@@ -9,7 +9,7 @@ import {
 } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabaseClient";
+import { supabase } from "@/lib/supabase";
 import {
   PAYMENT_METHOD_OPTIONS,
   PAYMENT_STATUS_OPTIONS,
