@@ -1,4 +1,5 @@
 import { getCaseSettlementByCaseId } from "@/lib/repositories/caseSettlements";
+import { CONFIRMED_PAYMENT_STATUSES } from "@/lib/payments/constants";
 import {
   isSameMonth,
   summarizeInvoicePayments,
@@ -232,7 +233,11 @@ export async function loadPaymentBoard(today?: string): Promise<PaymentBoardData
     }
 
     for (const p of invPayments) {
-      if ((p.status as string) === "入金確認済" && isSameMonth(p.payment_date as string, todayStr)) {
+      const status = ((p.status as string) || "").trim();
+      if (
+        CONFIRMED_PAYMENT_STATUSES.has(status) &&
+        isSameMonth(p.payment_date as string, todayStr)
+      ) {
         paidThisMonthTotal += toNumber(p.payment_amount);
       }
     }
