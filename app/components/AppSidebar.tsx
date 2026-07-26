@@ -8,8 +8,8 @@ type NavItem = {
   name: string;
   href: string;
   icon: ReactNode;
-  /** exact match only (for `/`) */
   exact?: boolean;
+  children?: NavItem[];
 };
 
 type NavSubgroup = {
@@ -92,15 +92,7 @@ function IconInvoice() {
 function IconPayment() {
   return (
     <svg className={iconClass} viewBox="0 0 24 24" fill="none" aria-hidden>
-      <rect
-        x="3"
-        y="6"
-        width="18"
-        height="12"
-        rx="2"
-        stroke="currentColor"
-        strokeWidth="1.75"
-      />
+      <rect x="3" y="6" width="18" height="12" rx="2" stroke="currentColor" strokeWidth="1.75" />
       <path d="M3 10h18" stroke="currentColor" strokeWidth="1.75" />
     </svg>
   );
@@ -141,6 +133,19 @@ function IconFactory() {
         stroke="currentColor"
         strokeWidth="1.75"
         strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function IconSeries() {
+  return (
+    <svg className={iconClass} viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M4 6h16M4 12h10M4 18h13"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
       />
     </svg>
   );
@@ -226,11 +231,17 @@ function IconPrice() {
   );
 }
 
+const dashboardItem: NavItem = {
+  name: "ダッシュボード",
+  href: "/",
+  icon: <IconDashboard />,
+  exact: true,
+};
+
 const navGroups: NavGroup[] = [
   {
     label: "業務",
     entries: [
-      { name: "ダッシュボード", href: "/", icon: <IconDashboard />, exact: true },
       { name: "案件管理", href: "/cases", icon: <IconBriefcase /> },
       { name: "受注管理", href: "/admin/orders", icon: <IconOrders /> },
       { name: "請求管理", href: "/invoices", icon: <IconInvoice /> },
@@ -242,16 +253,23 @@ const navGroups: NavGroup[] = [
     label: "マスタ",
     entries: [
       { name: "販売店", href: "/dealers", icon: <IconStore /> },
-      { name: "メーカー", href: "/manufacturers", icon: <IconFactory /> },
+      {
+        name: "メーカー",
+        href: "/manufacturers",
+        icon: <IconFactory />,
+        children: [
+          { name: "シリーズ", href: "/series", icon: <IconSeries /> },
+        ],
+      },
       {
         label: "商品",
         items: [
           { name: "商品一覧", href: "/products", icon: <IconBox /> },
-          { name: "パッケージ商品", href: "/packages", icon: <IconPackage /> },
+          { name: "パッケージ商品一覧", href: "/packages", icon: <IconPackage /> },
+          { name: "仕入価格", href: "/prices", icon: <IconTag /> },
+          { name: "販売価格", href: "/sales-prices", icon: <IconPrice /> },
         ],
       },
-      { name: "仕入価格", href: "/prices", icon: <IconTag /> },
-      { name: "販売価格", href: "/sales-prices", icon: <IconPrice /> },
       { name: "仕入先", href: "/suppliers", icon: <IconTruck /> },
     ],
   },
@@ -263,16 +281,25 @@ const navGroups: NavGroup[] = [
 
 function isActive(pathname: string, item: NavItem): boolean {
   if (item.exact) return pathname === item.href;
-  // 商品一覧は /products/new も含めるが、他マスタとパス衝突しない
   return pathname === item.href || pathname.startsWith(`${item.href}/`);
 }
 
-function NavLink({ item, pathname }: { item: NavItem; pathname: string }) {
+function NavLink({
+  item,
+  pathname,
+  nested = false,
+}: {
+  item: NavItem;
+  pathname: string;
+  nested?: boolean;
+}) {
   const active = isActive(pathname, item);
   return (
     <Link
       href={item.href}
-      className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition ${
+      className={`flex items-center gap-2.5 rounded-lg py-2 text-sm transition ${
+        nested ? "px-3 pl-9" : "px-3"
+      } ${
         active
           ? "bg-gray-800 font-medium text-white"
           : "text-gray-300 hover:bg-gray-800/70 hover:text-white"
@@ -295,6 +322,10 @@ export default function AppSidebar() {
       </div>
 
       <nav className="flex-1 space-y-5 overflow-y-auto px-3 py-4">
+        <div>
+          <NavLink item={dashboardItem} pathname={pathname} />
+        </div>
+
         {navGroups.map((group) => (
           <div key={group.label}>
             <div className="mb-1.5 px-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
@@ -319,9 +350,19 @@ export default function AppSidebar() {
                       </li>
                     );
                   }
+
                   return (
                     <li key={entry.href}>
                       <NavLink item={entry} pathname={pathname} />
+                      {entry.children?.length ? (
+                        <ul className="mt-0.5 space-y-0.5">
+                          {entry.children.map((child) => (
+                            <li key={child.href}>
+                              <NavLink item={child} pathname={pathname} nested />
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
                     </li>
                   );
                 })}

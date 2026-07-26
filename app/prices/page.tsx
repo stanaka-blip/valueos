@@ -84,9 +84,9 @@ export default async function PricesPage() {
       <header className="border-b bg-white px-8 py-5">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">価格マスタ</h1>
+            <h1 className="text-2xl font-bold text-gray-900">仕入価格一覧</h1>
             <p className="text-sm text-gray-500">
-              商品・パッケージごとの仕入先別価格を管理します
+              商品・パッケージ商品の仕入先別価格を管理します
             </p>
           </div>
 

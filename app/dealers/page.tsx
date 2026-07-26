@@ -33,7 +33,7 @@ export default async function DealersPage() {
     return (
       <>
         <header className="border-b bg-white px-8 py-5">
-          <h1 className="text-xl font-bold text-gray-900">販売店マスタ</h1>
+          <h1 className="text-xl font-bold text-gray-900">販売店一覧</h1>
         </header>
 
         <main className="p-8">
@@ -51,7 +51,7 @@ export default async function DealersPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">
-              販売店マスタ
+              販売店一覧
             </h1>
             <p className="text-sm text-gray-500">
               販売店情報・取引条件を管理します

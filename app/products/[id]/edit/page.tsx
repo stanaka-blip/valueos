@@ -4,12 +4,12 @@ import {
   ChangeEvent,
   FormEvent,
   ReactNode,
+  use,
   useEffect,
   useMemo,
   useState,
 } from "react";
 import { useRouter } from "next/navigation";
-
 import { supabase } from "@/lib/supabase";
 
 type Manufacturer = {
@@ -35,15 +35,19 @@ type ProductForm = {
   is_active: boolean;
 };
 
-export default function NewProductPage() {
+export default function EditProductPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = use(params);
   const router = useRouter();
 
   const [manufacturers, setManufacturers] = useState<Manufacturer[]>([]);
   const [seriesList, setSeriesList] = useState<Series[]>([]);
-  const [initialLoading, setInitialLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [loadError, setLoadError] = useState("");
-  const [submitError, setSubmitError] = useState("");
+  const [error, setError] = useState("");
 
   const [form, setForm] = useState<ProductForm>({
     manufacturer_id: "",
@@ -59,40 +63,51 @@ export default function NewProductPage() {
 
   useEffect(() => {
     async function load() {
-      setInitialLoading(true);
-      setLoadError("");
+      setLoading(true);
+      setError("");
 
-      const [mRes, sRes] = await Promise.all([
+      const [mRes, sRes, pRes] = await Promise.all([
         supabase
           .from("manufacturers")
           .select("id, name")
-          .eq("is_active", true)
           .order("name", { ascending: true }),
         supabase
           .from("product_series")
           .select("id, name, manufacturer_id")
-          .eq("is_active", true)
           .order("name", { ascending: true }),
+        supabase.from("products").select("*").eq("id", id).maybeSingle(),
       ]);
 
-      if (mRes.error) {
-        setLoadError(`メーカー取得エラー：${mRes.error.message}`);
-        setInitialLoading(false);
-        return;
-      }
-      if (sRes.error) {
-        setLoadError(`シリーズ取得エラー：${sRes.error.message}`);
-        setInitialLoading(false);
+      if (mRes.error || sRes.error || pRes.error || !pRes.data) {
+        setError(
+          mRes.error?.message ||
+            sRes.error?.message ||
+            pRes.error?.message ||
+            "商品が見つかりません"
+        );
+        setLoading(false);
         return;
       }
 
+      const row = pRes.data;
       setManufacturers((mRes.data || []) as Manufacturer[]);
       setSeriesList((sRes.data || []) as Series[]);
-      setInitialLoading(false);
+      setForm({
+        manufacturer_id: (row.manufacturer_id as string) || "",
+        series_id: (row.series_id as string) || "",
+        category: (row.category as string) || "",
+        model_no: (row.model_no as string) || "",
+        name: (row.name as string) || "",
+        capacity: (row.capacity as string) || "",
+        unit: (row.unit as string) || "",
+        memo: (row.memo as string) || "",
+        is_active: Boolean(row.is_active),
+      });
+      setLoading(false);
     }
 
     load();
-  }, []);
+  }, [id]);
 
   const filteredSeries = useMemo(
     () =>
@@ -127,98 +142,53 @@ export default function NewProductPage() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setSubmitError("");
+    setError("");
 
-    const manufacturerId = form.manufacturer_id;
-    const productName = form.name.trim();
-    const modelNo = form.model_no.trim();
-
-    if (!manufacturerId) {
-      setSubmitError("メーカーを選択してください。");
+    if (!form.manufacturer_id) {
+      setError("メーカーを選択してください。");
       return;
     }
-    if (!productName) {
-      setSubmitError("商品名を入力してください。");
+    if (!form.name.trim()) {
+      setError("商品名を入力してください。");
       return;
     }
-    if (!modelNo) {
-      setSubmitError("型番を入力してください。");
+    if (!form.model_no.trim()) {
+      setError("型番を入力してください。");
       return;
     }
 
     setSubmitting(true);
-
-    const { data: duplicateProduct, error: duplicateError } = await supabase
+    const { error: updateError } = await supabase
       .from("products")
-      .select("id")
-      .eq("manufacturer_id", manufacturerId)
-      .eq("model_no", modelNo)
-      .maybeSingle();
-
-    if (duplicateError) {
-      setSubmitError(`重複確認に失敗しました：${duplicateError.message}`);
-      setSubmitting(false);
-      return;
-    }
-
-    if (duplicateProduct) {
-      setSubmitError("同じメーカー・同じ型番の商品がすでに登録されています。");
-      setSubmitting(false);
-      return;
-    }
-
-    const { error: insertError } = await supabase.from("products").insert({
-      manufacturer_id: manufacturerId,
-      series_id: form.series_id || null,
-      category: form.category.trim() || null,
-      model_no: modelNo,
-      name: productName,
-      capacity: form.capacity.trim() || null,
-      unit: form.unit.trim() || null,
-      memo: form.memo.trim() || null,
-      is_active: form.is_active,
-    });
-
-    if (insertError) {
-      setSubmitError(`登録に失敗しました：${insertError.message}`);
-      setSubmitting(false);
-      return;
-    }
-
+      .update({
+        manufacturer_id: form.manufacturer_id,
+        series_id: form.series_id || null,
+        category: form.category.trim() || null,
+        model_no: form.model_no.trim(),
+        name: form.name.trim(),
+        capacity: form.capacity.trim() || null,
+        unit: form.unit.trim() || null,
+        memo: form.memo.trim() || null,
+        is_active: form.is_active,
+      })
+      .eq("id", id);
     setSubmitting(false);
+
+    if (updateError) {
+      setError(updateError.message);
+      return;
+    }
+
     router.push("/products");
     router.refresh();
   }
 
-  if (initialLoading) {
+  if (loading) {
     return (
       <>
-        <PageHeader title="商品登録" description="マスタ情報を読み込んでいます。" />
-        <main className="p-4 md:p-8">
-          <div className="rounded-xl bg-white p-8 text-center shadow-sm">
-            <p className="text-sm text-gray-500">読み込み中...</p>
-          </div>
-        </main>
-      </>
-    );
-  }
-
-  if (loadError) {
-    return (
-      <>
-        <PageHeader title="商品登録" description="マスタ情報を取得できませんでした。" />
-        <main className="p-4 md:p-8">
-          <div className="rounded-xl border border-red-200 bg-red-50 p-6">
-            <p className="font-bold text-red-700">データ取得エラー</p>
-            <p className="mt-2 text-sm text-red-600">{loadError}</p>
-            <button
-              type="button"
-              onClick={() => router.push("/products")}
-              className="mt-5 rounded-lg bg-red-700 px-4 py-2 text-sm font-bold text-white"
-            >
-              商品一覧へ戻る
-            </button>
-          </div>
+        <PageHeader title="商品編集" description="読み込み中..." />
+        <main className="p-8">
+          <p className="text-sm text-gray-500">読み込み中...</p>
         </main>
       </>
     );
@@ -226,26 +196,15 @@ export default function NewProductPage() {
 
   return (
     <>
-      <PageHeader
-        title="商品登録"
-        description="メーカー・シリーズ・商品名・型番を登録します"
-      />
-
+      <PageHeader title="商品編集" description="商品マスタを更新します" />
       <main className="p-4 md:p-8">
         <form
           onSubmit={handleSubmit}
           className="mx-auto max-w-4xl rounded-xl bg-white p-5 shadow-sm md:p-8"
         >
-          <div className="mb-6">
-            <h2 className="text-lg font-bold text-gray-900">商品情報</h2>
-            <p className="mt-1 text-sm text-gray-500">
-              メーカー、商品名、型番は必須です。保証は備考に記載できます。
-            </p>
-          </div>
-
-          {submitError ? (
+          {error ? (
             <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-              {submitError}
+              {error}
             </div>
           ) : null}
 
@@ -260,15 +219,15 @@ export default function NewProductPage() {
                 className={inputClassName}
               >
                 <option value="">メーカーを選択</option>
-                {manufacturers.map((manufacturer) => (
-                  <option key={manufacturer.id} value={manufacturer.id}>
-                    {manufacturer.name || "名称未設定"}
+                {manufacturers.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name || "名称未設定"}
                   </option>
                 ))}
               </select>
             </Field>
 
-            <Field label="シリーズ" description="メーカー配下のシリーズ">
+            <Field label="シリーズ">
               <select
                 name="series_id"
                 value={form.series_id}
@@ -285,17 +244,13 @@ export default function NewProductPage() {
               </select>
             </Field>
 
-            <Field
-              label="カテゴリ"
-              description="例：太陽光、蓄電池、パワコン、エコキュート"
-            >
+            <Field label="カテゴリ">
               <input
                 type="text"
                 name="category"
                 value={form.category}
                 onChange={handleChange}
                 disabled={submitting}
-                placeholder="例：蓄電池"
                 className={inputClassName}
               />
             </Field>
@@ -308,7 +263,6 @@ export default function NewProductPage() {
                 onChange={handleChange}
                 required
                 disabled={submitting}
-                placeholder="例：スマートPVマルチ"
                 className={inputClassName}
               />
             </Field>
@@ -321,19 +275,17 @@ export default function NewProductPage() {
                 onChange={handleChange}
                 required
                 disabled={submitting}
-                placeholder="例：CB-P127M05A"
                 className={inputClassName}
               />
             </Field>
 
-            <Field label="容量" description="数値と単位を分けて入力します">
+            <Field label="容量">
               <input
                 type="text"
                 name="capacity"
                 value={form.capacity}
                 onChange={handleChange}
                 disabled={submitting}
-                placeholder="例：12.7"
                 className={inputClassName}
               />
             </Field>
@@ -366,9 +318,7 @@ export default function NewProductPage() {
                   disabled={submitting}
                   className="h-4 w-4"
                 />
-                <span className="text-sm font-semibold text-gray-700">
-                  有効な商品として登録する
-                </span>
+                <span className="text-sm font-semibold text-gray-700">有効</span>
               </label>
             </Field>
           </div>
@@ -381,7 +331,6 @@ export default function NewProductPage() {
                 onChange={handleChange}
                 rows={5}
                 disabled={submitting}
-                placeholder="保証年数、商品仕様、注意事項など"
                 className={inputClassName}
               />
             </Field>
@@ -392,16 +341,16 @@ export default function NewProductPage() {
               type="button"
               onClick={() => router.push("/products")}
               disabled={submitting}
-              className="rounded-lg border border-gray-300 bg-white px-6 py-3 text-sm font-bold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              className="rounded-lg border border-gray-300 bg-white px-6 py-3 text-sm font-bold text-gray-700"
             >
               キャンセル
             </button>
             <button
               type="submit"
               disabled={submitting}
-              className="rounded-lg bg-gray-900 px-6 py-3 text-sm font-bold text-white hover:bg-gray-700 disabled:cursor-not-allowed disabled:bg-gray-400"
+              className="rounded-lg bg-gray-900 px-6 py-3 text-sm font-bold text-white disabled:opacity-50"
             >
-              {submitting ? "登録しています..." : "商品を登録する"}
+              {submitting ? "保存中..." : "保存する"}
             </button>
           </div>
         </form>

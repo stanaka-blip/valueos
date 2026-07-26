@@ -84,9 +84,9 @@ export default async function SalesPricesPage() {
       <header className="border-b bg-white px-8 py-5">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">販売価格マスタ</h1>
+            <h1 className="text-2xl font-bold text-gray-900">販売価格一覧</h1>
             <p className="text-sm text-gray-500">
-              販売店ごとの商品・パッケージ販売価格を管理します
+              販売店ごとの商品・パッケージ商品販売価格を管理します
             </p>
           </div>
 

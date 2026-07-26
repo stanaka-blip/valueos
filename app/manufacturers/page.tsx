@@ -15,7 +15,7 @@ export default async function ManufacturersPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">
-              メーカーマスタ
+              メーカー一覧
             </h1>
             <p className="text-sm text-gray-500">
               メーカー情報を管理します
@@ -90,21 +90,12 @@ export default async function ManufacturersPage() {
                     </td>
 
                     <td className="px-5 py-4 text-center">
-                      <div className="flex justify-center gap-2">
-                        <Link
-                          href={`/manufacturers/${item.id}`}
-                          className="rounded-lg border px-3 py-2 text-xs font-bold hover:bg-gray-100"
-                        >
-                          詳細
-                        </Link>
-
-                        <Link
-                          href={`/manufacturers/edit/${item.id}`}
-                          className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white hover:bg-blue-700"
-                        >
-                          編集
-                        </Link>
-                      </div>
+                      <Link
+                        href={`/manufacturers/${item.id}/edit`}
+                        className="rounded-lg bg-gray-900 px-3 py-2 text-xs font-bold text-white hover:bg-gray-700"
+                      >
+                        編集
+                      </Link>
                     </td>
                   </tr>
                 ))
