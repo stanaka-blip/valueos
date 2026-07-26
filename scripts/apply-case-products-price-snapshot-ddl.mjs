@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Apply case_products price snapshot DDL.
+ * Apply case_products price snapshot DDL (columns + NOT VALID check).
  *
  * Requires:
  *   DATABASE_URL / SUPABASE_DB_URL / POSTGRES_URL
@@ -15,11 +15,17 @@ import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const sqlPath = join(
-  root,
-  "supabase/migrations/20260726190000_case_products_price_snapshot.sql"
-);
-const sql = readFileSync(sqlPath, "utf8");
+const sqlPaths = [
+  join(
+    root,
+    "supabase/migrations/20260726190000_case_products_price_snapshot.sql"
+  ),
+  join(
+    root,
+    "supabase/migrations/20260726190100_case_products_line_target_check.sql"
+  ),
+];
+
 const dbUrl =
   process.env.DATABASE_URL ||
   process.env.SUPABASE_DB_URL ||
@@ -32,8 +38,8 @@ if (!dbUrl) {
       "DATABASE_URL / SUPABASE_DB_URL / POSTGRES_URL が未設定です。",
       "",
       "適用方法:",
-      "1) Supabase Dashboard → SQL Editor で次のファイルを実行",
-      `   ${sqlPath}`,
+      "1) Supabase Dashboard → SQL Editor で次を順に実行",
+      ...sqlPaths.map((p) => `   ${p}`),
       "2) または DATABASE_URL を渡して再実行",
       "   DATABASE_URL='postgresql://...' node scripts/apply-case-products-price-snapshot-ddl.mjs",
     ].join("\n")
@@ -41,20 +47,24 @@ if (!dbUrl) {
   process.exit(2);
 }
 
-const psql = spawnSync("psql", [dbUrl, "-v", "ON_ERROR_STOP=1", "-c", sql], {
-  encoding: "utf8",
-});
+for (const sqlPath of sqlPaths) {
+  const sql = readFileSync(sqlPath, "utf8");
+  const psql = spawnSync("psql", [dbUrl, "-v", "ON_ERROR_STOP=1", "-c", sql], {
+    encoding: "utf8",
+  });
 
-if (psql.error) {
-  console.error("psql が見つかりません。SQL Editor で手動適用してください。");
-  console.error(psql.error.message);
-  process.exit(1);
+  if (psql.error) {
+    console.error("psql が見つかりません。SQL Editor で手動適用してください。");
+    console.error(psql.error.message);
+    process.exit(1);
+  }
+
+  if (psql.status !== 0) {
+    console.error("Failed:", sqlPath);
+    console.error(psql.stderr || psql.stdout);
+    process.exit(psql.status ?? 1);
+  }
+
+  console.log("Applied:", sqlPath);
+  if (psql.stdout) console.log(psql.stdout);
 }
-
-if (psql.status !== 0) {
-  console.error(psql.stderr || psql.stdout);
-  process.exit(psql.status ?? 1);
-}
-
-console.log("Applied:", sqlPath);
-console.log(psql.stdout);
