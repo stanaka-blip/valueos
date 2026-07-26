@@ -1,10 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import type { PriceTargetType } from "@/lib/prices/targetType";
+
 /**
  * 仕入価格マスタ (purchase_prices) の有効単価取得。
  *
  * 既存 /cases/[id]/products/new と同じ条件:
- * - product_id
+ * - product_id（PRODUCT）または package_id（PACKAGE）
  * - supplier_id（仕入先）
  * - is_active = true
  * - start_date <= 基準日
@@ -24,6 +26,22 @@ export type PurchasePriceLookupParams = {
 export type PurchasePriceLookupResult = {
   unitPrice: number;
   found: boolean;
+  error: string | null;
+};
+
+export type PurchasePriceTargetLookupParams = {
+  targetType: PriceTargetType;
+  productId?: string | null;
+  packageId?: string | null;
+  supplierId: string;
+  /** YYYY-MM-DD。省略時は本日 */
+  asOfDate?: string;
+};
+
+export type ActivePurchasePriceLookupResult = {
+  found: boolean;
+  priceId: string | null;
+  unitPrice: number;
   error: string | null;
 };
 
@@ -54,33 +72,104 @@ export async function fetchActivePurchaseUnitPrice(
   client: SupabaseClient,
   params: PurchasePriceLookupParams
 ): Promise<PurchasePriceLookupResult> {
-  const { productId, supplierId } = params;
-  if (!productId || !supplierId) {
-    return { unitPrice: 0, found: false, error: null };
+  const result = await fetchActivePurchasePrice(client, {
+    targetType: "PRODUCT",
+    productId: params.productId,
+    supplierId: params.supplierId,
+    asOfDate: params.asOfDate,
+  });
+
+  return {
+    unitPrice: result.unitPrice,
+    found: result.found,
+    error: result.error,
+  };
+}
+
+/** 有効な仕入単価を1件取得（PRODUCT / PACKAGE、マスタID付き） */
+export async function fetchActivePurchasePrice(
+  client: SupabaseClient,
+  params: PurchasePriceTargetLookupParams
+): Promise<ActivePurchasePriceLookupResult> {
+  const { targetType, supplierId } = params;
+  if (!supplierId) {
+    return { found: false, priceId: null, unitPrice: 0, error: null };
   }
 
   const asOfDate = params.asOfDate || getTodayDateString();
-
-  const { data, error } = await client
+  let query = client
     .from("purchase_prices")
-    .select("purchase_price")
-    .eq("product_id", productId)
+    .select("id, purchase_price")
     .eq("supplier_id", supplierId)
     .eq("is_active", true)
     .lte("start_date", asOfDate)
     .or(`end_date.is.null,end_date.gte.${asOfDate}`)
     .order("start_date", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .limit(1);
+
+  if (targetType === "PRODUCT") {
+    if (!params.productId) {
+      return { found: false, priceId: null, unitPrice: 0, error: null };
+    }
+    query = query
+      .eq("price_target_type", "PRODUCT")
+      .eq("product_id", params.productId);
+  } else {
+    if (!params.packageId) {
+      return { found: false, priceId: null, unitPrice: 0, error: null };
+    }
+    query = query
+      .eq("price_target_type", "PACKAGE")
+      .eq("package_id", params.packageId);
+  }
+
+  const { data, error } = await query.maybeSingle();
 
   if (error) {
-    return { unitPrice: 0, found: false, error: error.message };
+    // price_target_type 未適用環境向けフォールバック（PRODUCT のみ）
+    if (
+      targetType === "PRODUCT" &&
+      params.productId &&
+      /price_target_type|column .* does not exist/i.test(error.message)
+    ) {
+      const fallback = await client
+        .from("purchase_prices")
+        .select("id, purchase_price")
+        .eq("product_id", params.productId)
+        .eq("supplier_id", supplierId)
+        .eq("is_active", true)
+        .lte("start_date", asOfDate)
+        .or(`end_date.is.null,end_date.gte.${asOfDate}`)
+        .order("start_date", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (fallback.error) {
+        return {
+          found: false,
+          priceId: null,
+          unitPrice: 0,
+          error: fallback.error.message,
+        };
+      }
+
+      const unitPrice = toUnitPrice(fallback.data?.purchase_price);
+      return {
+        found: unitPrice > 0,
+        priceId: (fallback.data?.id as string | undefined) || null,
+        unitPrice,
+        error: null,
+      };
+    }
+
+    return { found: false, priceId: null, unitPrice: 0, error: error.message };
   }
 
   const unitPrice = toUnitPrice(data?.purchase_price);
   return {
-    unitPrice,
     found: unitPrice > 0,
+    priceId: (data?.id as string | undefined) || null,
+    unitPrice,
     error: null,
   };
 }

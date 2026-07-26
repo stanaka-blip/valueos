@@ -38,11 +38,18 @@ type ProductRelation = {
   model_no: string | null;
 };
 
+type PackageRelation = {
+  name: string | null;
+  package_code: string | null;
+};
+
 type CaseProduct = {
   id: string;
+  line_type?: string | null;
   quantity: number | null;
   sales_price: number | string | null;
   products: ProductRelation | ProductRelation[] | null;
+  packages?: PackageRelation | PackageRelation[] | null;
 };
 
 type InvoiceForm = {
@@ -161,11 +168,16 @@ export default function NewInvoicePage() {
           .from("case_products")
           .select(`
             id,
+            line_type,
             quantity,
             sales_price,
             products (
               name,
               model_no
+            ),
+            packages (
+              name,
+              package_code
             )
           `)
           .eq("case_id", resolvedCaseId)
@@ -516,6 +528,14 @@ export default function NewInvoicePage() {
                 const product = getSingleRelation(
                   caseProduct.products
                 );
+                const pkg = getSingleRelation(caseProduct.packages);
+                const isPackage = caseProduct.line_type === "PACKAGE";
+                const displayName = isPackage
+                  ? pkg?.name || "パッケージ商品"
+                  : product?.name;
+                const displayCode = isPackage
+                  ? pkg?.package_code
+                  : product?.model_no;
 
                 return (
                   <div
@@ -525,12 +545,12 @@ export default function NewInvoicePage() {
                     <div className="grid gap-4 md:grid-cols-4">
                       <Info
                         label={`商品 ${index + 1}`}
-                        value={product?.name}
+                        value={displayName}
                       />
 
                       <Info
                         label="品番"
-                        value={product?.model_no}
+                        value={displayCode}
                       />
 
                       <Info

@@ -34,6 +34,12 @@ type ProductRelation = {
   manufacturers: ManufacturerRelation | ManufacturerRelation[] | null;
 };
 
+type PackageRelation = {
+  name: string | null;
+  package_code: string | null;
+  manufacturers: ManufacturerRelation | ManufacturerRelation[] | null;
+};
+
 type SupplierRelation = {
   name: string | null;
 };
@@ -68,10 +74,59 @@ export default async function CaseDetailPage({
 }) {
   const { id } = await params;
 
+  const caseProductsSelectWithSnapshot = `
+        id,
+        line_type,
+        quantity,
+        purchase_price,
+        sales_price,
+        gross_profit,
+        is_manual_price,
+        memo,
+        products (
+          name,
+          model_no,
+          category,
+          manufacturers (
+            name
+          )
+        ),
+        packages (
+          name,
+          package_code,
+          manufacturers (
+            name
+          )
+        ),
+        suppliers (
+          name
+        )
+      `;
+
+  const caseProductsSelectLegacy = `
+        id,
+        quantity,
+        purchase_price,
+        sales_price,
+        gross_profit,
+        memo,
+        products (
+          name,
+          model_no,
+          category,
+          manufacturers (
+            name
+          )
+        ),
+        suppliers (
+          name
+        )
+      `;
+
   const [
     { data: caseData, error: caseError },
     { data: tasksData, error: tasksError },
-    { data: caseProductsData, error: caseProductsError },
+    caseProductsPrimary,
     { data: ordersData, error: ordersError },
     { data: invoicesData, error: invoicesError },
     { data: paymentsData, error: paymentsError },
@@ -111,27 +166,7 @@ export default async function CaseDetailPage({
 
     supabase
       .from("case_products")
-      .select(
-        `
-        id,
-        quantity,
-        purchase_price,
-        sales_price,
-        gross_profit,
-        memo,
-        products (
-          name,
-          model_no,
-          category,
-          manufacturers (
-            name
-          )
-        ),
-        suppliers (
-          name
-        )
-      `
-      )
+      .select(caseProductsSelectWithSnapshot)
       .eq("case_id", id)
       .order("created_at", { ascending: true }),
 
@@ -192,6 +227,26 @@ export default async function CaseDetailPage({
     getCaseSettlementByCaseId(id),
   ]);
 
+  let caseProductsData =
+    caseProductsPrimary.data as Array<Record<string, unknown>> | null;
+  let caseProductsError = caseProductsPrimary.error;
+
+  if (
+    caseProductsError &&
+    /line_type|package_id|is_manual_price|packages|column .* does not exist/i.test(
+      caseProductsError.message
+    )
+  ) {
+    const fallback = await supabase
+      .from("case_products")
+      .select(caseProductsSelectLegacy)
+      .eq("case_id", id)
+      .order("created_at", { ascending: true });
+    caseProductsData = (fallback.data ||
+      null) as Array<Record<string, unknown>> | null;
+    caseProductsError = fallback.error;
+  }
+
   if (caseError || !caseData) {
     return (
       <div className="min-h-full bg-[#f7f7f5] p-8">
@@ -244,26 +299,47 @@ export default async function CaseDetailPage({
   };
 
   const products: CaseProductRow[] = (caseProductsData || []).map((row) => {
+    const lineType = (row.line_type as string | null) || "PRODUCT";
     const product = getSingleRelation(
       row.products as ProductRelation | ProductRelation[] | null
     );
-    const manufacturer = getSingleRelation(product?.manufacturers);
+    const pkg = getSingleRelation(
+      row.packages as PackageRelation | PackageRelation[] | null
+    );
+    const manufacturer = getSingleRelation(
+      lineType === "PACKAGE" ? pkg?.manufacturers : product?.manufacturers
+    );
     const supplier = getSingleRelation(
       row.suppliers as SupplierRelation | SupplierRelation[] | null
     );
+    const manual = Boolean(row.is_manual_price);
+    const memoBase = (row.memo as string) || "";
+    const memo =
+      manual && !memoBase.includes("手動価格")
+        ? memoBase
+          ? `${memoBase} / 手動価格`
+          : "手動価格"
+        : memoBase;
 
     return {
       id: row.id as string,
-      productName: product?.name || "",
-      modelNo: product?.model_no || "",
-      category: product?.category || "",
+      productName:
+        lineType === "PACKAGE"
+          ? pkg?.name || "パッケージ商品"
+          : product?.name || "",
+      modelNo:
+        lineType === "PACKAGE"
+          ? pkg?.package_code || ""
+          : product?.model_no || "",
+      category:
+        lineType === "PACKAGE" ? "パッケージ" : product?.category || "",
       manufacturerName: manufacturer?.name || "",
       supplierName: supplier?.name || "",
       quantity: row.quantity != null ? String(row.quantity) : "",
       purchasePrice: toNumber(row.purchase_price as number | string | null),
       salesPrice: toNumber(row.sales_price as number | string | null),
       grossProfit: toNumber(row.gross_profit as number | string | null),
-      memo: (row.memo as string) || "",
+      memo,
     };
   });
 
