@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { priceTargetLabel } from "@/lib/prices/targetType";
+import SalesPriceActions from "./SalesPriceActions";
 
 export const dynamic = "force-dynamic";
 
@@ -114,13 +115,14 @@ export default async function SalesPricesPage() {
                 <th className="px-5 py-4">適用開始</th>
                 <th className="px-5 py-4">適用終了</th>
                 <th className="px-5 py-4">状態</th>
+                <th className="px-5 py-4 text-center">操作</th>
               </tr>
             </thead>
 
             <tbody>
               {error ? (
                 <tr>
-                  <td colSpan={10} className="px-5 py-10 text-center text-red-500">
+                  <td colSpan={11} className="px-5 py-10 text-center text-red-500">
                     データ取得エラー：{error.message}
                   </td>
                 </tr>
@@ -165,13 +167,16 @@ export default async function SalesPricesPage() {
                           </span>
                         )}
                       </td>
+                      <td className="px-5 py-4 text-center">
+                        <SalesPriceActions id={item.id} />
+                      </td>
                     </tr>
                   );
                 })
               ) : (
                 <tr>
                   <td
-                    colSpan={10}
+                    colSpan={11}
                     className="px-5 py-10 text-center text-gray-500"
                   >
                     販売価格が登録されていません。
