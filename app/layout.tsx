@@ -20,6 +20,7 @@ const menuItems = [
   { name: "価格マスタ", href: "/prices" },
   { name: "販売価格マスタ", href: "/sales-prices" },
   { name: "請求管理", href: "/invoices" },
+  { name: "入金管理", href: "/payments" },
   { name: "タスク管理", href: "/tasks" },
 ];
 

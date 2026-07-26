@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { fetchActivePurchaseUnitPrice } from "@/lib/purchasePrices";
 import { supabase } from "@/lib/supabase";
 
 type Product = {
@@ -9,7 +10,10 @@ type Product = {
   name: string | null;
   model_no: string | null;
   category: string | null;
-  manufacturers: any;
+  manufacturers:
+    | { name: string | null }
+    | { name: string | null }[]
+    | null;
 };
 
 type Supplier = {
@@ -64,38 +68,32 @@ export default function NewCaseProductPage() {
   }, []);
 
   useEffect(() => {
-  async function fetchPrice() {
-    if (!form.product_id || !form.supplier_id) return;
+    async function fetchPrice() {
+      if (!form.product_id || !form.supplier_id) return;
 
-    const today = new Date().toISOString().slice(0, 10);
+      const result = await fetchActivePurchaseUnitPrice(supabase, {
+        productId: form.product_id,
+        supplierId: form.supplier_id,
+      });
 
-    const { data, error } = await supabase
-      .from("purchase_prices")
-      .select("purchase_price")
-      .eq("product_id", form.product_id)
-      .eq("supplier_id", form.supplier_id)
-      .eq("is_active", true)
-      .lte("start_date", today)
-      .or(`end_date.is.null,end_date.gte.${today}`)
-      .order("start_date", { ascending: false })
-      .limit(1)
-      .single();
+      if (result.error) {
+        console.log("価格取得なし", result.error);
+        return;
+      }
 
-    if (error) {
-      console.log("価格取得なし", error.message);
-      return;
+      if (!result.found) {
+        console.log("価格取得なし: 有効な purchase_prices が見つかりません");
+        return;
+      }
+
+      setForm((prev) => ({
+        ...prev,
+        purchase_price: String(result.unitPrice),
+      }));
     }
 
-    setForm((prev) => ({
-      ...prev,
-      purchase_price: data?.purchase_price
-        ? String(data.purchase_price)
-        : prev.purchase_price,
-    }));
-  }
-
-  fetchPrice();
-}, [form.product_id, form.supplier_id]);
+    void fetchPrice();
+  }, [form.product_id, form.supplier_id]);
 
   function handleChange(
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
@@ -107,9 +105,11 @@ export default function NewCaseProductPage() {
     e.preventDefault();
 
     const quantity = Number(form.quantity);
-    const purchasePrice = Number(form.purchase_price);
+    // フォームの仕入価格は単価。case_products.purchase_price は合計で保存する。
+    const purchaseUnitPrice = Number(form.purchase_price);
+    const purchasePriceTotal = Math.round(purchaseUnitPrice * quantity);
     const salesPrice = Number(form.sales_price);
-    const grossProfit = salesPrice - purchasePrice;
+    const grossProfit = salesPrice - purchasePriceTotal;
 
     setLoading(true);
 
@@ -118,7 +118,7 @@ export default function NewCaseProductPage() {
       product_id: form.product_id,
       supplier_id: form.supplier_id,
       quantity,
-      purchase_price: purchasePrice,
+      purchase_price: purchasePriceTotal,
       sales_price: salesPrice,
       gross_profit: grossProfit,
       memo: form.memo,
@@ -157,12 +157,17 @@ export default function NewCaseProductPage() {
                 className="w-full rounded-lg border px-4 py-3 text-sm"
               >
                 <option value="">商品を選択</option>
-                {products.map((product) => (
+                {products.map((product) => {
+                  const manufacturer = Array.isArray(product.manufacturers)
+                    ? product.manufacturers[0]
+                    : product.manufacturers;
+                  return (
                   <option key={product.id} value={product.id}>
-                    {product.manufacturers?.name || "-"} / {product.category || "-"} /{" "}
+                    {manufacturer?.name || "-"} / {product.category || "-"} /{" "}
                     {product.model_no || "-"} / {product.name || "-"}
                   </option>
-                ))}
+                  );
+                })}
               </select>
             </Field>
 

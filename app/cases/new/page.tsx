@@ -23,6 +23,7 @@ export default function NewCasePage() {
     order_type: "材工発注",
     product_name: "",
     quantity: "1",
+    order_received_date: new Date().toISOString().slice(0, 10),
     desired_delivery_date: "",
     delivery_address: "",
     construction_desired_date: "",
@@ -66,12 +67,18 @@ export default function NewCasePage() {
       return;
     }
 
+    if (!form.order_received_date) {
+      alert("受注日を入力してください");
+      return;
+    }
+
     setLoading(true);
 
     const { error } = await supabase.from("cases").insert({
       ...form,
       quantity: Number(form.quantity),
       case_no: form.case_no || `VE-${Date.now()}`,
+      order_received_date: form.order_received_date,
       desired_delivery_date: form.desired_delivery_date || null,
       construction_desired_date: form.construction_desired_date || null,
     });
@@ -172,6 +179,17 @@ export default function NewCasePage() {
                 value={form.quantity}
                 onChange={handleChange}
                 type="number"
+                className="w-full rounded-lg border px-4 py-3 text-sm"
+              />
+            </Field>
+
+            <Field label="受注日">
+              <input
+                name="order_received_date"
+                value={form.order_received_date}
+                onChange={handleChange}
+                type="date"
+                required
                 className="w-full rounded-lg border px-4 py-3 text-sm"
               />
             </Field>

@@ -1,28 +1,23 @@
 "use client";
 
-import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
 import {
-  ChangeEvent,
   FormEvent,
-  ReactNode,
+  use,
   useEffect,
   useMemo,
   useState,
 } from "react";
-
-import { supabase } from "@/lib/supabase";
-
-type Dealer = {
-  name: string | null;
-};
-
-type CaseData = {
-  id: string;
-  case_no: string | null;
-  customer_name: string | null;
-  dealers: Dealer | Dealer[] | null;
-};
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabaseClient";
+import {
+  PAYMENT_METHOD_OPTIONS,
+  PAYMENT_STATUS_OPTIONS,
+  type PaymentMethod,
+  type PaymentRecordStatus,
+} from "@/lib/payments/constants";
+import { buildPaymentInsertPayload } from "@/lib/payments/createPaymentPayload";
+import { summarizeInvoicePayments } from "@/lib/payments/invoicePaymentStatus";
 
 type InvoiceData = {
   id: string;
@@ -32,73 +27,138 @@ type InvoiceData = {
   due_date: string | null;
   invoice_amount: number | string | null;
   status: string | null;
-  cases: CaseData | CaseData[] | null;
+  cases:
+    | {
+        id: string;
+        case_no: string | null;
+        customer_name: string | null;
+        dealers:
+          | {
+              name: string | null;
+            }
+          | {
+              name: string | null;
+            }[]
+          | null;
+      }
+    | {
+        id: string;
+        case_no: string | null;
+        customer_name: string | null;
+        dealers:
+          | {
+              name: string | null;
+            }
+          | {
+              name: string | null;
+            }[]
+          | null;
+      }[]
+    | null;
 };
 
 type PaymentData = {
   id: string;
   payment_date: string | null;
   payment_amount: number | string | null;
+  payment_method: string | null;
+  payer_name: string | null;
+  bank_account: string | null;
   status: string | null;
   memo: string | null;
   created_at: string | null;
 };
 
-type PaymentForm = {
+type PaymentFormState = {
   payment_date: string;
   payment_amount: string;
-  status: string;
+  payment_method: PaymentMethod;
+  payer_name: string;
+  bank_account: string;
+  status: PaymentRecordStatus;
   memo: string;
 };
 
-const PAYMENT_STATUSES = [
-  "入金確認済",
-  "入金確認中",
-  "取消",
-];
+function getSingleRelation<T>(value: T | T[] | null | undefined): T | null {
+  if (!value) return null;
+  return Array.isArray(value) ? value[0] || null : value;
+}
 
-export default function NewPaymentPage() {
+function toNumber(value: number | string | null | undefined) {
+  if (value === null || value === undefined || value === "") return 0;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function formatCurrency(value: number | string | null | undefined) {
+  return new Intl.NumberFormat("ja-JP", {
+    style: "currency",
+    currency: "JPY",
+  }).format(toNumber(value));
+}
+
+function formatDate(value: string | null | undefined) {
+  if (!value) return "-";
+  return new Date(value).toLocaleDateString("ja-JP");
+}
+
+function todayString() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    value
+  );
+}
+
+function StatusBadge({ status }: { status: string | null | undefined }) {
+  const s = status || "-";
+  let className = "bg-gray-100 text-gray-700";
+  if (s === "入金確認済") className = "bg-green-100 text-green-700";
+  else if (s === "確認待ち" || s === "入金確認中")
+    className = "bg-yellow-100 text-yellow-800";
+  else if (s === "取消") className = "bg-red-100 text-red-700";
+
+  return (
+    <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${className}`}>
+      {s}
+    </span>
+  );
+}
+
+export default function NewPaymentPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id: invoiceId } = use(params);
   const router = useRouter();
-  const params = useParams<{ id: string }>();
 
-  const invoiceId = params?.id || "";
+  const [invoice, setInvoice] = useState<InvoiceData | null>(null);
+  const [payments, setPayments] = useState<PaymentData[]>([]);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [loadError, setLoadError] = useState("");
+  const [submitError, setSubmitError] = useState("");
 
-  const [invoice, setInvoice] =
-    useState<InvoiceData | null>(null);
-
-  const [payments, setPayments] =
-    useState<PaymentData[]>([]);
-
-  const [initialLoading, setInitialLoading] =
-    useState(true);
-
-  const [submitting, setSubmitting] =
-    useState(false);
-
-  const [loadError, setLoadError] =
-    useState("");
-
-  const [submitError, setSubmitError] =
-    useState("");
-
-  const [form, setForm] = useState<PaymentForm>({
-    payment_date: getTodayString(),
+  const [form, setForm] = useState<PaymentFormState>({
+    payment_date: todayString(),
     payment_amount: "",
+    payment_method: "銀行振込",
+    payer_name: "",
+    bank_account: "",
     status: "入金確認済",
     memo: "",
   });
 
   useEffect(() => {
-    if (!invoiceId) {
-      setLoadError("請求IDを取得できませんでした。");
-      setInitialLoading(false);
-      return;
-    }
-
-    if (!isUuid(invoiceId)) {
-      setLoadError(
-        "請求IDの形式が正しくありません。請求一覧から開き直してください。"
-      );
+    if (!invoiceId || !isUuid(invoiceId)) {
+      setLoadError("請求IDの形式が正しくありません。");
       setInitialLoading(false);
       return;
     }
@@ -107,19 +167,10 @@ export default function NewPaymentPage() {
       setInitialLoading(true);
       setLoadError("");
 
-      const [
-        {
-          data: invoiceData,
-          error: invoiceError,
-        },
-        {
-          data: paymentData,
-          error: paymentError,
-        },
-      ] = await Promise.all([
-        supabase
-          .from("invoices")
-          .select(`
+      const invoiceRes = await supabase
+        .from("invoices")
+        .select(
+          `
             id,
             case_id,
             invoice_no,
@@ -131,696 +182,441 @@ export default function NewPaymentPage() {
               id,
               case_no,
               customer_name,
-              dealers (
-                name
-              )
+              dealers ( name )
             )
-          `)
-          .eq("id", invoiceId)
-          .single(),
+          `
+        )
+        .eq("id", invoiceId)
+        .single();
 
-        supabase
+      if (invoiceRes.error || !invoiceRes.data) {
+        setLoadError(invoiceRes.error?.message || "請求情報が見つかりませんでした。");
+        setInitialLoading(false);
+        return;
+      }
+
+      let paymentData: PaymentData[] = [];
+      const withCols = await supabase
+        .from("payments")
+        .select(
+          `
+            id, payment_date, payment_amount, payment_method,
+            payer_name, bank_account, status, memo, created_at
+          `
+        )
+        .eq("invoice_id", invoiceId)
+        .order("payment_date", { ascending: false, nullsFirst: false })
+        .order("created_at", { ascending: false });
+
+      if (withCols.error) {
+        const fallback = await supabase
           .from("payments")
-          .select(`
-            id,
-            payment_date,
-            payment_amount,
-            status,
-            memo,
-            created_at
-          `)
+          .select(`id, payment_date, payment_amount, status, memo, created_at`)
           .eq("invoice_id", invoiceId)
-          .order("payment_date", {
-            ascending: false,
-            nullsFirst: false,
-          })
-          .order("created_at", {
-            ascending: false,
-          }),
-      ]);
-
-      if (invoiceError || !invoiceData) {
-        console.error(
-          "請求情報取得エラー:",
-          invoiceError
-        );
-
-        setLoadError(
-          invoiceError?.message ||
-            "請求情報が見つかりませんでした。"
-        );
-
-        setInitialLoading(false);
-        return;
+          .order("payment_date", { ascending: false, nullsFirst: false })
+          .order("created_at", { ascending: false });
+        if (fallback.error) {
+          setLoadError(`入金情報の取得に失敗しました：${fallback.error.message}`);
+          setInitialLoading(false);
+          return;
+        }
+        paymentData = (fallback.data || []) as PaymentData[];
+      } else {
+        paymentData = (withCols.data || []) as PaymentData[];
       }
 
-      if (paymentError) {
-        console.error(
-          "入金情報取得エラー:",
-          paymentError
-        );
-
-        setLoadError(
-          `入金情報の取得に失敗しました：${paymentError.message}`
-        );
-
-        setInitialLoading(false);
-        return;
-      }
-
-      const normalizedInvoice =
-        invoiceData as unknown as InvoiceData;
-
-      const normalizedPayments =
-        (paymentData || []) as PaymentData[];
-
+      const normalizedInvoice = invoiceRes.data as unknown as InvoiceData;
       setInvoice(normalizedInvoice);
-      setPayments(normalizedPayments);
+      setPayments(paymentData);
 
-      const invoiceAmount = toNumber(
-        normalizedInvoice.invoice_amount
-      );
-
-      const paidAmount =
-        calculatePaidAmount(normalizedPayments);
-
-      const remainingAmount = Math.max(
-        invoiceAmount - paidAmount,
-        0
-      );
+      const summary = summarizeInvoicePayments({
+        invoiceAmount: toNumber(normalizedInvoice.invoice_amount),
+        dueDate: normalizedInvoice.due_date,
+        payments: paymentData.map((p) => ({
+          paymentAmount: toNumber(p.payment_amount),
+          status: p.status,
+        })),
+      });
 
       setForm((current) => ({
         ...current,
         payment_amount:
-          remainingAmount > 0
-            ? String(remainingAmount)
-            : "",
+          summary.unpaidAmount > 0 ? String(summary.unpaidAmount) : "",
       }));
-
       setInitialLoading(false);
     }
 
     fetchInitialData();
   }, [invoiceId]);
 
-  const caseData = useMemo(() => {
-    return getSingleRelation(invoice?.cases);
-  }, [invoice]);
+  const caseData = useMemo(() => getSingleRelation(invoice?.cases), [invoice]);
+  const dealer = useMemo(() => getSingleRelation(caseData?.dealers), [caseData]);
 
-  const dealer = useMemo(() => {
-    return getSingleRelation(caseData?.dealers);
-  }, [caseData]);
-
-  const invoiceAmount = useMemo(() => {
-    return toNumber(invoice?.invoice_amount);
-  }, [invoice]);
-
-  const paidAmount = useMemo(() => {
-    return calculatePaidAmount(payments);
-  }, [payments]);
-
-  const remainingAmount = Math.max(
-    invoiceAmount - paidAmount,
-    0
+  const summary = useMemo(
+    () =>
+      summarizeInvoicePayments({
+        invoiceAmount: toNumber(invoice?.invoice_amount),
+        dueDate: invoice?.due_date,
+        payments: payments.map((p) => ({
+          paymentAmount: toNumber(p.payment_amount),
+          status: p.status,
+        })),
+      }),
+    [invoice, payments]
   );
 
-  function handleChange(
-    event: ChangeEvent<
-      HTMLInputElement |
-      HTMLTextAreaElement |
-      HTMLSelectElement
-    >
-  ) {
-    const { name, value } = event.target;
+  const draftAmount = toNumber(form.payment_amount);
+  const projectedPaid =
+    form.status === "入金確認済"
+      ? summary.confirmedPaidAmount + draftAmount
+      : summary.confirmedPaidAmount;
+  const projectedOverpay = Math.max(projectedPaid - summary.invoiceAmount, 0);
 
-    setForm((current) => ({
-      ...current,
-      [name]: value,
-    }));
-  }
-
-  async function handleSubmit(
-    event: FormEvent<HTMLFormElement>
-  ) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-
-    if (!invoice) {
-      setSubmitError(
-        "請求情報を取得できていません。"
-      );
-      return;
-    }
-
     setSubmitError("");
-
-    const paymentAmount = toNumber(
-      form.payment_amount
-    );
-
-    if (!form.payment_date) {
-      setSubmitError(
-        "入金日を入力してください。"
-      );
-      return;
-    }
-
-    if (paymentAmount <= 0) {
-      setSubmitError(
-        "入金金額は1円以上で入力してください。"
-      );
-      return;
-    }
-
-    if (remainingAmount <= 0) {
-      setSubmitError(
-        "この請求はすでに全額入金済みです。"
-      );
-      return;
-    }
-
-    if (
-      form.status !== "取消" &&
-      paymentAmount > remainingAmount
-    ) {
-      setSubmitError(
-        `入金残高の${formatCurrency(
-          remainingAmount
-        )}を超えて登録できません。`
-      );
-      return;
-    }
-
     setSubmitting(true);
 
-    const {
-      data: insertedPayment,
-      error: paymentError,
-    } = await supabase
-      .from("payments")
-      .insert({
-        case_id: invoice.case_id,
-        invoice_id: invoice.id,
-        payment_date: form.payment_date,
-        payment_amount: paymentAmount,
-        status: form.status,
-        memo: form.memo.trim() || null,
-      })
-      .select("id")
-      .single();
-
-    if (paymentError || !insertedPayment) {
-      console.error(
-        "入金登録エラー:",
-        paymentError
-      );
-
-      setSubmitError(
-        `入金登録に失敗しました：${
-          paymentError?.message ||
-          "登録結果を取得できませんでした。"
-        }`
-      );
-
+    // case_id は画面 state を信用せず、invoice_id から再取得して決定する
+    if (!invoiceId || !isUuid(invoiceId)) {
+      setSubmitError("invoice_id は必須です。");
       setSubmitting(false);
       return;
     }
 
-    const effectivePaymentAmount =
-      form.status === "取消"
-        ? 0
-        : paymentAmount;
-
-    const newPaidAmount =
-      paidAmount + effectivePaymentAmount;
-
-    const newRemainingAmount = Math.max(
-      invoiceAmount - newPaidAmount,
-      0
-    );
-
-    const nextInvoiceStatus =
-      newRemainingAmount <= 0
-        ? "入金済"
-        : newPaidAmount > 0
-        ? "一部入金"
-        : "入金待ち";
-
-    const nextCaseStatus =
-      newRemainingAmount <= 0
-        ? "入金済"
-        : "入金待ち";
-
-    const {
-      error: invoiceUpdateError,
-    } = await supabase
+    const { data: freshInvoice, error: freshError } = await supabase
       .from("invoices")
-      .update({
-        status: nextInvoiceStatus,
-      })
-      .eq("id", invoice.id);
+      .select("id, case_id")
+      .eq("id", invoiceId)
+      .single();
 
-    if (invoiceUpdateError) {
-      console.error(
-        "請求ステータス更新エラー:",
-        invoiceUpdateError
+    if (freshError || !freshInvoice) {
+      setSubmitError(
+        freshError?.message || "請求情報の再取得に失敗しました。"
       );
-
-      window.alert(
-        `入金は登録されましたが、請求ステータスの更新に失敗しました。\n${invoiceUpdateError.message}`
-      );
+      setSubmitting(false);
+      return;
     }
 
-    if (invoice.case_id) {
-      const {
-        error: caseUpdateError,
-      } = await supabase
-        .from("cases")
-        .update({
-          status: nextCaseStatus,
-        })
-        .eq("id", invoice.case_id);
+    const built = buildPaymentInsertPayload({
+      invoice: freshInvoice,
+      invoiceId,
+      paymentDate: form.payment_date,
+      paymentAmount: form.payment_amount,
+      paymentMethod: form.payment_method,
+      payerName: form.payer_name,
+      bankAccount: form.bank_account,
+      status: form.status,
+      memo: form.memo,
+    });
 
-      if (caseUpdateError) {
-        console.error(
-          "案件ステータス更新エラー:",
-          caseUpdateError
-        );
+    if (!built.ok) {
+      setSubmitError(built.error);
+      setSubmitting(false);
+      return;
+    }
 
-        window.alert(
-          `入金は登録されましたが、案件ステータスの更新に失敗しました。\n${caseUpdateError.message}`
-        );
+    const extendedPayload = built.payload;
+    const basePayload = {
+      invoice_id: extendedPayload.invoice_id,
+      case_id: extendedPayload.case_id,
+      payment_date: extendedPayload.payment_date,
+      payment_amount: extendedPayload.payment_amount,
+      status: extendedPayload.status,
+      memo: extendedPayload.memo,
+    };
+
+    let insertError = (
+      await supabase.from("payments").insert([extendedPayload]).select("id").single()
+    ).error;
+
+    if (insertError) {
+      const msg = insertError.message || "";
+      if (
+        msg.includes("payment_method") ||
+        msg.includes("payer_name") ||
+        msg.includes("bank_account") ||
+        msg.includes("schema cache")
+      ) {
+        insertError = (
+          await supabase.from("payments").insert([basePayload]).select("id").single()
+        ).error;
       }
     }
 
-    setSubmitting(false);
+    if (insertError) {
+      setSubmitError(`入金登録に失敗しました：${insertError.message}`);
+      setSubmitting(false);
+      return;
+    }
 
-    router.push(`/invoices/${invoice.id}`);
+    router.push(`/invoices/${invoiceId}`);
     router.refresh();
   }
 
   if (initialLoading) {
     return (
-      <>
-        <PageHeader
-          title="入金登録"
-          description="請求情報を読み込んでいます。"
-        />
-
-        <main className="p-4 md:p-8">
-          <div className="rounded-xl bg-white p-8 text-center shadow-sm">
-            <p className="text-sm text-gray-500">
-              読み込み中...
-            </p>
-          </div>
-        </main>
-      </>
+      <main className="min-h-screen bg-gray-50">
+        <div className="mx-auto max-w-3xl px-4 py-8">
+          <div className="rounded-xl bg-white p-6 shadow-sm">読み込み中...</div>
+        </div>
+      </main>
     );
   }
 
   if (loadError || !invoice) {
     return (
-      <>
-        <PageHeader
-          title="入金登録"
-          description="請求情報を取得できませんでした。"
-        />
-
-        <main className="p-4 md:p-8">
-          <div className="rounded-xl border border-red-200 bg-red-50 p-6">
-            <p className="font-bold text-red-700">
-              データ取得エラー
-            </p>
-
-            <p className="mt-2 break-words text-sm text-red-600">
-              {loadError ||
-                "請求情報が見つかりません。"}
-            </p>
-
-            <Link
-              href="/invoices"
-              className="mt-5 inline-flex rounded-lg bg-red-700 px-4 py-2 text-sm font-bold text-white"
-            >
+      <main className="min-h-screen bg-gray-50">
+        <div className="mx-auto max-w-3xl px-4 py-8">
+          <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-red-700">
+            {loadError || "請求情報を取得できませんでした。"}
+          </div>
+          <div className="mt-4">
+            <Link href="/invoices" className="text-sm font-bold text-blue-600 hover:underline">
               請求一覧へ戻る
             </Link>
           </div>
-        </main>
-      </>
+        </div>
+      </main>
     );
   }
 
   return (
-    <>
-      <PageHeader
-        title="入金登録"
-        description={`請求番号：${
-          invoice.invoice_no || "-"
-        } / 販売店：${dealer?.name || "-"}`}
-      />
-
-      <main className="space-y-6 p-4 md:p-8">
-        <div>
+    <main className="min-h-screen bg-gray-50">
+      <div className="mx-auto max-w-3xl px-4 py-8">
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-sm text-gray-500">入金登録</p>
+            <h1 className="text-2xl font-bold text-gray-900">
+              請求 {invoice.invoice_no || "-"}
+            </h1>
+            <p className="mt-1 text-sm text-gray-600">
+              案件 {caseData?.case_no || "-"} / {caseData?.customer_name || "-"} /{" "}
+              {dealer?.name || "-"}
+            </p>
+          </div>
           <Link
             href={`/invoices/${invoice.id}`}
-            className="inline-flex rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50"
+            className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50"
           >
-            ← 請求詳細へ戻る
+            請求詳細へ戻る
           </Link>
         </div>
 
-        <section className="grid gap-4 md:grid-cols-3">
+        <section className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <SummaryCard label="請求金額" value={formatCurrency(summary.invoiceAmount)} />
           <SummaryCard
-            label="請求金額"
-            value={formatCurrency(invoiceAmount)}
+            label="入金済額"
+            value={formatCurrency(summary.confirmedPaidAmount)}
           />
-
           <SummaryCard
-            label="入金済み"
-            value={formatCurrency(paidAmount)}
+            label="未入金金額"
+            value={formatCurrency(summary.unpaidAmount)}
+            alert={summary.unpaidAmount > 0}
           />
-
           <SummaryCard
-            label="入金残高"
-            value={formatCurrency(remainingAmount)}
-            alert={remainingAmount > 0}
+            label="入金状況"
+            value={summary.displayStatus}
+            alert={summary.isOverdue}
           />
         </section>
 
-        <section className="rounded-xl bg-white p-5 shadow-sm md:p-6">
-          <h2 className="mb-5 text-lg font-bold text-gray-900">
-            請求情報
-          </h2>
-
-          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-            <Info
-              label="請求番号"
-              value={invoice.invoice_no}
-            />
-
-            <Info
-              label="案件番号"
-              value={caseData?.case_no}
-            />
-
-            <Info
-              label="販売店"
-              value={dealer?.name}
-            />
-
-            <Info
-              label="顧客名"
-              value={caseData?.customer_name}
-            />
-
-            <Info
-              label="請求日"
-              value={formatDate(
-                invoice.invoice_date
-              )}
-            />
-
-            <Info
-              label="支払期限"
-              value={formatDate(
-                invoice.due_date
-              )}
-            />
-
-            <Info
-              label="請求ステータス"
-              value={invoice.status}
-            />
+        {summary.warnings.length > 0 ? (
+          <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            {summary.warnings.map((w) => (
+              <p key={w}>{w}</p>
+            ))}
           </div>
-        </section>
-
-        <section className="rounded-xl bg-white p-5 shadow-sm md:p-6">
-          <div className="mb-5">
-            <h2 className="text-lg font-bold text-gray-900">
-              入金履歴
-            </h2>
-
-            <p className="mt-1 text-sm text-gray-500">
-              登録件数：{payments.length}件
-            </p>
-          </div>
-
-          {payments.length > 0 ? (
-            <div className="space-y-3">
-              {payments.map((payment) => (
-                <div
-                  key={payment.id}
-                  className="rounded-lg border border-gray-200 p-4"
-                >
-                  <div className="grid gap-4 md:grid-cols-4">
-                    <Info
-                      label="入金日"
-                      value={formatDate(
-                        payment.payment_date
-                      )}
-                    />
-
-                    <Info
-                      label="入金金額"
-                      value={formatCurrency(
-                        payment.payment_amount
-                      )}
-                    />
-
-                    <Info
-                      label="ステータス"
-                      value={payment.status}
-                    />
-
-                    <Info
-                      label="登録日時"
-                      value={formatDateTime(
-                        payment.created_at
-                      )}
-                    />
-                  </div>
-
-                  {payment.memo ? (
-                    <div className="mt-4 border-t pt-4">
-                      <p className="text-xs font-bold text-gray-500">
-                        備考
-                      </p>
-
-                      <p className="mt-1 whitespace-pre-wrap text-sm text-gray-700">
-                        {payment.memo}
-                      </p>
-                    </div>
-                  ) : null}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm text-gray-500">
-              入金情報はまだ登録されていません。
-            </p>
-          )}
-        </section>
+        ) : null}
 
         <form
           onSubmit={handleSubmit}
-          className="rounded-xl bg-white p-5 shadow-sm md:p-6"
+          className="space-y-5 rounded-xl bg-white p-5 shadow-sm md:p-6"
         >
-          <h2 className="mb-5 text-lg font-bold text-gray-900">
-            入金内容
-          </h2>
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="block">
+              <span className="mb-1 block text-sm font-bold text-gray-700">入金日 *</span>
+              <input
+                type="date"
+                name="payment_date"
+                value={form.payment_date}
+                onChange={(e) =>
+                  setForm((c) => ({ ...c, payment_date: e.target.value }))
+                }
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                required
+              />
+            </label>
+
+            <label className="block">
+              <span className="mb-1 block text-sm font-bold text-gray-700">入金金額 *</span>
+              <input
+                type="number"
+                name="payment_amount"
+                min={1}
+                step={1}
+                value={form.payment_amount}
+                onChange={(e) =>
+                  setForm((c) => ({ ...c, payment_amount: e.target.value }))
+                }
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                required
+              />
+              <p className="mt-1 text-xs text-gray-500">
+                未入金残高: {formatCurrency(summary.unpaidAmount)}
+                （過入金も登録可）
+              </p>
+            </label>
+
+            <label className="block">
+              <span className="mb-1 block text-sm font-bold text-gray-700">入金方法 *</span>
+              <select
+                name="payment_method"
+                value={form.payment_method}
+                onChange={(e) =>
+                  setForm((c) => ({
+                    ...c,
+                    payment_method: e.target.value as PaymentMethod,
+                  }))
+                }
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                required
+              >
+                {PAYMENT_METHOD_OPTIONS.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="block">
+              <span className="mb-1 block text-sm font-bold text-gray-700">ステータス *</span>
+              <select
+                name="status"
+                value={form.status}
+                onChange={(e) =>
+                  setForm((c) => ({
+                    ...c,
+                    status: e.target.value as PaymentRecordStatus,
+                  }))
+                }
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                required
+              >
+                {PAYMENT_STATUS_OPTIONS.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-gray-500">
+                「入金確認済」のみ集計・Workflow判定の対象です
+              </p>
+            </label>
+
+            <label className="block">
+              <span className="mb-1 block text-sm font-bold text-gray-700">振込名義</span>
+              <input
+                type="text"
+                name="payer_name"
+                value={form.payer_name}
+                onChange={(e) =>
+                  setForm((c) => ({ ...c, payer_name: e.target.value }))
+                }
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                placeholder="例: ヤマダタロウ"
+              />
+            </label>
+
+            <label className="block">
+              <span className="mb-1 block text-sm font-bold text-gray-700">入金先口座</span>
+              <input
+                type="text"
+                name="bank_account"
+                value={form.bank_account}
+                onChange={(e) =>
+                  setForm((c) => ({ ...c, bank_account: e.target.value }))
+                }
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                placeholder="例: ○○銀行 普通 1234567"
+              />
+            </label>
+          </div>
+
+          <label className="block">
+            <span className="mb-1 block text-sm font-bold text-gray-700">備考</span>
+            <textarea
+              name="memo"
+              value={form.memo}
+              onChange={(e) => setForm((c) => ({ ...c, memo: e.target.value }))}
+              rows={3}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            />
+          </label>
+
+          {form.status === "入金確認済" && projectedOverpay > 0 ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              この登録後、過入金 {formatCurrency(projectedOverpay)} になります（入金済として扱います）。
+            </div>
+          ) : null}
 
           {submitError ? (
-            <div className="mb-5 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
               {submitError}
             </div>
           ) : null}
 
-          {remainingAmount <= 0 ? (
-            <div className="rounded-lg border border-green-200 bg-green-50 p-5 text-sm font-bold text-green-700">
-              この請求は全額入金済みです。
-            </div>
-          ) : (
-            <>
-              <div className="grid gap-5 md:grid-cols-2">
-                <Field
-                  label="入金日"
-                  required
-                >
-                  <input
-                    type="date"
-                    name="payment_date"
-                    value={form.payment_date}
-                    onChange={handleChange}
-                    className={inputClassName}
-                    disabled={submitting}
-                  />
-                </Field>
-
-                <Field
-                  label="入金ステータス"
-                  required
-                >
-                  <select
-                    name="status"
-                    value={form.status}
-                    onChange={handleChange}
-                    className={inputClassName}
-                    disabled={submitting}
-                  >
-                    {PAYMENT_STATUSES.map(
-                      (status) => (
-                        <option
-                          key={status}
-                          value={status}
-                        >
-                          {status}
-                        </option>
-                      )
-                    )}
-                  </select>
-                </Field>
-
-                <Field
-                  label="入金金額"
-                  required
-                  description={`現在の入金残高：${formatCurrency(
-                    remainingAmount
-                  )}`}
-                >
-                  <div className="relative">
-                    <input
-                      type="number"
-                      name="payment_amount"
-                      min="1"
-                      max={remainingAmount}
-                      step="1"
-                      value={form.payment_amount}
-                      onChange={handleChange}
-                      className={`${inputClassName} pr-10 text-right`}
-                      disabled={submitting}
-                    />
-
-                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">
-                      円
-                    </span>
-                  </div>
-                </Field>
-
-                <div className="md:col-span-2">
-                  <Field label="備考">
-                    <textarea
-                      name="memo"
-                      value={form.memo}
-                      onChange={handleChange}
-                      rows={5}
-                      placeholder="振込名義、確認事項、特記事項など"
-                      className={inputClassName}
-                      disabled={submitting}
-                    />
-                  </Field>
-                </div>
-              </div>
-
-              <div className="mt-8 flex flex-col-reverse gap-3 border-t pt-6 sm:flex-row sm:justify-end">
-                <Link
-                  href={`/invoices/${invoice.id}`}
-                  className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-5 py-3 text-sm font-bold text-gray-700 hover:bg-gray-50"
-                >
-                  キャンセル
-                </Link>
-
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="inline-flex items-center justify-center rounded-lg bg-gray-900 px-5 py-3 text-sm font-bold text-white hover:bg-gray-700 disabled:cursor-not-allowed disabled:bg-gray-400"
-                >
-                  {submitting
-                    ? "登録しています..."
-                    : "入金を登録する"}
-                </button>
-              </div>
-            </>
-          )}
+          <div className="flex flex-wrap gap-3">
+            <button
+              type="submit"
+              disabled={submitting}
+              className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-60"
+            >
+              {submitting ? "登録中..." : "入金を登録"}
+            </button>
+            <Link
+              href={`/invoices/${invoice.id}`}
+              className="rounded-lg border border-gray-300 bg-white px-5 py-2.5 text-sm font-bold text-gray-700 hover:bg-gray-50"
+            >
+              キャンセル
+            </Link>
+          </div>
         </form>
-      </main>
-    </>
-  );
-}
 
-const inputClassName =
-  "w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-gray-900 focus:ring-1 focus:ring-gray-900 disabled:cursor-not-allowed disabled:bg-gray-100";
-
-function PageHeader({
-  title,
-  description,
-}: {
-  title: string;
-  description?: string;
-}) {
-  return (
-    <header className="border-b bg-white px-4 py-5 md:px-8">
-      <h1 className="text-2xl font-bold text-gray-900">
-        {title}
-      </h1>
-
-      {description ? (
-        <p className="mt-1 text-sm text-gray-500">
-          {description}
-        </p>
-      ) : null}
-    </header>
-  );
-}
-
-function Field({
-  label,
-  required = false,
-  description,
-  children,
-}: {
-  label: string;
-  required?: boolean;
-  description?: string;
-  children: ReactNode;
-}) {
-  return (
-    <label className="block">
-      <span className="text-sm font-bold text-gray-700">
-        {label}
-
-        {required ? (
-          <span className="ml-1 text-red-600">
-            *
-          </span>
-        ) : null}
-      </span>
-
-      {description ? (
-        <span className="mt-1 block text-xs text-gray-500">
-          {description}
-        </span>
-      ) : null}
-
-      <div className="mt-2">{children}</div>
-    </label>
-  );
-}
-
-function Info({
-  label,
-  value,
-}: {
-  label: string;
-  value: string | null | undefined;
-}) {
-  return (
-    <div>
-      <p className="text-xs font-bold text-gray-500">
-        {label}
-      </p>
-
-      <p className="mt-1 break-words text-sm text-gray-900">
-        {value || "-"}
-      </p>
-    </div>
+        <section className="mt-6 rounded-xl bg-white p-5 shadow-sm md:p-6">
+          <h2 className="mb-4 text-lg font-bold text-gray-900">既存の入金履歴</h2>
+          {payments.length === 0 ? (
+            <p className="text-sm text-gray-500">まだ入金はありません。</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left text-xs text-gray-500">
+                    <th className="py-2 pr-3">入金日</th>
+                    <th className="py-2 pr-3">金額</th>
+                    <th className="py-2 pr-3">方法</th>
+                    <th className="py-2 pr-3">ステータス</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {payments.map((p) => (
+                    <tr key={p.id} className="border-b border-gray-100">
+                      <td className="py-2 pr-3">{formatDate(p.payment_date)}</td>
+                      <td className="py-2 pr-3">{formatCurrency(p.payment_amount)}</td>
+                      <td className="py-2 pr-3">{p.payment_method || "-"}</td>
+                      <td className="py-2 pr-3">
+                        <StatusBadge status={p.status} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      </div>
+    </main>
   );
 }
 
@@ -834,142 +630,15 @@ function SummaryCard({
   alert?: boolean;
 }) {
   return (
-    <div
-      className={`rounded-xl p-5 shadow-sm ${
-        alert
-          ? "border border-orange-200 bg-orange-50"
-          : "bg-white"
-      }`}
-    >
+    <div className="rounded-xl bg-white p-4 shadow-sm">
+      <p className="text-xs font-bold text-gray-500">{label}</p>
       <p
-        className={`text-xs font-bold ${
-          alert
-            ? "text-orange-600"
-            : "text-gray-500"
-        }`}
-      >
-        {label}
-      </p>
-
-      <p
-        className={`mt-2 text-2xl font-bold ${
-          alert
-            ? "text-orange-700"
-            : "text-gray-900"
+        className={`mt-2 text-lg font-bold ${
+          alert ? "text-red-600" : "text-gray-900"
         }`}
       >
         {value}
       </p>
     </div>
-  );
-}
-
-function getSingleRelation<T>(
-  relation: T | T[] | null | undefined
-): T | null {
-  if (!relation) {
-    return null;
-  }
-
-  if (Array.isArray(relation)) {
-    return relation[0] || null;
-  }
-
-  return relation;
-}
-
-function calculatePaidAmount(
-  payments: PaymentData[]
-): number {
-  return payments.reduce(
-    (total, payment) => {
-      if (payment.status === "取消") {
-        return total;
-      }
-
-      return (
-        total +
-        toNumber(payment.payment_amount)
-      );
-    },
-    0
-  );
-}
-
-function toNumber(
-  value: number | string | null | undefined
-): number {
-  if (
-    value === null ||
-    value === undefined ||
-    value === ""
-  ) {
-    return 0;
-  }
-
-  const numberValue = Number(value);
-
-  return Number.isFinite(numberValue)
-    ? numberValue
-    : 0;
-}
-
-function formatCurrency(
-  value: number | string | null | undefined
-): string {
-  return `${toNumber(value).toLocaleString(
-    "ja-JP"
-  )}円`;
-}
-
-function formatDate(
-  value: string | null | undefined
-): string {
-  if (!value) {
-    return "-";
-  }
-
-  const date = new Date(`${value}T00:00:00`);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return date.toLocaleDateString("ja-JP");
-}
-
-function formatDateTime(
-  value: string | null | undefined
-): string {
-  if (!value) {
-    return "-";
-  }
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return date.toLocaleString("ja-JP");
-}
-
-function getTodayString(): string {
-  const now = new Date();
-
-  const year = now.getFullYear();
-  const month = String(
-    now.getMonth() + 1
-  ).padStart(2, "0");
-  const day = String(
-    now.getDate()
-  ).padStart(2, "0");
-
-  return `${year}-${month}-${day}`;
-}
-
-function isUuid(value: string): boolean {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-    value
   );
 }

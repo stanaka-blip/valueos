@@ -6,7 +6,11 @@
     "dev": "next dev --port 3001 --hostname 0.0.0.0",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:workflow": "tsx lib/workflow/WorkflowEngine.test.ts",
+    "test:payments": "tsx lib/payments/invoicePaymentStatus.test.ts",
+    "test:dashboard": "tsx lib/dashboard/period.test.ts && tsx lib/dashboard/salesByOrderReceived.test.ts",
+    "gen:db-types": "bash scripts/generate-database-types.sh"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.0",
@@ -21,7 +25,9 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.10",
+    "playwright": "^1.62.0",
     "tailwindcss": "^4",
+    "tsx": "^4.23.1",
     "typescript": "^5"
   }
 }
