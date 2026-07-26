@@ -9,6 +9,7 @@ import {
 } from "@/lib/dashboard/period";
 import { sumSalesAndProfit } from "@/lib/dashboard/salesMetrics";
 import { summarizeInvoicePayments } from "@/lib/payments/invoicePaymentStatus";
+import { isActiveInvoiceStatus } from "@/lib/status/activeRecords";
 import { supabase } from "@/lib/supabase";
 
 export type TrendPoint = {
@@ -29,7 +30,9 @@ export type DashboardKpis = {
 export type DashboardAlerts = {
   unorderedCount: number;
   uninvoicedCount: number;
+  /** 未入金件数（請求単位: paymentStatus が 未入金 or 一部入金） */
   unpaidInvoiceCount: number;
+  /** 期限超過件数（請求単位: isOverdue） */
   overdueInvoiceCount: number;
   unorderedCaseIds: string[];
   uninvoicedCaseIds: string[];
@@ -93,7 +96,7 @@ export async function loadDashboard(input: {
   const invoices = invoiceRows || [];
   const payments = paymentRows || [];
 
-  // --- KPI: 期間内売上・実粗利（既存 case_products 合計） ---
+  // --- KPI: 期間内売上・実粗利（case_products.created_at = 明細登録日） ---
   const periodProducts = products.filter((p) =>
     isDateInRange(p.created_at as string, period.from, period.to)
   );
@@ -121,7 +124,7 @@ export async function loadDashboard(input: {
   let overdueInvoiceCount = 0;
 
   for (const inv of invoices) {
-    if ((inv.status as string) === "取消") continue;
+    if (!isActiveInvoiceStatus(inv.status as string)) continue;
     const invPayments = paymentsByInvoice.get(inv.id as string) || [];
     const summary = summarizeInvoicePayments({
       invoiceAmount: inv.invoice_amount as number,
@@ -132,7 +135,7 @@ export async function loadDashboard(input: {
       })),
     });
     unpaidAmount += summary.unpaidAmount;
-    // paymentStatus ベース: 未入金・一部入金（未回収あり）
+    // 件数は請求単位（案件単位ではない）
     if (
       summary.paymentStatus === "未入金" ||
       summary.paymentStatus === "一部入金"

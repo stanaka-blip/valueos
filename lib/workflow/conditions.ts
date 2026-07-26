@@ -1,3 +1,4 @@
+import { isActiveOrderStatus } from "@/lib/status/activeRecords";
 import { endOfMonth, endOfNextMonth } from "@/lib/workflow/dates";
 import { isPaymentConfirmedFromBilling } from "@/lib/workflow/paymentConfirmation";
 import type {
@@ -6,14 +7,10 @@ import type {
   WorkflowOrderInput,
 } from "@/lib/workflow/types";
 
-const CANCELLED_ORDER_STATUSES = new Set(["キャンセル", "取消"]);
-
 export function activeOrders(
   orders: readonly WorkflowOrderInput[]
 ): WorkflowOrderInput[] {
-  return orders.filter(
-    (o) => !CANCELLED_ORDER_STATUSES.has((o.status || "").trim())
-  );
+  return orders.filter((o) => isActiveOrderStatus(o.status));
 }
 
 function hasDeliveredDate(order: WorkflowOrderInput): boolean {

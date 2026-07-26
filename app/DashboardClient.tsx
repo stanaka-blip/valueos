@@ -175,21 +175,25 @@ export default function DashboardClient({ data }: Props) {
               label="未発注"
               count={data.alerts.unorderedCount}
               href={casesUnorderedHref}
+              hint="案件単位 / canOrderかつ発注0"
             />
             <AlertCard
               label="未請求"
               count={data.alerts.uninvoicedCount}
               href={casesUninvoicedHref}
+              hint="案件単位 / canInvoiceかつ請求0"
             />
             <AlertCard
               label="未入金"
               count={data.alerts.unpaidInvoiceCount}
               href={paymentsUnpaidHref}
+              hint="請求単位"
             />
             <AlertCard
               label="期限超過"
               count={data.alerts.overdueInvoiceCount}
               href={paymentsOverdueHref}
+              hint="請求単位"
               alert
             />
           </div>
@@ -257,11 +261,13 @@ function AlertCard({
   label,
   count,
   href,
+  hint,
   alert,
 }: {
   label: string;
   count: number;
   href: string;
+  hint?: string;
   alert?: boolean;
 }) {
   return (
@@ -278,6 +284,7 @@ function AlertCard({
         {count}
         <span className="ml-1 text-sm font-medium text-gray-400">件</span>
       </p>
+      {hint ? <p className="mt-1 text-xs text-gray-400">{hint}</p> : null}
     </Link>
   );
 }

@@ -1,9 +1,17 @@
 /**
  * ダッシュボード業務アラート用:
  * WorkflowEngine.canOrder / canInvoice を案件ごとに評価する。
- * 発注可否・請求可否の判定ロジック自体は Engine に委譲。
+ *
+ * 未発注 = canOrder === true かつ 有効発注 0 件
+ * 未請求 = canInvoice === true かつ 有効請求 0 件
+ * （canOrder/canInvoice が false の案件は数えない）
  */
 
+import {
+  isActiveCaseStatus,
+  isActiveInvoiceStatus,
+  isActiveOrderStatus,
+} from "@/lib/status/activeRecords";
 import { buildWorkflowContext } from "@/lib/workflow/buildContext";
 import { evaluateWorkflow } from "@/lib/workflow/WorkflowEngine";
 import { supabase } from "@/lib/supabase";
@@ -55,7 +63,7 @@ export async function loadWorkflowAlertCaseIds(): Promise<{
   const uninvoicedCaseIds: string[] = [];
 
   for (const c of cases || []) {
-    if ((c.status as string) === "キャンセル") continue;
+    if (!isActiveCaseStatus(c.status as string)) continue;
     const caseId = c.id as string;
     const wf = evaluateWorkflow(
       buildWorkflowContext({
@@ -68,19 +76,17 @@ export async function loadWorkflowAlertCaseIds(): Promise<{
       })
     );
 
-    const caseOrders = (ordersByCase.get(caseId) || []).filter(
-      (o) =>
-        (o.status as string) !== "キャンセル" &&
-        (o.status as string) !== "取消"
-    );
-    const caseInvoices = (invoicesByCase.get(caseId) || []).filter(
-      (i) => (i.status as string) !== "取消"
-    );
+    const activeOrderCount = (ordersByCase.get(caseId) || []).filter((o) =>
+      isActiveOrderStatus(o.status as string)
+    ).length;
+    const activeInvoiceCount = (invoicesByCase.get(caseId) || []).filter((i) =>
+      isActiveInvoiceStatus(i.status as string)
+    ).length;
 
-    if (wf.canOrder && caseOrders.length === 0) {
+    if (wf.canOrder === true && activeOrderCount === 0) {
       unorderedCaseIds.push(caseId);
     }
-    if (wf.canInvoice && caseInvoices.length === 0) {
+    if (wf.canInvoice === true && activeInvoiceCount === 0) {
       uninvoicedCaseIds.push(caseId);
     }
   }

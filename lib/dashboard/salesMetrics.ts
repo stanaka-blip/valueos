@@ -1,7 +1,11 @@
 /**
- * 既存ダッシュボード（app/page.tsx）と同じ売上・実粗利集計。
+ * 既存ダッシュボードと同じ売上・実粗利集計。
  * case_products.sales_price / gross_profit の合計のみ。
- * 新しい業務ロジックは含まない。
+ *
+ * 期間基準日:
+ * - case_products に存在する日付カラムは created_at のみ
+ * - 売上計上日専用カラム（sales_date 等）は未定義
+ * - よって期間フィルタは case_products.created_at（明細登録日）を採用
  */
 
 export type ProductAmountRow = {
