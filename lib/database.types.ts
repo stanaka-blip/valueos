@@ -377,6 +377,50 @@ export type Database = {
           },
         ];
       };
+      case_registration_requests: {
+        Row: {
+          request_id: string;
+          case_id: string | null;
+          status: string;
+          payload_hash: string;
+          error_code: string | null;
+          error_message: string | null;
+          response: Json | null;
+          created_at: string;
+          completed_at: string | null;
+        };
+        Insert: {
+          request_id: string;
+          case_id?: string | null;
+          status: string;
+          payload_hash: string;
+          error_code?: string | null;
+          error_message?: string | null;
+          response?: Json | null;
+          created_at?: string;
+          completed_at?: string | null;
+        };
+        Update: {
+          request_id?: string;
+          case_id?: string | null;
+          status?: string;
+          payload_hash?: string;
+          error_code?: string | null;
+          error_message?: string | null;
+          response?: Json | null;
+          created_at?: string;
+          completed_at?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "case_registration_requests_case_id_fkey";
+            columns: ["case_id"];
+            isOneToOne: false;
+            referencedRelation: "cases";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       products: {
         Row: {
           id: string;
@@ -433,7 +477,14 @@ export type Database = {
       };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      create_case_registration: {
+        Args: {
+          payload: Json;
+        };
+        Returns: Json;
+      };
+    };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
   };
