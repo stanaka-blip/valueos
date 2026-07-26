@@ -4,6 +4,7 @@ import type {
   WorkflowOrderInput,
   WorkflowPaymentInput,
 } from "@/lib/workflow/types";
+import { parseWorkflowMeta } from "@/lib/workflow/workflowMeta";
 
 type SettlementLike = {
   settlement_type?: string | null;
@@ -14,6 +15,7 @@ type SettlementLike = {
   cardStatus?: string | null;
   deposit_amount?: number | null;
   depositAmount?: number | null;
+  memo?: string | null;
 } | null;
 
 type OrderLike = {
@@ -65,12 +67,18 @@ export function buildWorkflowContext(input: {
     paymentAmount: Number(p.payment_amount ?? p.paymentAmount ?? 0) || 0,
   }));
 
+  // 正式カラム優先。未適用環境では memo の __workflow_v1__ をフォールバック。
+  const meta = parseWorkflowMeta(s?.memo ?? null);
+
   return {
     settlementType: s?.settlement_type ?? s?.settlementType ?? null,
-    loanStatus: s?.loan_status ?? s?.loanStatus ?? null,
-    cardStatus: s?.card_status ?? s?.cardStatus ?? null,
+    loanStatus: s?.loan_status ?? s?.loanStatus ?? meta.loan_status ?? null,
+    cardStatus: s?.card_status ?? s?.cardStatus ?? meta.card_status ?? null,
     depositAmount: s?.deposit_amount ?? s?.depositAmount ?? null,
-    constructionCompletedDate: input.constructionCompletedDate ?? null,
+    constructionCompletedDate:
+      input.constructionCompletedDate ??
+      meta.construction_completed_date ??
+      null,
     orders,
     invoices,
     payments,

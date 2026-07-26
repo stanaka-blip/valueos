@@ -314,6 +314,15 @@ export default async function CaseDetailPage({
     ? toSettlementViewData(settlementResult.data)
     : null;
 
+  // カラム未適用時は settlement.memo メタの完工日を使う
+  if (
+    !viewCase.constructionCompletedDate &&
+    settlement?.constructionCompletedDateFromMeta
+  ) {
+    viewCase.constructionCompletedDate =
+      settlement.constructionCompletedDateFromMeta;
+  }
+
   const workflow = evaluateWorkflow(
     buildWorkflowContext({
       settlement: settlementResult.data,
