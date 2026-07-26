@@ -1,3 +1,5 @@
+import { loadWorkflowAlertCaseIds } from "@/lib/dashboard/caseAlerts";
+import { isDateInRange } from "@/lib/dashboard/period";
 import { supabase } from "@/lib/supabase";
 
 import CasesList, { type CasesListItem } from "./CasesList";
@@ -11,6 +13,7 @@ type DealerRelation = {
 type CaseProductAmount = {
   sales_price: number | string | null;
   gross_profit: number | string | null;
+  created_at?: string | null;
 };
 
 type CaseListRow = {
@@ -31,24 +34,31 @@ type CaseListRow = {
 function getSingleRelation<T>(
   relation: T | T[] | null | undefined
 ): T | null {
-  if (!relation) {
-    return null;
-  }
-  if (Array.isArray(relation)) {
-    return relation[0] || null;
-  }
+  if (!relation) return null;
+  if (Array.isArray(relation)) return relation[0] || null;
   return relation;
 }
 
 function toNumber(value: number | string | null | undefined): number {
-  if (value == null || value === "") {
-    return 0;
-  }
+  if (value == null || value === "") return 0;
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
 }
 
-export default async function CasesPage() {
+export default async function CasesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{
+    from?: string;
+    to?: string;
+    alert?: string;
+  }>;
+}) {
+  const params = await searchParams;
+  const from = params.from || "";
+  const to = params.to || "";
+  const alert = params.alert || "";
+
   const { data: cases, error } = await supabase
     .from("cases")
     .select(
@@ -68,7 +78,8 @@ export default async function CasesPage() {
       ),
       case_products (
         sales_price,
-        gross_profit
+        gross_profit,
+        created_at
       )
     `
     )
@@ -89,15 +100,44 @@ export default async function CasesPage() {
     );
   }
 
-  const items: CasesListItem[] = ((cases || []) as unknown as CaseListRow[]).map(
-    (row) => {
+  let filterIds: Set<string> | null = null;
+  let filterLabel = "";
+
+  if (alert === "unordered" || alert === "uninvoiced") {
+    const alerts = await loadWorkflowAlertCaseIds();
+    filterIds = new Set(
+      alert === "unordered"
+        ? alerts.unorderedCaseIds
+        : alerts.uninvoicedCaseIds
+    );
+    filterLabel = alert === "unordered" ? "未発注アラート" : "未請求アラート";
+  } else if (from && to) {
+    const ids = new Set<string>();
+    for (const row of (cases || []) as unknown as CaseListRow[]) {
+      const products = Array.isArray(row.case_products) ? row.case_products : [];
+      const inPeriod = products.some((p) =>
+        isDateInRange(p.created_at, from, to)
+      );
+      if (inPeriod) ids.add(row.id);
+    }
+    filterIds = ids;
+    filterLabel = `期間 ${from} 〜 ${to}`;
+  }
+
+  const items: CasesListItem[] = ((cases || []) as unknown as CaseListRow[])
+    .filter((row) => (filterIds ? filterIds.has(row.id) : true))
+    .map((row) => {
       const dealer = getSingleRelation(row.dealers);
       const products = Array.isArray(row.case_products) ? row.case_products : [];
-      const salesTotal = products.reduce(
+      const scoped =
+        from && to
+          ? products.filter((p) => isDateInRange(p.created_at, from, to))
+          : products;
+      const salesTotal = scoped.reduce(
         (sum, product) => sum + toNumber(product.sales_price),
         0
       );
-      const profitTotal = products.reduce(
+      const profitTotal = scoped.reduce(
         (sum, product) => sum + toNumber(product.gross_profit),
         0
       );
@@ -117,8 +157,7 @@ export default async function CasesPage() {
         salesTotal,
         profitTotal,
       };
-    }
-  );
+    });
 
   return (
     <div className="min-h-full bg-[#f7f7f5]">
@@ -128,11 +167,12 @@ export default async function CasesPage() {
         </h1>
         <p className="mt-1 text-sm text-gray-500">
           卸案件の進捗・利益を管理します（全{items.length}件）
+          {filterLabel ? ` / ${filterLabel}` : ""}
         </p>
       </header>
 
       <div className="p-6 md:p-8">
-        <CasesList items={items} />
+        <CasesList items={items} filterLabel={filterLabel} />
       </div>
     </div>
   );

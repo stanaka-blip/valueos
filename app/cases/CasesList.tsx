@@ -37,7 +37,13 @@ function formatDate(value: string | null): string {
   return date.toLocaleDateString("ja-JP");
 }
 
-export default function CasesList({ items }: { items: CasesListItem[] }) {
+export default function CasesList({
+  items,
+  filterLabel,
+}: {
+  items: CasesListItem[];
+  filterLabel?: string;
+}) {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
 
@@ -108,6 +114,14 @@ export default function CasesList({ items }: { items: CasesListItem[] }) {
 
   return (
     <div className="space-y-5">
+      {filterLabel ? (
+        <div className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+          ダッシュボードから絞り込み中: {filterLabel}
+          <Link href="/cases" className="ml-3 font-medium underline">
+            解除
+          </Link>
+        </div>
+      ) : null}
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div className="flex flex-1 flex-col gap-3 sm:flex-row">
           <label className="block min-w-0 flex-1 text-sm">
