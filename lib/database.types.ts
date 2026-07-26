@@ -95,6 +95,10 @@ export type Database = {
           payment_terms: string | null;
           card_brand: string | null;
           memo: string | null;
+          loan_status: string | null;
+          loan_status_updated_at: string | null;
+          card_status: string | null;
+          card_status_updated_at: string | null;
         };
         Insert: {
           id?: string;
@@ -109,6 +113,10 @@ export type Database = {
           payment_terms?: string | null;
           card_brand?: string | null;
           memo?: string | null;
+          loan_status?: string | null;
+          loan_status_updated_at?: string | null;
+          card_status?: string | null;
+          card_status_updated_at?: string | null;
         };
         Update: {
           id?: string;
@@ -123,6 +131,10 @@ export type Database = {
           payment_terms?: string | null;
           card_brand?: string | null;
           memo?: string | null;
+          loan_status?: string | null;
+          loan_status_updated_at?: string | null;
+          card_status?: string | null;
+          card_status_updated_at?: string | null;
         };
         Relationships: [
           {
@@ -149,6 +161,7 @@ export type Database = {
           desired_delivery_date: string | null;
           delivery_address: string | null;
           construction_desired_date: string | null;
+          construction_completed_date: string | null;
           construction_detail: string | null;
           status: string | null;
           department: string | null;
@@ -170,6 +183,7 @@ export type Database = {
           desired_delivery_date?: string | null;
           delivery_address?: string | null;
           construction_desired_date?: string | null;
+          construction_completed_date?: string | null;
           construction_detail?: string | null;
           status?: string | null;
           department?: string | null;
@@ -191,6 +205,7 @@ export type Database = {
           desired_delivery_date?: string | null;
           delivery_address?: string | null;
           construction_desired_date?: string | null;
+          construction_completed_date?: string | null;
           construction_detail?: string | null;
           status?: string | null;
           department?: string | null;

@@ -12,6 +12,8 @@ import {
 } from "react";
 
 import { supabase } from "@/lib/supabase";
+import { loadCaseWorkflow } from "@/lib/workflow/loadCaseWorkflow";
+import type { WorkflowResult } from "@/lib/workflow";
 
 type Dealer = {
   name: string | null;
@@ -69,15 +71,19 @@ export default function NewInvoicePage() {
    * 後ほどcase_noから本物のUUIDを取得します。
    */
   const routeCaseIdentifier = params?.id || "";
+  const initialRouteError = routeCaseIdentifier
+    ? ""
+    : "案件を特定できませんでした。";
 
   const [caseData, setCaseData] = useState<CaseData | null>(null);
   const [caseProducts, setCaseProducts] = useState<CaseProduct[]>([]);
 
-  const [initialLoading, setInitialLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(!initialRouteError);
   const [submitting, setSubmitting] = useState(false);
 
-  const [loadError, setLoadError] = useState("");
+  const [loadError, setLoadError] = useState(initialRouteError);
   const [submitError, setSubmitError] = useState("");
+  const [workflow, setWorkflow] = useState<WorkflowResult | null>(null);
 
   const [form, setForm] = useState<InvoiceForm>({
     invoice_no: "",
@@ -90,8 +96,6 @@ export default function NewInvoicePage() {
 
   useEffect(() => {
     if (!routeCaseIdentifier) {
-      setLoadError("案件を特定できませんでした。");
-      setInitialLoading(false);
       return;
     }
 
@@ -188,6 +192,9 @@ export default function NewInvoicePage() {
         normalizedProducts
       );
 
+      const workflowLoad = await loadCaseWorkflow(resolvedCaseId);
+      setWorkflow(workflowLoad.result);
+
       setForm((current) => ({
         ...current,
         invoice_no:
@@ -197,6 +204,9 @@ export default function NewInvoicePage() {
           totalSales > 0
             ? String(totalSales)
             : current.invoice_amount,
+        due_date:
+          workflowLoad.result.paymentDueDate ||
+          current.due_date,
       }));
 
       setInitialLoading(false);
@@ -241,6 +251,16 @@ export default function NewInvoicePage() {
     }
 
     setSubmitError("");
+
+    const latestWorkflow = await loadCaseWorkflow(caseData.id);
+    setWorkflow(latestWorkflow.result);
+    if (!latestWorkflow.result.canInvoice) {
+      setSubmitError(
+        latestWorkflow.result.warnings[0] ||
+          "現在の決済区分ルールでは請求できません。"
+      );
+      return;
+    }
 
     const invoiceAmount = toNumber(
       form.invoice_amount
@@ -556,6 +576,32 @@ export default function NewInvoicePage() {
           <h2 className="mb-5 text-lg font-bold text-gray-900">
             請求情報
           </h2>
+
+          {workflow && !workflow.canInvoice ? (
+            <div className="mb-5 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              <p className="font-semibold">請求できません</p>
+              <p className="mt-1">
+                担当: {workflow.assignee} / 次のアクション:{" "}
+                {workflow.nextAction}
+              </p>
+              {workflow.warnings.length > 0 ? (
+                <ul className="mt-2 list-disc space-y-1 pl-5">
+                  {workflow.warnings.map((w) => (
+                    <li key={w}>{w}</li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          ) : null}
+
+          {workflow?.billingClosingDate || workflow?.paymentDueDate ? (
+            <div className="mb-5 rounded-lg border border-gray-200 bg-[#f7f7f5] p-4 text-sm text-gray-700">
+              <p>
+                売掛 締日: {workflow.billingClosingDate || "—"} / 入金予定日:{" "}
+                {workflow.paymentDueDate || "—"}
+              </p>
+            </div>
+          ) : null}
 
           {submitError ? (
             <div className="mb-5 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">

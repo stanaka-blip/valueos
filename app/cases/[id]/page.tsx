@@ -12,6 +12,8 @@ import CaseDetailView, {
 } from "./CaseDetailView";
 import { toSettlementViewData } from "./settlementView";
 import { getCaseSettlementByCaseId } from "@/lib/repositories/caseSettlements";
+import { buildWorkflowContext } from "@/lib/workflow/buildContext";
+import { evaluateWorkflow } from "@/lib/workflow/WorkflowEngine";
 
 export const dynamic = "force-dynamic";
 
@@ -226,6 +228,8 @@ export default async function CaseDetailPage({
     desiredDeliveryDate: (caseData.desired_delivery_date as string) || null,
     constructionDate:
       (caseData.construction_desired_date as string) || null,
+    constructionCompletedDate:
+      (caseData.construction_completed_date as string) || null,
     constructionDetail: (caseData.construction_detail as string) || "",
     orderType: (caseData.order_type as string) || "",
     assignedUser: (caseData.assigned_user as string) || "",
@@ -310,6 +314,16 @@ export default async function CaseDetailPage({
     ? toSettlementViewData(settlementResult.data)
     : null;
 
+  const workflow = evaluateWorkflow(
+    buildWorkflowContext({
+      settlement: settlementResult.data,
+      constructionCompletedDate: viewCase.constructionCompletedDate,
+      orders,
+      invoices,
+      payments,
+    })
+  );
+
   return (
     <CaseDetailView
       caseData={viewCase}
@@ -319,6 +333,7 @@ export default async function CaseDetailPage({
       payments={payments}
       tasks={tasks}
       settlement={settlement}
+      workflow={workflow}
       dealerPaymentType={dealer?.payment_type || undefined}
       errors={{
         products: caseProductsError?.message,

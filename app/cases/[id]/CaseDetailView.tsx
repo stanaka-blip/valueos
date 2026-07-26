@@ -5,7 +5,10 @@ import { ReactNode, useMemo, useState } from "react";
 
 import StatusSelect from "../StatusSelect";
 import TaskStatusSelect from "../../tasks/TaskStatusSelect";
+import type { WorkflowResult } from "@/lib/workflow";
+
 import SettlementForm from "./SettlementForm";
+import WorkflowPanel from "./WorkflowPanel";
 import type { SettlementViewData } from "./settlementView";
 
 export type CaseDetailTabId =
@@ -44,6 +47,7 @@ export type CaseDetailViewData = {
   deliveryAddress: string;
   desiredDeliveryDate: string | null;
   constructionDate: string | null;
+  constructionCompletedDate: string | null;
   constructionDetail: string;
   orderType: string;
   assignedUser: string;
@@ -115,6 +119,7 @@ type CaseDetailViewProps = {
   payments: PaymentRow[];
   tasks: TaskRow[];
   settlement: SettlementViewData | null;
+  workflow: WorkflowResult;
   dealerPaymentType?: string;
   errors: {
     products?: string;
@@ -157,6 +162,7 @@ export default function CaseDetailView({
   payments,
   tasks,
   settlement,
+  workflow,
   dealerPaymentType,
   errors,
 }: CaseDetailViewProps) {
@@ -250,20 +256,47 @@ export default function CaseDetailView({
             >
               商品追加
             </Link>
-            <Link
-              href={`/cases/${caseData.id}/orders/new`}
-              className="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 transition hover:bg-gray-50"
-            >
-              仕入発注
-            </Link>
-            <Link
-              href={`/cases/${caseData.id}/invoices/new`}
-              className="rounded-md bg-gray-900 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-gray-800"
-            >
-              請求登録
-            </Link>
+            {workflow.canOrder ? (
+              <Link
+                href={`/cases/${caseData.id}/orders/new`}
+                className="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 transition hover:bg-gray-50"
+              >
+                仕入発注
+              </Link>
+            ) : (
+              <span
+                title={workflow.warnings.join(" / ") || "発注不可"}
+                className="cursor-not-allowed rounded-md border border-gray-100 bg-gray-50 px-3 py-1.5 text-sm text-gray-400"
+              >
+                仕入発注（不可）
+              </span>
+            )}
+            {workflow.canInvoice ? (
+              <Link
+                href={`/cases/${caseData.id}/invoices/new`}
+                className="rounded-md bg-gray-900 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-gray-800"
+              >
+                請求登録
+              </Link>
+            ) : (
+              <span
+                title={workflow.warnings.join(" / ") || "請求不可"}
+                className="cursor-not-allowed rounded-md bg-gray-200 px-3 py-1.5 text-sm font-medium text-gray-500"
+              >
+                請求登録（不可）
+              </span>
+            )}
           </div>
         </div>
+      </div>
+
+      <div className="mx-auto max-w-[1400px] px-4 pt-4 lg:px-6">
+        <WorkflowPanel
+          caseId={caseData.id}
+          workflow={workflow}
+          settlement={settlement}
+          constructionCompletedDate={caseData.constructionCompletedDate}
+        />
       </div>
 
       <div className="mx-auto flex max-w-[1400px]">
@@ -296,7 +329,13 @@ export default function CaseDetailView({
 
             <MetaBlock title="販売店">
               <MetaRow label="販売店" value={caseData.dealerName} />
-              <MetaRow label="担当" value={caseData.assignedUser} />
+              <MetaRow label="社内担当" value={caseData.assignedUser} />
+            </MetaBlock>
+
+            <MetaBlock title="業務担当（Workflow）">
+              <MetaRow label="担当" value={workflow.assignee} />
+              <MetaRow label="次のアクション" value={workflow.nextAction} />
+              <MetaRow label="状態" value={workflow.currentState} />
             </MetaBlock>
 
             <MetaBlock title="顧客">
@@ -959,7 +998,9 @@ function SettlementTab({
                 : ""
             }
           />
-          <Field label="カード" value={settlement.cardBrand} />
+          <Field label="カードブランド" value={settlement.cardBrand} />
+          <Field label="ローンステータス" value={settlement.loanStatus} />
+          <Field label="カードステータス" value={settlement.cardStatus} />
           <div className="sm:col-span-2">
             <Field label="支払条件" value={settlement.paymentTerms} />
           </div>

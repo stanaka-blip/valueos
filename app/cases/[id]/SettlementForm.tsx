@@ -105,6 +105,9 @@ export default function SettlementForm({
       payment_terms: paymentTerms.trim() || null,
       card_brand: cardBrand.trim() || null,
       memo: memo.trim() || null,
+      // Workflow ステータスは WorkflowPanel で更新。ここでは既存値を維持。
+      loan_status: settlement?.loanStatus || null,
+      card_status: settlement?.cardStatus || null,
     });
 
     setSaving(false);

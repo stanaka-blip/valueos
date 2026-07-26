@@ -15,6 +15,8 @@ import { useParams, useRouter } from "next/navigation";
 import { fetchActivePurchaseUnitPrices } from "@/lib/purchasePrices";
 import { insertOrderItems } from "@/lib/repositories/orderItems";
 import { supabase } from "@/lib/supabase";
+import { loadCaseWorkflow } from "@/lib/workflow/loadCaseWorkflow";
+import type { WorkflowResult } from "@/lib/workflow";
 
 import {
   getCaseStatusFromOrderStatus,
@@ -96,6 +98,7 @@ export default function NewOrderPage() {
   const [submitError, setSubmitError] = useState("");
   /** 仕入先選択後、価格マスタに無かった商品名 */
   const [missingPriceNames, setMissingPriceNames] = useState<string[]>([]);
+  const [workflow, setWorkflow] = useState<WorkflowResult | null>(null);
   const [form, setForm] = useState<OrderForm>({
     supplier_id: "",
     order_no: "",
@@ -276,10 +279,16 @@ export default function NewOrderPage() {
         return;
       }
 
+      const workflowLoad = await loadCaseWorkflow(caseId);
+      if (cancelled) {
+        return;
+      }
+
       setSuppliers((supplierData || []) as Supplier[]);
       setCaseData(normalizedCase);
       setLines(nextLines);
       setMissingPriceNames(missingNames);
+      setWorkflow(workflowLoad.result);
       setForm((current) => ({
         ...current,
         supplier_id: current.supplier_id || initialSupplierId,
@@ -358,6 +367,16 @@ export default function NewOrderPage() {
 
     if (!caseData) {
       setSubmitError("案件情報を取得できていません。画面を更新してください。");
+      return;
+    }
+
+    const latestWorkflow = await loadCaseWorkflow(caseData.id);
+    setWorkflow(latestWorkflow.result);
+    if (!latestWorkflow.result.canOrder) {
+      setSubmitError(
+        latestWorkflow.result.warnings[0] ||
+          "現在の決済区分ルールでは発注できません。"
+      );
       return;
     }
 
@@ -597,6 +616,22 @@ export default function NewOrderPage() {
           className="space-y-6 rounded-xl bg-white p-5 shadow-sm md:p-8"
         >
           <h2 className="text-lg font-bold text-gray-900">発注情報</h2>
+
+          {workflow && !workflow.canOrder ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              <p className="font-semibold">発注できません</p>
+              <p className="mt-1">
+                担当: {workflow.assignee} / 次のアクション: {workflow.nextAction}
+              </p>
+              {workflow.warnings.length > 0 ? (
+                <ul className="mt-2 list-disc space-y-1 pl-5">
+                  {workflow.warnings.map((w) => (
+                    <li key={w}>{w}</li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          ) : null}
 
           {submitError ? (
             <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">

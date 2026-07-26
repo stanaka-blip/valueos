@@ -10,6 +10,8 @@ export type SettlementViewData = {
   paymentTerms: string;
   cardBrand: string;
   memo: string;
+  loanStatus: string;
+  cardStatus: string;
 };
 
 export function toSettlementViewData(
@@ -25,5 +27,7 @@ export function toSettlementViewData(
     paymentTerms: row.payment_terms || "",
     cardBrand: row.card_brand || "",
     memo: row.memo || "",
+    loanStatus: row.loan_status || "",
+    cardStatus: row.card_status || "",
   };
 }
