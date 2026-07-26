@@ -21,16 +21,36 @@ export async function loadWorkflowAlertCaseIds(): Promise<{
   uninvoicedCaseIds: string[];
   error: string | null;
 }> {
+  // construction_completed_date は環境により未適用のためフォールバック
+  let cases:
+    | {
+        id: string;
+        status: string | null;
+        construction_completed_date?: string | null;
+      }[]
+    | null = null;
+  let casesError: { message: string } | null = null;
+  const withCompleted = await supabase
+    .from("cases")
+    .select("id, status, construction_completed_date");
+  if (
+    withCompleted.error &&
+    /construction_completed_date|schema cache/i.test(withCompleted.error.message)
+  ) {
+    const fallback = await supabase.from("cases").select("id, status");
+    cases = (fallback.data || []) as typeof cases;
+    casesError = fallback.error;
+  } else {
+    cases = (withCompleted.data || []) as typeof cases;
+    casesError = withCompleted.error;
+  }
+
   const [
-    { data: cases, error: casesError },
     { data: orders, error: ordersError },
     { data: invoices, error: invoicesError },
     { data: payments, error: paymentsError },
     { data: settlements, error: settlementsError },
   ] = await Promise.all([
-    supabase
-      .from("cases")
-      .select("id, status, construction_completed_date"),
     supabase.from("orders").select("id, case_id, status, delivered_date"),
     supabase.from("invoices").select("id, case_id, status, invoice_amount"),
     supabase
@@ -63,13 +83,12 @@ export async function loadWorkflowAlertCaseIds(): Promise<{
   const uninvoicedCaseIds: string[] = [];
 
   for (const c of cases || []) {
-    if (!isActiveCaseStatus(c.status as string)) continue;
-    const caseId = c.id as string;
+    if (!isActiveCaseStatus(c.status)) continue;
+    const caseId = c.id;
     const wf = evaluateWorkflow(
       buildWorkflowContext({
         settlement: settlementByCase.get(caseId) || null,
-        constructionCompletedDate:
-          (c.construction_completed_date as string | null) || null,
+        constructionCompletedDate: c.construction_completed_date ?? null,
         orders: ordersByCase.get(caseId) || [],
         invoices: invoicesByCase.get(caseId) || [],
         payments: paymentsByCase.get(caseId) || [],
