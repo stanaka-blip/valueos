@@ -12,4 +12,5 @@ export {
   type PeriodPreset,
 } from "@/lib/dashboard/period";
 export { sumSalesAndProfit } from "@/lib/dashboard/salesMetrics";
+export { aggregateSalesByOrderReceived } from "@/lib/dashboard/salesByOrderReceived";
 export { loadWorkflowAlertCaseIds } from "@/lib/dashboard/caseAlerts";

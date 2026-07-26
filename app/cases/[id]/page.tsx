@@ -219,6 +219,8 @@ export default async function CaseDetailPage({
     caseNo: (caseData.case_no as string) || "",
     status: (caseData.status as string) || null,
     createdAt: (caseData.created_at as string) || null,
+    orderReceivedDate:
+      (caseData.order_received_date as string) || null,
     dealerName: dealer?.name || "",
     dealerContact: dealer?.contact_name || "",
     customerName: (caseData.customer_name as string) || "",

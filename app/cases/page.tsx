@@ -1,5 +1,6 @@
 import { loadWorkflowAlertCaseIds } from "@/lib/dashboard/caseAlerts";
 import { isDateInRange } from "@/lib/dashboard/period";
+import { isActiveCaseStatus } from "@/lib/status/activeRecords";
 import { supabase } from "@/lib/supabase";
 
 import CasesList, { type CasesListItem } from "./CasesList";
@@ -13,13 +14,13 @@ type DealerRelation = {
 type CaseProductAmount = {
   sales_price: number | string | null;
   gross_profit: number | string | null;
-  created_at?: string | null;
 };
 
 type CaseListRow = {
   id: string;
   case_no: string | null;
   created_at: string | null;
+  order_received_date: string | null;
   customer_name: string | null;
   order_type: string | null;
   status: string | null;
@@ -51,12 +52,16 @@ export default async function CasesPage({
   searchParams: Promise<{
     from?: string;
     to?: string;
+    orderReceivedFrom?: string;
+    orderReceivedTo?: string;
     alert?: string;
   }>;
 }) {
   const params = await searchParams;
-  const from = params.from || "";
-  const to = params.to || "";
+  // 互換: from/to も受注日期間として扱う
+  const orderReceivedFrom =
+    params.orderReceivedFrom || params.from || "";
+  const orderReceivedTo = params.orderReceivedTo || params.to || "";
   const alert = params.alert || "";
 
   const { data: cases, error } = await supabase
@@ -66,6 +71,7 @@ export default async function CasesPage({
       id,
       case_no,
       created_at,
+      order_received_date,
       customer_name,
       order_type,
       status,
@@ -78,8 +84,7 @@ export default async function CasesPage({
       ),
       case_products (
         sales_price,
-        gross_profit,
-        created_at
+        gross_profit
       )
     `
     )
@@ -111,17 +116,22 @@ export default async function CasesPage({
         : alerts.uninvoicedCaseIds
     );
     filterLabel = alert === "unordered" ? "未発注アラート" : "未請求アラート";
-  } else if (from && to) {
+  } else if (orderReceivedFrom && orderReceivedTo) {
     const ids = new Set<string>();
     for (const row of (cases || []) as unknown as CaseListRow[]) {
-      const products = Array.isArray(row.case_products) ? row.case_products : [];
-      const inPeriod = products.some((p) =>
-        isDateInRange(p.created_at, from, to)
-      );
-      if (inPeriod) ids.add(row.id);
+      if (!isActiveCaseStatus(row.status)) continue;
+      if (
+        isDateInRange(
+          row.order_received_date,
+          orderReceivedFrom,
+          orderReceivedTo
+        )
+      ) {
+        ids.add(row.id);
+      }
     }
     filterIds = ids;
-    filterLabel = `期間 ${from} 〜 ${to}`;
+    filterLabel = `受注日 ${orderReceivedFrom} 〜 ${orderReceivedTo}`;
   }
 
   const items: CasesListItem[] = ((cases || []) as unknown as CaseListRow[])
@@ -129,15 +139,11 @@ export default async function CasesPage({
     .map((row) => {
       const dealer = getSingleRelation(row.dealers);
       const products = Array.isArray(row.case_products) ? row.case_products : [];
-      const scoped =
-        from && to
-          ? products.filter((p) => isDateInRange(p.created_at, from, to))
-          : products;
-      const salesTotal = scoped.reduce(
+      const salesTotal = products.reduce(
         (sum, product) => sum + toNumber(product.sales_price),
         0
       );
-      const profitTotal = scoped.reduce(
+      const profitTotal = products.reduce(
         (sum, product) => sum + toNumber(product.gross_profit),
         0
       );
@@ -146,6 +152,7 @@ export default async function CasesPage({
         id: row.id,
         caseNo: row.case_no || "",
         createdAt: row.created_at,
+        orderReceivedDate: row.order_received_date,
         dealerName: dealer?.name || "",
         customerName: row.customer_name || "",
         orderType: row.order_type || "",

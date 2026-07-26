@@ -39,6 +39,7 @@ export type CaseDetailViewData = {
   caseNo: string;
   status: string | null;
   createdAt: string | null;
+  orderReceivedDate: string | null;
   dealerName: string;
   dealerContact: string;
   customerName: string;
@@ -787,9 +788,24 @@ function BasicTab({
 }) {
   return (
     <div className="space-y-6">
-      <Section title="基本情報" description="案件の身元と納期">
+      <Section
+        title="基本情報"
+        description="案件の身元と納期"
+        action={
+          <Link
+            href={`/cases/${caseData.id}/edit`}
+            className="text-sm text-gray-600 hover:text-gray-900"
+          >
+            編集
+          </Link>
+        }
+      >
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="案件番号" value={caseData.caseNo} />
+          <Field
+            label="受注日"
+            value={formatDate(caseData.orderReceivedDate)}
+          />
           <Field label="登録日" value={formatDateTime(caseData.createdAt)} />
           <Field label="販売店" value={caseData.dealerName} />
           <Field label="販売店担当者" value={caseData.dealerContact} />

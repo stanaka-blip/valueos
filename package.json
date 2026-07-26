@@ -9,7 +9,7 @@
     "lint": "eslint",
     "test:workflow": "tsx lib/workflow/WorkflowEngine.test.ts",
     "test:payments": "tsx lib/payments/invoicePaymentStatus.test.ts",
-    "test:dashboard": "tsx lib/dashboard/period.test.ts",
+    "test:dashboard": "tsx lib/dashboard/period.test.ts && tsx lib/dashboard/salesByOrderReceived.test.ts",
     "gen:db-types": "bash scripts/generate-database-types.sh"
   },
   "dependencies": {

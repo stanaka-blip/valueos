@@ -1,11 +1,6 @@
 /**
- * 既存ダッシュボードと同じ売上・実粗利集計。
- * case_products.sales_price / gross_profit の合計のみ。
- *
- * 期間基準日:
- * - case_products に存在する日付カラムは created_at のみ
- * - 売上計上日専用カラム（sales_date 等）は未定義
- * - よって期間フィルタは case_products.created_at（明細登録日）を採用
+ * case_products.sales_price / gross_profit の合計。
+ * 期間判定は呼び出し側（cases.order_received_date）で行う。
  */
 
 export type ProductAmountRow = {

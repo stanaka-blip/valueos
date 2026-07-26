@@ -14,6 +14,7 @@ export type CasesListItem = {
   id: string;
   caseNo: string;
   createdAt: string | null;
+  orderReceivedDate?: string | null;
   dealerName: string;
   customerName: string;
   orderType: string;
@@ -178,6 +179,7 @@ export default function CasesList({
             <thead className="border-b border-gray-200 bg-[#f7f7f5] text-xs text-gray-500">
               <tr>
                 <th className="px-4 py-3 font-medium">案件番号</th>
+                <th className="px-4 py-3 font-medium">受注日</th>
                 <th className="px-4 py-3 font-medium">登録日</th>
                 <th className="px-4 py-3 font-medium">販売店</th>
                 <th className="px-4 py-3 font-medium">顧客名</th>
@@ -207,6 +209,9 @@ export default function CasesList({
                         {item.orderType}
                       </p>
                     ) : null}
+                  </td>
+                  <td className="px-4 py-3 text-gray-600">
+                    {formatDate(item.orderReceivedDate || null)}
                   </td>
                   <td className="px-4 py-3 text-gray-600">
                     {formatDate(item.createdAt)}

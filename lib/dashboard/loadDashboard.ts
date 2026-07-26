@@ -1,13 +1,10 @@
 import { loadWorkflowAlertCaseIds } from "@/lib/dashboard/caseAlerts";
 import {
-  enumerateBuckets,
-  isDateInRange,
-  periodBucketKey,
   resolvePeriod,
   type DashboardPeriod,
   type PeriodPreset,
 } from "@/lib/dashboard/period";
-import { sumSalesAndProfit } from "@/lib/dashboard/salesMetrics";
+import { aggregateSalesByOrderReceived } from "@/lib/dashboard/salesByOrderReceived";
 import { summarizeInvoicePayments } from "@/lib/payments/invoicePaymentStatus";
 import { isActiveInvoiceStatus } from "@/lib/status/activeRecords";
 import { supabase } from "@/lib/supabase";
@@ -43,7 +40,7 @@ export type DashboardData = {
   kpis: DashboardKpis;
   alerts: DashboardAlerts;
   trend: TrendPoint[];
-  /** KPI → 案件一覧用（期間内に売上商品がある案件） */
+  /** KPI → 案件一覧用（期間内受注の案件） */
   periodCaseIds: string[];
   error: string | null;
 };
@@ -65,13 +62,17 @@ export async function loadDashboard(input: {
   });
 
   const [
+    { data: caseRows, error: casesError },
     { data: productRows, error: productsError },
     { data: invoiceRows, error: invoicesError },
     { data: paymentRows, error: paymentsError },
   ] = await Promise.all([
     supabase
+      .from("cases")
+      .select("id, status, order_received_date"),
+    supabase
       .from("case_products")
-      .select("id, case_id, created_at, sales_price, purchase_price, gross_profit"),
+      .select("id, case_id, sales_price, purchase_price, gross_profit"),
     supabase
       .from("invoices")
       .select(
@@ -83,6 +84,7 @@ export async function loadDashboard(input: {
   ]);
 
   const error =
+    casesError?.message ||
     productsError?.message ||
     invoicesError?.message ||
     paymentsError?.message ||
@@ -92,24 +94,27 @@ export async function loadDashboard(input: {
     return emptyDashboard(period, error);
   }
 
+  const cases = caseRows || [];
   const products = productRows || [];
   const invoices = invoiceRows || [];
   const payments = paymentRows || [];
 
-  // --- KPI: 期間内売上・実粗利（case_products.created_at = 明細登録日） ---
-  const periodProducts = products.filter((p) =>
-    isDateInRange(p.created_at as string, period.from, period.to)
-  );
-  const { sales, profit, profitRate } = sumSalesAndProfit(periodProducts);
-  const periodCaseIds = [
-    ...new Set(
-      periodProducts
-        .map((p) => p.case_id as string | null)
-        .filter((id): id is string => Boolean(id))
-    ),
-  ];
+  // --- KPI / 推移: 顧客受注日 cases.order_received_date 基準 ---
+  const salesAgg = aggregateSalesByOrderReceived({
+    cases: cases.map((c) => ({
+      id: c.id as string,
+      status: (c.status as string) || null,
+      order_received_date: (c.order_received_date as string) || null,
+    })),
+    products: products.map((p) => ({
+      case_id: (p.case_id as string) || null,
+      sales_price: p.sales_price as number | string | null,
+      gross_profit: p.gross_profit as number | string | null,
+    })),
+    period,
+  });
 
-  // --- 未入金額 / アラート用: summarizeInvoicePayments（現在時点） ---
+  // --- 未入金額 / アラート用: summarizeInvoicePayments（現在時点・期間非連動） ---
   const paymentsByInvoice = new Map<string, typeof payments>();
   for (const p of payments) {
     const invId = p.invoice_id as string | null;
@@ -135,7 +140,6 @@ export async function loadDashboard(input: {
       })),
     });
     unpaidAmount += summary.unpaidAmount;
-    // 件数は請求単位（案件単位ではない）
     if (
       summary.paymentStatus === "未入金" ||
       summary.paymentStatus === "一部入金"
@@ -147,54 +151,29 @@ export async function loadDashboard(input: {
     }
   }
 
-  // --- 業務アラート: WorkflowEngine.canOrder / canInvoice ---
   const alertIds = await loadWorkflowAlertCaseIds();
   if (alertIds.error) {
     return emptyDashboard(period, alertIds.error);
   }
-  const unorderedCaseIds = alertIds.unorderedCaseIds;
-  const uninvoicedCaseIds = alertIds.uninvoicedCaseIds;
-
-  // --- 売上推移 ---
-  const buckets = enumerateBuckets(period.from, period.to, period.grain);
-  const salesMap = new Map<string, number>();
-  const profitMap = new Map<string, number>();
-  for (const key of buckets) {
-    salesMap.set(key, 0);
-    profitMap.set(key, 0);
-  }
-  for (const p of periodProducts) {
-    const key = periodBucketKey(p.created_at as string, period.grain);
-    if (!key || !salesMap.has(key)) continue;
-    salesMap.set(key, (salesMap.get(key) || 0) + toNumber(p.sales_price));
-    profitMap.set(key, (profitMap.get(key) || 0) + toNumber(p.gross_profit));
-  }
-
-  const trend: TrendPoint[] = buckets.map((key) => ({
-    key,
-    label: period.grain === "month" ? key.replace("-", "/") : key.slice(5),
-    sales: salesMap.get(key) || 0,
-    profit: profitMap.get(key) || 0,
-  }));
 
   return {
     period,
     kpis: {
-      sales,
-      profit,
-      profitRate,
+      sales: salesAgg.sales,
+      profit: salesAgg.profit,
+      profitRate: salesAgg.profitRate,
       unpaidAmount,
     },
     alerts: {
-      unorderedCount: unorderedCaseIds.length,
-      uninvoicedCount: uninvoicedCaseIds.length,
+      unorderedCount: alertIds.unorderedCaseIds.length,
+      uninvoicedCount: alertIds.uninvoicedCaseIds.length,
       unpaidInvoiceCount,
       overdueInvoiceCount,
-      unorderedCaseIds,
-      uninvoicedCaseIds,
+      unorderedCaseIds: alertIds.unorderedCaseIds,
+      uninvoicedCaseIds: alertIds.uninvoicedCaseIds,
     },
-    trend,
-    periodCaseIds,
+    trend: salesAgg.trend,
+    periodCaseIds: salesAgg.periodCaseIds,
     error: null,
   };
 }

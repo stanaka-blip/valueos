@@ -45,7 +45,7 @@ export default function DashboardClient({ data }: Props) {
     });
   }
 
-  const periodQuery = `from=${data.period.from}&to=${data.period.to}`;
+  const periodQuery = `orderReceivedFrom=${data.period.from}&orderReceivedTo=${data.period.to}`;
   const casesPeriodHref = `/cases?${periodQuery}`;
   const paymentsUnpaidHref = "/payments?unpaid=1";
   const paymentsOverdueHref = "/payments?overdue=1";
@@ -128,7 +128,8 @@ export default function DashboardClient({ data }: Props) {
             <p className="mt-3 text-sm text-gray-500">
               {data.period.from} 〜 {data.period.to}
               <span className="ml-2 text-xs text-gray-400">
-                （推移: {data.period.grain === "day" ? "日別" : "月別"}）
+                （売上基準: 顧客受注日 / 推移:{" "}
+                {data.period.grain === "day" ? "日別" : "月別"}）
               </span>
             </p>
           )}
