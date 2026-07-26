@@ -24,3 +24,9 @@ export type {
   PaymentAmountInput,
   InvoicePaymentSummary,
 } from "@/lib/payments/invoicePaymentStatus";
+export { buildPaymentInsertPayload } from "@/lib/payments/createPaymentPayload";
+export type {
+  CreatePaymentInput,
+  CreatePaymentResult,
+  PaymentInsertPayload,
+} from "@/lib/payments/createPaymentPayload";

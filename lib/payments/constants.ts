@@ -12,7 +12,12 @@ export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 /** UI select 用エイリアス */
 export const PAYMENT_METHOD_OPTIONS = PAYMENT_METHODS;
 
-/** 画面で使う入金ステータス */
+/**
+ * 画面で使う入金ステータス
+ *
+ * 注: DB カラム default は現状 '未入金'。
+ * 将来的に default を '確認待ち' へ整理予定（アプリ新規登録では本一覧のみ使用）。
+ */
 export const PAYMENT_RECORD_STATUSES = [
   "確認待ち",
   "入金確認済",

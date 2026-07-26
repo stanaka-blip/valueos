@@ -16,6 +16,7 @@ import {
   type PaymentMethod,
   type PaymentRecordStatus,
 } from "@/lib/payments/constants";
+import { buildPaymentInsertPayload } from "@/lib/payments/createPaymentPayload";
 import { summarizeInvoicePayments } from "@/lib/payments/invoicePaymentStatus";
 
 type InvoiceData = {
@@ -273,47 +274,56 @@ export default function NewPaymentPage({
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!invoice) {
-      setSubmitError("請求情報を取得できていません。");
-      return;
-    }
-
     setSubmitError("");
-    const paymentAmount = toNumber(form.payment_amount);
-
-    if (!form.payment_date) {
-      setSubmitError("入金日を入力してください。");
-      return;
-    }
-    if (paymentAmount <= 0) {
-      setSubmitError("入金金額は1円以上で入力してください。");
-      return;
-    }
-    if (!form.payment_method) {
-      setSubmitError("入金方法を選択してください。");
-      return;
-    }
-    if (!form.status) {
-      setSubmitError("ステータスを選択してください。");
-      return;
-    }
-
     setSubmitting(true);
 
-    const basePayload = {
-      invoice_id: invoice.id,
-      case_id: invoice.case_id,
-      payment_date: form.payment_date,
-      payment_amount: paymentAmount,
-      status: form.status,
-      memo: form.memo.trim() || null,
-    };
+    // case_id は画面 state を信用せず、invoice_id から再取得して決定する
+    if (!invoiceId || !isUuid(invoiceId)) {
+      setSubmitError("invoice_id は必須です。");
+      setSubmitting(false);
+      return;
+    }
 
-    const extendedPayload = {
-      ...basePayload,
-      payment_method: form.payment_method,
-      payer_name: form.payer_name.trim() || null,
-      bank_account: form.bank_account.trim() || null,
+    const { data: freshInvoice, error: freshError } = await supabase
+      .from("invoices")
+      .select("id, case_id")
+      .eq("id", invoiceId)
+      .single();
+
+    if (freshError || !freshInvoice) {
+      setSubmitError(
+        freshError?.message || "請求情報の再取得に失敗しました。"
+      );
+      setSubmitting(false);
+      return;
+    }
+
+    const built = buildPaymentInsertPayload({
+      invoice: freshInvoice,
+      invoiceId,
+      paymentDate: form.payment_date,
+      paymentAmount: form.payment_amount,
+      paymentMethod: form.payment_method,
+      payerName: form.payer_name,
+      bankAccount: form.bank_account,
+      status: form.status,
+      memo: form.memo,
+    });
+
+    if (!built.ok) {
+      setSubmitError(built.error);
+      setSubmitting(false);
+      return;
+    }
+
+    const extendedPayload = built.payload;
+    const basePayload = {
+      invoice_id: extendedPayload.invoice_id,
+      case_id: extendedPayload.case_id,
+      payment_date: extendedPayload.payment_date,
+      payment_amount: extendedPayload.payment_amount,
+      status: extendedPayload.status,
+      memo: extendedPayload.memo,
     };
 
     let insertError = (
@@ -340,7 +350,7 @@ export default function NewPaymentPage({
       return;
     }
 
-    router.push(`/invoices/${invoice.id}`);
+    router.push(`/invoices/${invoiceId}`);
     router.refresh();
   }
 
