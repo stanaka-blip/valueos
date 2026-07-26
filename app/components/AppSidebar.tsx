@@ -12,10 +12,21 @@ type NavItem = {
   exact?: boolean;
 };
 
-type NavGroup = {
+type NavSubgroup = {
   label: string;
   items: NavItem[];
 };
+
+type NavEntry = NavItem | NavSubgroup;
+
+type NavGroup = {
+  label: string;
+  entries: NavEntry[];
+};
+
+function isSubgroup(entry: NavEntry): entry is NavSubgroup {
+  return "label" in entry && "items" in entry && !("href" in entry);
+}
 
 const iconClass = "h-4 w-4 shrink-0 opacity-80";
 
@@ -154,6 +165,25 @@ function IconBox() {
   );
 }
 
+function IconPackage() {
+  return (
+    <svg className={iconClass} viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M3 8.5 12 4l9 4.5-9 4.5L3 8.5Z"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M3 8.5v7L12 20l9-4.5v-7M12 13v7"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function IconTruck() {
   return (
     <svg className={iconClass} viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -199,7 +229,7 @@ function IconPrice() {
 const navGroups: NavGroup[] = [
   {
     label: "業務",
-    items: [
+    entries: [
       { name: "ダッシュボード", href: "/", icon: <IconDashboard />, exact: true },
       { name: "案件管理", href: "/cases", icon: <IconBriefcase /> },
       { name: "受注管理", href: "/admin/orders", icon: <IconOrders /> },
@@ -210,26 +240,48 @@ const navGroups: NavGroup[] = [
   },
   {
     label: "マスタ",
-    items: [
+    entries: [
       { name: "販売店", href: "/dealers", icon: <IconStore /> },
       { name: "メーカー", href: "/manufacturers", icon: <IconFactory /> },
-      { name: "商品", href: "/products", icon: <IconBox /> },
-      { name: "仕入先", href: "/suppliers", icon: <IconTruck /> },
+      {
+        label: "商品",
+        items: [
+          { name: "商品一覧", href: "/products", icon: <IconBox /> },
+          { name: "パッケージ商品", href: "/packages", icon: <IconPackage /> },
+        ],
+      },
       { name: "仕入価格", href: "/prices", icon: <IconTag /> },
       { name: "販売価格", href: "/sales-prices", icon: <IconPrice /> },
+      { name: "仕入先", href: "/suppliers", icon: <IconTruck /> },
     ],
   },
   {
     label: "設定",
-    items: [
-      // Ver1.0: 設定画面は未用意。グループ枠のみ先に整理。
-    ],
+    entries: [],
   },
 ];
 
 function isActive(pathname: string, item: NavItem): boolean {
   if (item.exact) return pathname === item.href;
+  // 商品一覧は /products/new も含めるが、他マスタとパス衝突しない
   return pathname === item.href || pathname.startsWith(`${item.href}/`);
+}
+
+function NavLink({ item, pathname }: { item: NavItem; pathname: string }) {
+  const active = isActive(pathname, item);
+  return (
+    <Link
+      href={item.href}
+      className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition ${
+        active
+          ? "bg-gray-800 font-medium text-white"
+          : "text-gray-300 hover:bg-gray-800/70 hover:text-white"
+      }`}
+    >
+      {item.icon}
+      <span>{item.name}</span>
+    </Link>
+  );
 }
 
 export default function AppSidebar() {
@@ -248,23 +300,28 @@ export default function AppSidebar() {
             <div className="mb-1.5 px-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
               {group.label}
             </div>
-            {group.items.length > 0 ? (
+            {group.entries.length > 0 ? (
               <ul className="space-y-0.5">
-                {group.items.map((item) => {
-                  const active = isActive(pathname, item);
+                {group.entries.map((entry) => {
+                  if (isSubgroup(entry)) {
+                    return (
+                      <li key={entry.label} className="pt-1">
+                        <div className="px-3 pb-1 text-[11px] font-medium text-gray-500">
+                          {entry.label}
+                        </div>
+                        <ul className="space-y-0.5">
+                          {entry.items.map((item) => (
+                            <li key={item.href}>
+                              <NavLink item={item} pathname={pathname} />
+                            </li>
+                          ))}
+                        </ul>
+                      </li>
+                    );
+                  }
                   return (
-                    <li key={item.href}>
-                      <Link
-                        href={item.href}
-                        className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition ${
-                          active
-                            ? "bg-gray-800 font-medium text-white"
-                            : "text-gray-300 hover:bg-gray-800/70 hover:text-white"
-                        }`}
-                      >
-                        {item.icon}
-                        <span>{item.name}</span>
-                      </Link>
+                    <li key={entry.href}>
+                      <NavLink item={entry} pathname={pathname} />
                     </li>
                   );
                 })}
