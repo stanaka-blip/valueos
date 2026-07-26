@@ -150,22 +150,13 @@ export default async function DealersPage() {
                       </span>
                     </td>
 
-                    <td className="whitespace-nowrap px-5 py-4">
-                      <div className="flex justify-center gap-2">
-                        <Link
-                          href={`/dealers/${dealer.id}`}
-                          className="rounded-lg border px-3 py-2 text-xs font-bold text-gray-700 hover:bg-gray-100"
-                        >
-                          詳細
-                        </Link>
-
-                        <Link
-                          href={`/dealers/edit/${dealer.id}`}
-                          className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white hover:bg-blue-700"
-                        >
-                          編集
-                        </Link>
-                      </div>
+                    <td className="whitespace-nowrap px-5 py-4 text-center">
+                      <Link
+                        href={`/dealers/${dealer.id}/edit`}
+                        className="rounded-lg bg-gray-900 px-3 py-2 text-xs font-bold text-white hover:bg-gray-700"
+                      >
+                        編集
+                      </Link>
                     </td>
                   </tr>
                 ))
