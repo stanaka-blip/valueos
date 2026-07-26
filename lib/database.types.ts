@@ -265,39 +265,117 @@ export type Database = {
           id: string;
           created_at: string;
           case_id: string | null;
+          line_type: string;
           product_id: string | null;
+          package_id: string | null;
           supplier_id: string | null;
           quantity: number | null;
           purchase_price: number | null;
           sales_price: number | null;
           gross_profit: number | null;
+          sales_price_id: string | null;
+          purchase_price_id: string | null;
+          is_manual_price: boolean;
+          price_fetched_at: string | null;
           memo: string | null;
         };
         Insert: {
           id?: string;
           created_at?: string;
           case_id?: string | null;
+          line_type?: string;
           product_id?: string | null;
+          package_id?: string | null;
           supplier_id?: string | null;
           quantity?: number | null;
           purchase_price?: number | null;
           sales_price?: number | null;
           gross_profit?: number | null;
+          sales_price_id?: string | null;
+          purchase_price_id?: string | null;
+          is_manual_price?: boolean;
+          price_fetched_at?: string | null;
           memo?: string | null;
         };
         Update: {
           id?: string;
           created_at?: string;
           case_id?: string | null;
+          line_type?: string;
           product_id?: string | null;
+          package_id?: string | null;
           supplier_id?: string | null;
           quantity?: number | null;
           purchase_price?: number | null;
           sales_price?: number | null;
           gross_profit?: number | null;
+          sales_price_id?: string | null;
+          purchase_price_id?: string | null;
+          is_manual_price?: boolean;
+          price_fetched_at?: string | null;
           memo?: string | null;
         };
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: "case_products_package_id_fkey";
+            columns: ["package_id"];
+            isOneToOne: false;
+            referencedRelation: "packages";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "case_products_sales_price_id_fkey";
+            columns: ["sales_price_id"];
+            isOneToOne: false;
+            referencedRelation: "sales_prices";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "case_products_purchase_price_id_fkey";
+            columns: ["purchase_price_id"];
+            isOneToOne: false;
+            referencedRelation: "purchase_prices";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      case_packages: {
+        Row: {
+          id: string;
+          created_at: string;
+          case_id: string | null;
+          package_id: string | null;
+          quantity: number | null;
+          memo: string | null;
+          case_product_id: string | null;
+        };
+        Insert: {
+          id?: string;
+          created_at?: string;
+          case_id?: string | null;
+          package_id?: string | null;
+          quantity?: number | null;
+          memo?: string | null;
+          case_product_id?: string | null;
+        };
+        Update: {
+          id?: string;
+          created_at?: string;
+          case_id?: string | null;
+          package_id?: string | null;
+          quantity?: number | null;
+          memo?: string | null;
+          case_product_id?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "case_packages_case_product_id_fkey";
+            columns: ["case_product_id"];
+            isOneToOne: false;
+            referencedRelation: "case_products";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       products: {
         Row: {
