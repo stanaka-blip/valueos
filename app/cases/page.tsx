@@ -1,3 +1,6 @@
+import { loadWorkflowAlertCaseIds } from "@/lib/dashboard/caseAlerts";
+import { isDateInRange } from "@/lib/dashboard/period";
+import { isActiveCaseStatus } from "@/lib/status/activeRecords";
 import { supabase } from "@/lib/supabase";
 
 import CasesList, { type CasesListItem } from "./CasesList";
@@ -17,6 +20,7 @@ type CaseListRow = {
   id: string;
   case_no: string | null;
   created_at: string | null;
+  order_received_date: string | null;
   customer_name: string | null;
   order_type: string | null;
   status: string | null;
@@ -31,24 +35,35 @@ type CaseListRow = {
 function getSingleRelation<T>(
   relation: T | T[] | null | undefined
 ): T | null {
-  if (!relation) {
-    return null;
-  }
-  if (Array.isArray(relation)) {
-    return relation[0] || null;
-  }
+  if (!relation) return null;
+  if (Array.isArray(relation)) return relation[0] || null;
   return relation;
 }
 
 function toNumber(value: number | string | null | undefined): number {
-  if (value == null || value === "") {
-    return 0;
-  }
+  if (value == null || value === "") return 0;
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
 }
 
-export default async function CasesPage() {
+export default async function CasesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{
+    from?: string;
+    to?: string;
+    orderReceivedFrom?: string;
+    orderReceivedTo?: string;
+    alert?: string;
+  }>;
+}) {
+  const params = await searchParams;
+  // 互換: from/to も受注日期間として扱う
+  const orderReceivedFrom =
+    params.orderReceivedFrom || params.from || "";
+  const orderReceivedTo = params.orderReceivedTo || params.to || "";
+  const alert = params.alert || "";
+
   const { data: cases, error } = await supabase
     .from("cases")
     .select(
@@ -56,6 +71,7 @@ export default async function CasesPage() {
       id,
       case_no,
       created_at,
+      order_received_date,
       customer_name,
       order_type,
       status,
@@ -89,8 +105,38 @@ export default async function CasesPage() {
     );
   }
 
-  const items: CasesListItem[] = ((cases || []) as unknown as CaseListRow[]).map(
-    (row) => {
+  let filterIds: Set<string> | null = null;
+  let filterLabel = "";
+
+  if (alert === "unordered" || alert === "uninvoiced") {
+    const alerts = await loadWorkflowAlertCaseIds();
+    filterIds = new Set(
+      alert === "unordered"
+        ? alerts.unorderedCaseIds
+        : alerts.uninvoicedCaseIds
+    );
+    filterLabel = alert === "unordered" ? "未発注アラート" : "未請求アラート";
+  } else if (orderReceivedFrom && orderReceivedTo) {
+    const ids = new Set<string>();
+    for (const row of (cases || []) as unknown as CaseListRow[]) {
+      if (!isActiveCaseStatus(row.status)) continue;
+      if (
+        isDateInRange(
+          row.order_received_date,
+          orderReceivedFrom,
+          orderReceivedTo
+        )
+      ) {
+        ids.add(row.id);
+      }
+    }
+    filterIds = ids;
+    filterLabel = `受注日 ${orderReceivedFrom} 〜 ${orderReceivedTo}`;
+  }
+
+  const items: CasesListItem[] = ((cases || []) as unknown as CaseListRow[])
+    .filter((row) => (filterIds ? filterIds.has(row.id) : true))
+    .map((row) => {
       const dealer = getSingleRelation(row.dealers);
       const products = Array.isArray(row.case_products) ? row.case_products : [];
       const salesTotal = products.reduce(
@@ -106,6 +152,7 @@ export default async function CasesPage() {
         id: row.id,
         caseNo: row.case_no || "",
         createdAt: row.created_at,
+        orderReceivedDate: row.order_received_date,
         dealerName: dealer?.name || "",
         customerName: row.customer_name || "",
         orderType: row.order_type || "",
@@ -117,8 +164,7 @@ export default async function CasesPage() {
         salesTotal,
         profitTotal,
       };
-    }
-  );
+    });
 
   return (
     <div className="min-h-full bg-[#f7f7f5]">
@@ -128,11 +174,12 @@ export default async function CasesPage() {
         </h1>
         <p className="mt-1 text-sm text-gray-500">
           卸案件の進捗・利益を管理します（全{items.length}件）
+          {filterLabel ? ` / ${filterLabel}` : ""}
         </p>
       </header>
 
       <div className="p-6 md:p-8">
-        <CasesList items={items} />
+        <CasesList items={items} filterLabel={filterLabel} />
       </div>
     </div>
   );

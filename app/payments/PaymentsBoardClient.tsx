@@ -10,6 +10,8 @@ import { SETTLEMENT_RULE_LIST } from "@/lib/workflow";
 type Props = {
   rows: PaymentBoardRow[];
   summary: PaymentBoardSummary;
+  initialUnpaid?: boolean;
+  initialOverdue?: boolean;
 };
 
 function formatYen(value: number): string {
@@ -34,10 +36,16 @@ function statusClass(status: string): string {
   }
 }
 
-export default function PaymentsBoardClient({ rows, summary }: Props) {
+export default function PaymentsBoardClient({
+  rows,
+  summary,
+  initialUnpaid = false,
+  initialOverdue = false,
+}: Props) {
   const [status, setStatus] = useState("");
   const [settlementType, setSettlementType] = useState("");
-  const [overdueOnly, setOverdueOnly] = useState(false);
+  const [unpaidOnly, setUnpaidOnly] = useState(initialUnpaid);
+  const [overdueOnly, setOverdueOnly] = useState(initialOverdue);
   const [dueFrom, setDueFrom] = useState("");
   const [dueTo, setDueTo] = useState("");
   const [dealer, setDealer] = useState("");
@@ -69,6 +77,16 @@ export default function PaymentsBoardClient({ rows, summary }: Props) {
         if (!match) return false;
       }
       if (overdueOnly && r.displayStatus !== "期限超過") return false;
+      if (
+        unpaidOnly &&
+        !(
+          r.displayStatus === "未入金" ||
+          r.displayStatus === "一部入金" ||
+          r.displayStatus === "期限超過"
+        )
+      ) {
+        return false;
+      }
       if (dueFrom && (!r.dueDate || r.dueDate < dueFrom)) return false;
       if (dueTo && (!r.dueDate || r.dueDate > dueTo)) return false;
       if (dealer && r.dealerName !== dealer) return false;
@@ -82,6 +100,7 @@ export default function PaymentsBoardClient({ rows, summary }: Props) {
     status,
     settlementType,
     overdueOnly,
+    unpaidOnly,
     dueFrom,
     dueTo,
     dealer,
@@ -136,6 +155,14 @@ export default function PaymentsBoardClient({ rows, summary }: Props) {
               onChange={(e) => setOverdueOnly(e.target.checked)}
             />
             遅延のみ
+          </label>
+          <label className="flex items-end gap-2 pb-2 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={unpaidOnly}
+              onChange={(e) => setUnpaidOnly(e.target.checked)}
+            />
+            未入金のみ
           </label>
           <FilterSelect
             label="販売店"

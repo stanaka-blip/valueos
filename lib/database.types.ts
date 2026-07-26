@@ -158,6 +158,7 @@ export type Database = {
           order_type: string | null;
           product_name: string | null;
           quantity: number | null;
+          order_received_date: string | null;
           desired_delivery_date: string | null;
           delivery_address: string | null;
           construction_desired_date: string | null;
@@ -180,6 +181,7 @@ export type Database = {
           order_type?: string | null;
           product_name?: string | null;
           quantity?: number | null;
+          order_received_date?: string | null;
           desired_delivery_date?: string | null;
           delivery_address?: string | null;
           construction_desired_date?: string | null;
@@ -202,6 +204,7 @@ export type Database = {
           order_type?: string | null;
           product_name?: string | null;
           quantity?: number | null;
+          order_received_date?: string | null;
           desired_delivery_date?: string | null;
           delivery_address?: string | null;
           construction_desired_date?: string | null;

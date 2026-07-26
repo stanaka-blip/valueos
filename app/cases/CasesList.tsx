@@ -14,6 +14,7 @@ export type CasesListItem = {
   id: string;
   caseNo: string;
   createdAt: string | null;
+  orderReceivedDate?: string | null;
   dealerName: string;
   customerName: string;
   orderType: string;
@@ -37,7 +38,13 @@ function formatDate(value: string | null): string {
   return date.toLocaleDateString("ja-JP");
 }
 
-export default function CasesList({ items }: { items: CasesListItem[] }) {
+export default function CasesList({
+  items,
+  filterLabel,
+}: {
+  items: CasesListItem[];
+  filterLabel?: string;
+}) {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
 
@@ -108,6 +115,14 @@ export default function CasesList({ items }: { items: CasesListItem[] }) {
 
   return (
     <div className="space-y-5">
+      {filterLabel ? (
+        <div className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+          ダッシュボードから絞り込み中: {filterLabel}
+          <Link href="/cases" className="ml-3 font-medium underline">
+            解除
+          </Link>
+        </div>
+      ) : null}
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div className="flex flex-1 flex-col gap-3 sm:flex-row">
           <label className="block min-w-0 flex-1 text-sm">
@@ -164,6 +179,7 @@ export default function CasesList({ items }: { items: CasesListItem[] }) {
             <thead className="border-b border-gray-200 bg-[#f7f7f5] text-xs text-gray-500">
               <tr>
                 <th className="px-4 py-3 font-medium">案件番号</th>
+                <th className="px-4 py-3 font-medium">受注日</th>
                 <th className="px-4 py-3 font-medium">登録日</th>
                 <th className="px-4 py-3 font-medium">販売店</th>
                 <th className="px-4 py-3 font-medium">顧客名</th>
@@ -193,6 +209,9 @@ export default function CasesList({ items }: { items: CasesListItem[] }) {
                         {item.orderType}
                       </p>
                     ) : null}
+                  </td>
+                  <td className="px-4 py-3 text-gray-600">
+                    {formatDate(item.orderReceivedDate || null)}
                   </td>
                   <td className="px-4 py-3 text-gray-600">
                     {formatDate(item.createdAt)}

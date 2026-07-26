@@ -1,36 +1,95 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ValueOS
+
+住宅設備商社向け ERP（Next.js + Supabase）。
 
 ## Getting Started
 
-First, run the development server:
-
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+既定の開発サーバーは `http://localhost:3001` です（`package.json` の `dev` スクリプト）。
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 経営ダッシュボード（Ver1.0）集計基準
+
+画面: `/`（サイドバー「ダッシュボード」）
+
+ダッシュボードは**表示レイヤー**です。発注可否・請求可否・入金状態の業務判定は既存の共通ロジックを再利用し、独自の Workflow / 入金判定は持ちません。
+
+### 表示期間
+
+画面上部の期間（今月 / 先月 / 今年 / 過去12ヶ月 / カスタム）は、次に連動します。
+
+- KPI（売上・実粗利・粗利率）
+- 売上推移
+- KPI クリック後の案件一覧遷移
+
+未入金額・業務アラートには連動しません。
+
+### KPI
+
+| KPI | 期間連動 | 集計基準 |
+|---|---|---|
+| 売上 | する | 期間内の **顧客受注日** `cases.order_received_date` を持つ有効案件に紐づく `case_products.sales_price` 合計 |
+| 実粗利 | する | 同上案件の `case_products.gross_profit` 合計 |
+| 粗利率 | する | 実粗利 ÷ 売上 |
+| 未入金額 | **しない** | 現在時点の未回収残高。請求ごとに `summarizeInvoicePayments().unpaidAmount` を合算 |
+
+**受注日の定義:** 顧客が当社へ商品・工事を正式に発注した日。  
+仕入先への発注日 `orders.order_date` や、商品明細登録日 `case_products.created_at` は使わない。
+
+キャンセル案件は売上・実粗利の集計対象外（`lib/status/activeRecords.ts`）。
+
+### 売上推移
+
+対象案件の `order_received_date` を日別 / 月別バケットへ振り分け、その案件の商品明細売上・実粗利を合計する。
+
+| 期間プリセット | 粒度 |
+|---|---|
+| 今月・先月 | 日別 |
+| 今年・過去12ヶ月 | 月別 |
+| カスタム | 期間長に応じて日別または月別 |
+
+### 業務アラート（現在値・期間非連動）
+
+| アラート | 単位 | 判定 |
+|---|---|---|
+| 未発注 | 案件 | `WorkflowEngine.canOrder === true` かつ有効発注 0 件 |
+| 未請求 | 案件 | `WorkflowEngine.canInvoice === true` かつ有効請求 0 件 |
+| 未入金 | **請求** | `summarizeInvoicePayments().paymentStatus` が `未入金` または `一部入金` |
+| 期限超過 | **請求** | `summarizeInvoicePayments().isOverdue === true` |
+
+取消・キャンセル除外は `lib/status/activeRecords.ts` の共通関数を利用する。
+
+### ドリルダウン URL
+
+| 起点 | 遷移先 |
+|---|---|
+| 売上 / 実粗利 / 粗利率 | `/cases?orderReceivedFrom=YYYY-MM-DD&orderReceivedTo=YYYY-MM-DD` |
+| 未入金額 / 未入金アラート | `/payments?unpaid=1` |
+| 期限超過 | `/payments?overdue=1` |
+| 未発注 | `/cases?alert=unordered` |
+| 未請求 | `/cases?alert=uninvoiced` |
+
+### 関連マイグレーション
+
+- `supabase/migrations/20260726160000_cases_order_received_date.sql`  
+  - `cases.order_received_date` 追加  
+  - 既存行は `DATE(created_at)`（Asia/Tokyo）で暫定バックフィル  
+- 適用例: `DATABASE_URL='...' node scripts/apply-cases-order-received-date-ddl.mjs`
+
+### 関連テスト
+
+```bash
+npm run test:dashboard   # 期間解決 + 受注日基準売上集計
+npm run test:payments    # 入金状態判定
+npm run test:workflow    # WorkflowEngine
+```
+
+---
 
 ## Learn More
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- [Next.js Documentation](https://nextjs.org/docs)
