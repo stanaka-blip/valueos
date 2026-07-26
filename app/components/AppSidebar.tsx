@@ -343,7 +343,7 @@ export default function AppSidebar() {
                         <ul className="space-y-0.5">
                           {entry.items.map((item) => (
                             <li key={item.href}>
-                              <NavLink item={item} pathname={pathname} />
+                              <NavLink item={item} pathname={pathname} nested />
                             </li>
                           ))}
                         </ul>
