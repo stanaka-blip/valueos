@@ -80,7 +80,7 @@ export default async function DealerDetailPage({
             </Link>
 
             <Link
-              href={`/dealers/edit/${dealer.id}`}
+              href={`/dealers/${dealer.id}/edit`}
               className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700"
             >
               編集

@@ -3,6 +3,10 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import {
+  PRICE_TARGET_OPTIONS,
+  type PriceTargetType,
+} from "@/lib/prices/targetType";
 
 type Dealer = {
   id: string;
@@ -14,7 +18,17 @@ type Product = {
   name: string | null;
   model_no: string | null;
   category: string | null;
-  manufacturers: any;
+  manufacturers: { name: string | null } | null;
+};
+
+type PackageRow = {
+  id: string;
+  name: string | null;
+  package_code: string | null;
+  capacity: number | string | null;
+  capacity_unit: string | null;
+  system_type: string | null;
+  manufacturers: { name: string | null } | null;
 };
 
 export default function NewSalesPricePage() {
@@ -22,11 +36,15 @@ export default function NewSalesPricePage() {
 
   const [dealers, setDealers] = useState<Dealer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [packages, setPackages] = useState<PackageRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState("");
 
   const [form, setForm] = useState({
     dealer_id: "",
+    price_target_type: "PRODUCT" as PriceTargetType,
     product_id: "",
+    package_id: "",
     sales_price: "",
     start_date: "",
     end_date: "",
@@ -36,37 +54,96 @@ export default function NewSalesPricePage() {
 
   useEffect(() => {
     async function fetchData() {
-      const { data: dealerData } = await supabase
-        .from("dealers")
-        .select("id, name")
-        .eq("is_active", true)
-        .order("name", { ascending: true });
-
-      const { data: productData } = await supabase
-        .from("products")
-        .select(`
-          id,
-          name,
-          model_no,
-          category,
-          manufacturers (
-            name
+      setLoadError("");
+      const [
+        { data: dealerData, error: dealerError },
+        { data: productData, error: productError },
+        { data: packageData, error: packageError },
+      ] = await Promise.all([
+        supabase
+          .from("dealers")
+          .select("id, name")
+          .eq("is_active", true)
+          .order("name", { ascending: true }),
+        supabase
+          .from("products")
+          .select(
+            `
+            id,
+            name,
+            model_no,
+            category,
+            manufacturers (
+              name
+            )
+          `
           )
-        `)
-        .eq("is_active", true)
-        .order("created_at", { ascending: false });
+          .eq("is_active", true)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("packages")
+          .select(
+            `
+            id,
+            name,
+            package_code,
+            capacity,
+            capacity_unit,
+            system_type,
+            manufacturers (
+              name
+            )
+          `
+          )
+          .eq("is_active", true)
+          .order("name", { ascending: true }),
+      ]);
+
+      if (dealerError || productError || packageError) {
+        setLoadError(
+          dealerError?.message ||
+            productError?.message ||
+            packageError?.message ||
+            "データ取得に失敗しました"
+        );
+        return;
+      }
 
       setDealers(dealerData || []);
-      setProducts((productData as Product[]) || []);
+      setProducts(((productData || []) as unknown as Product[]));
+      setPackages(((packageData || []) as unknown as PackageRow[]));
     }
 
     fetchData();
   }, []);
 
   function handleChange(
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
+    e: React.ChangeEvent<
+      HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
+    >
   ) {
-    setForm({ ...form, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+
+    if (name === "price_target_type") {
+      setForm((current) => ({
+        ...current,
+        price_target_type: value as PriceTargetType,
+        product_id: "",
+        package_id: "",
+      }));
+      return;
+    }
+
+    const target = e.target;
+    if (target instanceof HTMLInputElement && target.type === "checkbox") {
+      setForm((current) => ({
+        ...current,
+        [name]: target.checked,
+      }));
+      return;
+    }
+
+    setForm((current) => ({ ...current, [name]: value }));
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -77,8 +154,13 @@ export default function NewSalesPricePage() {
       return;
     }
 
-    if (!form.product_id) {
+    const isProduct = form.price_target_type === "PRODUCT";
+    if (isProduct && !form.product_id) {
       alert("商品を選択してください");
+      return;
+    }
+    if (!isProduct && !form.package_id) {
+      alert("パッケージ商品を選択してください");
       return;
     }
 
@@ -91,7 +173,9 @@ export default function NewSalesPricePage() {
 
     const { error } = await supabase.from("sales_prices").insert({
       dealer_id: form.dealer_id,
-      product_id: form.product_id,
+      price_target_type: form.price_target_type,
+      product_id: isProduct ? form.product_id : null,
+      package_id: isProduct ? null : form.package_id,
       sales_price: Number(form.sales_price),
       start_date: form.start_date || null,
       end_date: form.end_date || null,
@@ -110,16 +194,24 @@ export default function NewSalesPricePage() {
     router.refresh();
   }
 
+  const isProduct = form.price_target_type === "PRODUCT";
+
   return (
     <>
       <header className="border-b bg-white px-8 py-5">
         <h1 className="text-2xl font-bold text-gray-900">販売価格登録</h1>
         <p className="text-sm text-gray-500">
-          販売店ごとの商品販売価格を登録します
+          販売店ごとの商品・パッケージ販売価格を登録します
         </p>
       </header>
 
       <main className="p-8">
+        {loadError ? (
+          <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+            {loadError}
+          </div>
+        ) : null}
+
         <form
           onSubmit={handleSubmit}
           className="mx-auto max-w-5xl rounded-xl bg-white p-8 shadow-sm"
@@ -142,24 +234,64 @@ export default function NewSalesPricePage() {
               </select>
             </Field>
 
-            <Field label="商品">
+            <Field label="価格対象">
               <select
-                name="product_id"
-                value={form.product_id}
+                name="price_target_type"
+                value={form.price_target_type}
                 onChange={handleChange}
                 required
                 className="w-full rounded-lg border px-4 py-3 text-sm"
               >
-                <option value="">商品を選択</option>
-                {products.map((product) => (
-                  <option key={product.id} value={product.id}>
-                    {product.manufacturers?.name || "-"} /{" "}
-                    {product.category || "-"} / {product.model_no || "-"} /{" "}
-                    {product.name || "-"}
+                {PRICE_TARGET_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
                   </option>
                 ))}
               </select>
             </Field>
+
+            {isProduct ? (
+              <Field label="商品">
+                <select
+                  name="product_id"
+                  value={form.product_id}
+                  onChange={handleChange}
+                  required
+                  className="w-full rounded-lg border px-4 py-3 text-sm"
+                >
+                  <option value="">商品を選択</option>
+                  {products.map((product) => (
+                    <option key={product.id} value={product.id}>
+                      {product.manufacturers?.name || "-"} /{" "}
+                      {product.category || "-"} / {product.model_no || "-"} /{" "}
+                      {product.name || "-"}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            ) : (
+              <Field label="パッケージ商品">
+                <select
+                  name="package_id"
+                  value={form.package_id}
+                  onChange={handleChange}
+                  required
+                  className="w-full rounded-lg border px-4 py-3 text-sm"
+                >
+                  <option value="">パッケージ商品を選択</option>
+                  {packages.map((pkg) => (
+                    <option key={pkg.id} value={pkg.id}>
+                      {pkg.manufacturers?.name || "-"} /{" "}
+                      {pkg.system_type || "-"} /{" "}
+                      {pkg.capacity != null
+                        ? `${pkg.capacity}${pkg.capacity_unit || ""}`
+                        : "-"}{" "}
+                      / {pkg.package_code || "-"} / {pkg.name || "-"}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            )}
 
             <Field label="販売価格（税抜）">
               <input

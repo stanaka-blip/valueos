@@ -3,40 +3,42 @@ import { supabase } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
-export default async function ProductsPage() {
-  const { data: products, error } = await supabase
-    .from("products")
+export default async function PackagesPage() {
+  const { data: packages, error } = await supabase
+    .from("packages")
     .select(
       `
       id,
       name,
-      category,
-      model_no,
+      package_code,
       capacity,
-      unit,
+      capacity_unit,
+      system_type,
+      warranty_years,
       is_active,
       manufacturers ( name ),
       series:series_id ( name )
     `
     )
-    .order("created_at", { ascending: false });
+    .order("name", { ascending: true });
 
   return (
     <>
       <header className="border-b bg-white px-8 py-5">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">商品一覧</h1>
+            <h1 className="text-2xl font-bold text-gray-900">
+              パッケージ商品一覧
+            </h1>
             <p className="text-sm text-gray-500">
-              メーカー・シリーズ配下の商品を管理します
+              パッケージ構成・保証を管理します
             </p>
           </div>
-
           <Link
-            href="/products/new"
+            href="/packages/new"
             className="rounded-lg bg-gray-900 px-5 py-3 text-sm font-bold text-white"
           >
-            ＋ 商品登録
+            ＋ パッケージ商品登録
           </Link>
         </div>
       </header>
@@ -48,24 +50,22 @@ export default async function ProductsPage() {
               <tr className="text-left text-sm text-gray-600">
                 <th className="px-5 py-4">メーカー</th>
                 <th className="px-5 py-4">シリーズ</th>
-                <th className="px-5 py-4">カテゴリ</th>
-                <th className="px-5 py-4">型番</th>
-                <th className="px-5 py-4">商品名</th>
+                <th className="px-5 py-4">パッケージ名</th>
                 <th className="px-5 py-4">容量</th>
+                <th className="px-5 py-4">保証</th>
                 <th className="px-5 py-4">状態</th>
                 <th className="px-5 py-4 text-center">操作</th>
               </tr>
             </thead>
-
             <tbody>
               {error ? (
                 <tr>
-                  <td colSpan={8} className="px-5 py-10 text-center text-red-500">
+                  <td colSpan={7} className="px-5 py-10 text-center text-red-500">
                     データ取得エラー：{error.message}
                   </td>
                 </tr>
-              ) : products && products.length > 0 ? (
-                products.map((item) => {
+              ) : packages && packages.length > 0 ? (
+                packages.map((item) => {
                   const manufacturer = item.manufacturers as
                     | { name: string | null }
                     | { name: string | null }[]
@@ -80,17 +80,21 @@ export default async function ProductsPage() {
                   const seriesName = Array.isArray(series)
                     ? series[0]?.name
                     : series?.name;
-
                   return (
                     <tr key={item.id} className="border-t hover:bg-gray-50">
                       <td className="px-5 py-4 font-semibold">{maker || "-"}</td>
                       <td className="px-5 py-4">{seriesName || "-"}</td>
-                      <td className="px-5 py-4">{item.category || "-"}</td>
-                      <td className="px-5 py-4">{item.model_no || "-"}</td>
-                      <td className="px-5 py-4 font-semibold">{item.name || "-"}</td>
+                      <td className="px-5 py-4 font-semibold">
+                        {item.name || "-"}
+                      </td>
                       <td className="px-5 py-4">
-                        {item.capacity
-                          ? `${item.capacity}${item.unit ? item.unit : ""}`
+                        {item.capacity != null
+                          ? `${item.capacity}${item.capacity_unit || ""}`
+                          : "-"}
+                      </td>
+                      <td className="px-5 py-4">
+                        {item.warranty_years != null
+                          ? `${item.warranty_years}年`
                           : "-"}
                       </td>
                       <td className="px-5 py-4">
@@ -106,7 +110,7 @@ export default async function ProductsPage() {
                       </td>
                       <td className="px-5 py-4 text-center">
                         <Link
-                          href={`/products/${item.id}/edit`}
+                          href={`/packages/${item.id}/edit`}
                           className="rounded-lg bg-gray-900 px-3 py-2 text-xs font-bold text-white"
                         >
                           編集
@@ -117,8 +121,8 @@ export default async function ProductsPage() {
                 })
               ) : (
                 <tr>
-                  <td colSpan={8} className="px-5 py-10 text-center text-gray-500">
-                    商品が登録されていません。
+                  <td colSpan={7} className="px-5 py-10 text-center text-gray-500">
+                    パッケージ商品が登録されていません。
                   </td>
                 </tr>
               )}

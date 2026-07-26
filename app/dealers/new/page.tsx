@@ -34,10 +34,6 @@ export default function NewDealerPage() {
   }
 
   async function handleSubmit(e: React.FormEvent) {
-e.preventDefault();
-alert("登録処理が動きました");
-
-
     e.preventDefault();
     setLoading(true);
 

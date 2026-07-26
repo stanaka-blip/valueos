@@ -33,7 +33,7 @@ export default async function DealersPage() {
     return (
       <>
         <header className="border-b bg-white px-8 py-5">
-          <h1 className="text-xl font-bold text-gray-900">販売店マスタ</h1>
+          <h1 className="text-xl font-bold text-gray-900">販売店一覧</h1>
         </header>
 
         <main className="p-8">
@@ -51,7 +51,7 @@ export default async function DealersPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">
-              販売店マスタ
+              販売店一覧
             </h1>
             <p className="text-sm text-gray-500">
               販売店情報・取引条件を管理します
@@ -150,22 +150,13 @@ export default async function DealersPage() {
                       </span>
                     </td>
 
-                    <td className="whitespace-nowrap px-5 py-4">
-                      <div className="flex justify-center gap-2">
-                        <Link
-                          href={`/dealers/${dealer.id}`}
-                          className="rounded-lg border px-3 py-2 text-xs font-bold text-gray-700 hover:bg-gray-100"
-                        >
-                          詳細
-                        </Link>
-
-                        <Link
-                          href={`/dealers/edit/${dealer.id}`}
-                          className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white hover:bg-blue-700"
-                        >
-                          編集
-                        </Link>
-                      </div>
+                    <td className="whitespace-nowrap px-5 py-4 text-center">
+                      <Link
+                        href={`/dealers/${dealer.id}/edit`}
+                        className="rounded-lg bg-gray-900 px-3 py-2 text-xs font-bold text-white hover:bg-gray-700"
+                      >
+                        編集
+                      </Link>
                     </td>
                   </tr>
                 ))
