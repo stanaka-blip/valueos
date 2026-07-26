@@ -9,6 +9,8 @@ export {
 export { resolveSettlementRule } from "@/lib/workflow/normalize";
 export {
   areAllOrdersDelivered,
+  areAllOrderStatusesDelivered,
+  hasDeliveredStatusMissingDate,
   allOrdersDeliveredTriggerDate,
   computeCreditDates,
 } from "@/lib/workflow/conditions";

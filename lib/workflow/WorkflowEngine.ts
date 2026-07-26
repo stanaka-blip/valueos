@@ -1,6 +1,8 @@
 import {
+  areAllOrderStatusesDelivered,
   computeCreditDates,
   evaluateAllConditions,
+  hasDeliveredStatusMissingDate,
 } from "@/lib/workflow/conditions";
 import { resolveSettlementRule } from "@/lib/workflow/normalize";
 import type {
@@ -52,9 +54,14 @@ export function evaluateWorkflow(ctx: WorkflowContext): WorkflowResult {
     billingClosingDate = dates.billingClosingDate;
     paymentDueDate = dates.paymentDueDate;
     if (!canInvoice) {
-      warnings.push(
-        "売掛の請求は、案件内の全発注が納品済になってから可能です"
-      );
+      if (hasDeliveredStatusMissingDate(ctx.orders)) {
+        // status=納品済 だが delivered_date 欠損 → 請求不可
+        warnings.push("納品日が登録されていません");
+      } else if (!areAllOrderStatusesDelivered(ctx.orders)) {
+        warnings.push(
+          "売掛の請求は、案件内の全発注が納品済になってから可能です"
+        );
+      }
     }
   }
 

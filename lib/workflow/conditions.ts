@@ -16,13 +16,42 @@ export function activeOrders(
   );
 }
 
-/** 案件内の全発注が納品済か（発注0件は未達） */
-export function areAllOrdersDelivered(
+function hasDeliveredDate(order: WorkflowOrderInput): boolean {
+  return Boolean((order.deliveredDate || "").trim());
+}
+
+/** 案件内の全発注が status=納品済 か（日付の有無は見ない） */
+export function areAllOrderStatusesDelivered(
   orders: readonly WorkflowOrderInput[]
 ): boolean {
   const list = activeOrders(orders);
   if (list.length === 0) return false;
   return list.every((o) => (o.status || "").trim() === "納品済");
+}
+
+/**
+ * 案件内の全発注が請求トリガー条件を満たすか。
+ * - status = 納品済
+ * - delivered_date が存在
+ * 発注0件は未達。
+ */
+export function areAllOrdersDelivered(
+  orders: readonly WorkflowOrderInput[]
+): boolean {
+  const list = activeOrders(orders);
+  if (list.length === 0) return false;
+  return list.every(
+    (o) => (o.status || "").trim() === "納品済" && hasDeliveredDate(o)
+  );
+}
+
+/** status=納品済 なのに delivered_date が無い発注があるか */
+export function hasDeliveredStatusMissingDate(
+  orders: readonly WorkflowOrderInput[]
+): boolean {
+  return activeOrders(orders).some(
+    (o) => (o.status || "").trim() === "納品済" && !hasDeliveredDate(o)
+  );
 }
 
 /** 全発注が納品済のときの請求トリガー日 = 納品日の最大 */
