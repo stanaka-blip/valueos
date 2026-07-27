@@ -513,6 +513,13 @@ export type Database = {
         };
         Returns: Json;
       };
+      gateway_rate_limit_cleanup: {
+        Args: {
+          p_max_age_seconds: number;
+          p_limit?: number;
+        };
+        Returns: number;
+      };
     };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;

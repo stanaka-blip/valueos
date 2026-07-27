@@ -37,7 +37,7 @@ function LoginForm() {
         setError(data.error_message || "認証に失敗しました");
         return;
       }
-      // CSRF token は後続 API 呼び出しで利用（PR3 UI）。sessionStorage のみ。
+      // login 直後の互換用。PR3 は再読込・別タブでも GET /api/auth/csrf から再取得すること。
       if (data.csrfToken) {
         sessionStorage.setItem("vos_csrf_token", data.csrfToken);
       }

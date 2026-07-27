@@ -1,7 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
 import {
+  AuthConfigError,
   CSRF_HEADER_NAME,
   deriveRequestId,
+  isAuthSecretConfigured,
   isUuid,
 } from "@/lib/gateway/authCookie";
 import {
@@ -11,7 +13,10 @@ import {
   readJsonBodyLimited,
   requireJsonContentType,
 } from "@/lib/gateway/http";
+import { assertAppOrigin, originErrorResponse } from "@/lib/gateway/origin";
 import {
+  REGISTRATION_LIMIT,
+  REGISTRATION_WINDOW_SECONDS,
   hitRateLimit,
   registrationRateBucket,
 } from "@/lib/gateway/rateLimit";
@@ -33,6 +38,15 @@ export const runtime = "nodejs";
  */
 export async function POST(request: NextRequest) {
   const started = Date.now();
+
+  const originResult = assertAppOrigin(request);
+  if (originResult !== "ok") {
+    const err = originErrorResponse(originResult);
+    return NextResponse.json(
+      { ...err.body, status: "FAILED" },
+      { status: err.status }
+    );
+  }
 
   const session = getSessionFromRequest(request);
   if (!session) {
@@ -77,11 +91,23 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  if (!isAuthSecretConfigured()) {
+    return NextResponse.json(
+      {
+        ok: false,
+        status: "FAILED",
+        error_code: "CONFIG_ERROR",
+        error_message: "サーバー設定が完了していません",
+      },
+      { status: 503 }
+    );
+  }
+
   const ip = clientIp(request);
   const limited = await hitRateLimit({
     bucketKey: registrationRateBucket(session.sid, ip),
-    limit: 30,
-    windowSeconds: 60,
+    limit: REGISTRATION_LIMIT,
+    windowSeconds: REGISTRATION_WINDOW_SECONDS,
   });
   if (!limited.ok) {
     const status = limited.error === "RATE_LIMITED" ? 429 : 503;
@@ -145,18 +171,33 @@ export async function POST(request: NextRequest) {
   }
 
   const input = body.value as Record<string, unknown>;
-  // クライアント request_id は信用せず破棄
   const { request_id: _ignored, ...rest } = input;
   void _ignored;
 
-  const requestId = deriveRequestId(session.sid, idempotencyKey);
+  let requestId: string;
+  try {
+    requestId = deriveRequestId(session.sid, idempotencyKey);
+  } catch (e) {
+    if (e instanceof AuthConfigError) {
+      return NextResponse.json(
+        {
+          ok: false,
+          status: "FAILED",
+          error_code: "CONFIG_ERROR",
+          error_message: "サーバー設定が完了していません",
+        },
+        { status: 503 }
+      );
+    }
+    throw e;
+  }
+
   const payload = {
     ...rest,
     request_id: requestId,
   };
 
   try {
-    // 非本番テスト専用スタブ（本番RPCは呼ばない）
     if (
       process.env.NODE_ENV !== "production" &&
       process.env.GATEWAY_RPC_STUB === "success"
@@ -264,5 +305,4 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// CSRF ヘッダ名をクライアント実装向けにコメント保持
 void CSRF_HEADER_NAME;

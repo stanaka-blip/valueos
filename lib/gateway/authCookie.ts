@@ -7,6 +7,7 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 export const AUTH_COOKIE_NAME = "vos_staff_session";
 export const CSRF_HEADER_NAME = "x-csrf-token";
 export const SESSION_TTL_SECONDS = 12 * 60 * 60;
+export const MAX_PASSWORD_LENGTH = 500;
 
 export type StaffSession = {
   sid: string;
@@ -14,10 +15,26 @@ export type StaffSession = {
   exp: number;
 };
 
+export class AuthConfigError extends Error {
+  constructor() {
+    super("AUTH_CONFIG_ERROR");
+    this.name = "AuthConfigError";
+  }
+}
+
 function getAuthSecret(): string | null {
   const secret = process.env.INTERNAL_AUTH_SECRET;
   if (!secret || secret.length < 32) return null;
   return secret;
+}
+
+export function isAuthSecretConfigured(): boolean {
+  return getAuthSecret() !== null;
+}
+
+export function isAppPasswordConfigured(): boolean {
+  const expected = process.env.INTERNAL_APP_PASSWORD;
+  return typeof expected === "string" && expected.length > 0;
 }
 
 function b64urlEncode(buf: Buffer | string): string {
@@ -41,7 +58,6 @@ function safeEqualStr(a: string, b: string): boolean {
   const ab = Buffer.from(a);
   const bb = Buffer.from(b);
   if (ab.length !== bb.length) {
-    // 長さ差でも定数時間に近づけるためダミー比較
     timingSafeEqual(ab, ab);
     return false;
   }
@@ -51,6 +67,7 @@ function safeEqualStr(a: string, b: string): boolean {
 export function verifyStaffPassword(password: string): boolean {
   const expected = process.env.INTERNAL_APP_PASSWORD;
   if (!expected || !password) return false;
+  if (password.length > MAX_PASSWORD_LENGTH) return false;
   return safeEqualStr(password, expected);
 }
 
@@ -121,13 +138,15 @@ export function authCookieOptions() {
   };
 }
 
-/** サーバー派生 request_id。クライアントの request_id は信用しない。 */
+/** サーバー派生 request_id。secret 欠落時は固定値フォールバックせず失敗。 */
 export function deriveRequestId(sessionId: string, idempotencyKey: string): string {
-  const secret = getAuthSecret() || "missing-secret";
+  const secret = getAuthSecret();
+  if (!secret) {
+    throw new AuthConfigError();
+  }
   const digest = createHmac("sha256", secret)
     .update(`case-reg:v1:${sessionId}:${idempotencyKey}`)
     .digest();
-  // UUID v4 形式に整形（バージョン/バリアントビットを固定）
   const bytes = Buffer.from(digest.subarray(0, 16));
   bytes[6] = (bytes[6] & 0x0f) | 0x40;
   bytes[8] = (bytes[8] & 0x3f) | 0x80;

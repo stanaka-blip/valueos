@@ -103,9 +103,21 @@ npm run test:workflow    # WorkflowEngine
 | `SUPABASE_SERVICE_ROLE_KEY` | サーバーのみ RPC 実行 | Supabase の service_role（`NEXT_PUBLIC_` にしない） |
 | `INTERNAL_APP_PASSWORD` | 暫定社内ログイン | 十分な長さの共有パスフレーズ |
 | `INTERNAL_AUTH_SECRET` | cookie 署名 | **32文字以上**のランダム秘密（例: `openssl rand -base64 48`） |
+| `INTERNAL_APP_ORIGIN` | POST Origin 完全一致 | 例形式: `https://your-app.vercel.app`（末尾スラッシュなし・1値のみ） |
 
-追加 Migration（人間が適用）: `supabase/migrations/20260727010000_gateway_rate_limits.sql`  
-（レート制限テーブル/RPC。本番適用は別途承認後）
+- Production / Preview で Origin が異なる場合は**環境ごとに明示した別値**を設定する（曖昧な複数許可はしない）。
+- CSRF は `GET /api/auth/csrf` で再取得する（HttpOnly session 検証後に `csrfToken` のみ返す）。
+
+追加 Migration（人間が適用）:
+
+- `supabase/migrations/20260727010000_gateway_rate_limits.sql`
+- `supabase/migrations/20260727010100_gateway_rate_limit_cleanup.sql`
+
+レート制限の古い bucket 掃除:
+
+- アプリが rate limit ヒット時に約5%で `gateway_rate_limit_cleanup(3600, 100)` を opportunistic 実行
+- 必要なら SQL Editor から `SELECT public.gateway_rate_limit_cleanup(3600, 500);` を service_role / 管理者で定期実行
+- 外部 cron サービスは追加していない（限界: トラフィックが無いと opportunistic が進まない）
 
 ---
 
