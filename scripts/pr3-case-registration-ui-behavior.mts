@@ -94,6 +94,25 @@ async function main() {
   assert("6 missing price blocks", !validateStep2([missingPrice]).ok);
   assert("6 missing price message", !!validateStep2([missingPrice]).lineErrors.l1?.price);
 
+  const qtyMsg = "数量は1〜9,999の整数で入力してください";
+  function withQty(line: typeof productLine, quantity: string, localId: string) {
+    return { ...line, local_id: localId, quantity };
+  }
+  assert("qty 1 PRODUCT ok", validateStep2([withQty(productLine, "1", "q1")]).ok);
+  assert("qty 9999 PRODUCT ok", validateStep2([withQty(productLine, "9999", "q2")]).ok);
+  assert("qty 0 PRODUCT reject", validateStep2([withQty(productLine, "0", "q3")]).lineErrors.q3?.quantity === qtyMsg);
+  assert("qty -1 PRODUCT reject", validateStep2([withQty(productLine, "-1", "q4")]).lineErrors.q4?.quantity === qtyMsg);
+  assert("qty 1.5 PRODUCT reject", validateStep2([withQty(productLine, "1.5", "q5")]).lineErrors.q5?.quantity === qtyMsg);
+  assert("qty 10000 PRODUCT reject", validateStep2([withQty(productLine, "10000", "q6")]).lineErrors.q6?.quantity === qtyMsg);
+  assert("qty empty PRODUCT reject", validateStep2([withQty(productLine, "", "q7")]).lineErrors.q7?.quantity === qtyMsg);
+  assert("qty 1 PACKAGE ok", validateStep2([withQty(packageLine, "1", "q8")]).ok);
+  assert("qty 9999 PACKAGE ok", validateStep2([withQty(packageLine, "9999", "q9")]).ok);
+  assert("qty 0 PACKAGE reject", validateStep2([withQty(packageLine, "0", "q10")]).lineErrors.q10?.quantity === qtyMsg);
+  assert("qty 1.5 PACKAGE reject", validateStep2([withQty(packageLine, "1.5", "q11")]).lineErrors.q11?.quantity === qtyMsg);
+  assert("qty 10000 PACKAGE reject", validateStep2([withQty(packageLine, "10000", "q12")]).lineErrors.q12?.quantity === qtyMsg);
+  assert("qty empty PACKAGE reject", validateStep2([withQty(packageLine, "", "q13")]).lineErrors.q13?.quantity === qtyMsg);
+  assert("qty non-numeric reject", validateStep2([withQty(productLine, "abc", "q14")]).lineErrors.q14?.quantity === qtyMsg);
+
   assert("3 settlement required", validateStep3("") !== null);
   assert(
     "3 settlement accepts all",

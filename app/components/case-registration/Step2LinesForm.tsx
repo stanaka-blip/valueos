@@ -169,8 +169,9 @@ export default function Step2LinesForm({
                     <input
                       className={inputClass}
                       type="number"
-                      min="1"
-                      step="1"
+                      min={1}
+                      max={9999}
+                      step={1}
                       value={line.quantity}
                       onChange={(e) =>
                         onChangeLine(line.local_id, { quantity: e.target.value })
@@ -301,7 +302,9 @@ export default function Step2LinesForm({
                   <input
                     className={`${inputClass} mt-1`}
                     type="number"
-                    min="1"
+                    min={1}
+                    max={9999}
+                    step={1}
                     value={line.quantity}
                     onChange={(e) =>
                       onChangeLine(line.local_id, { quantity: e.target.value })

@@ -43,8 +43,15 @@ export function validateStep2(lines: LineDraft[]): {
       e.package_id = "パッケージを選択してください";
     }
     if (!line.supplier_id) e.supplier_id = "仕入先は必須です";
-    const qty = Number(line.quantity);
-    if (!Number.isFinite(qty) || qty <= 0) e.quantity = "数量は1以上で入力してください";
+    const qtyRaw = String(line.quantity ?? "").trim();
+    const qty = /^\d+$/.test(qtyRaw) ? Number(qtyRaw) : NaN;
+    if (
+      !Number.isInteger(qty) ||
+      qty < 1 ||
+      qty > 9999
+    ) {
+      e.quantity = "数量は1〜9,999の整数で入力してください";
+    }
     if (line.price_loading) e.price = "価格を取得しています";
     else if (line.price_error) e.price = line.price_error;
     else if (!line.sales_found || line.sales_unit_price == null || line.sales_unit_price <= 0) {

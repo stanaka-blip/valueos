@@ -68,6 +68,8 @@ assert("STEP1 phone optional (no required marker on phone)", !/電話番号[\s\S
 assert("STEP1 delivery conditional", step1Src.includes("delivery_same_as_site") && step1Src.includes("納品先住所"));
 assert("STEP2 PRODUCT/PACKAGE", step2Src.includes('value="PRODUCT"') && step2Src.includes('value="PACKAGE"'));
 assert("STEP2 qty + prices displayed", step2Src.includes("数量") && step2Src.includes("販売単価") && step2Src.includes("仕入単価") && step2Src.includes("粗利"));
+assert("STEP2 qty input bounds", step2Src.includes("min={1}") && step2Src.includes("max={9999}") && step2Src.includes("step={1}"));
+assert("STEP2 qty validate message", validationSrc.includes("数量は1〜9,999の整数で入力してください"));
 assert("STEP2 no manual price UI", !/手動価格|is_manual_price|isManualPrice/.test(step2Src));
 assert("12 PC table / SP cards", step2Src.includes("hidden") && step2Src.includes("md:block") && step2Src.includes("md:hidden"));
 assert(
