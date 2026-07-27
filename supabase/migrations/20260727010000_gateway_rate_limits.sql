@@ -13,7 +13,8 @@ CREATE TABLE IF NOT EXISTS public.gateway_rate_limits (
 COMMENT ON TABLE public.gateway_rate_limits IS
   '社内ゲートウェイの分散レート制限。メモリ実装の代替。';
 
-ALTER TABLE public.gateway_rate_limits DISABLE ROW LEVEL SECURITY;
+-- 正式仕様: RLS 有効・policy 0件。実アクセスは service_role の BYPASSRLS に依存。
+ALTER TABLE public.gateway_rate_limits ENABLE ROW LEVEL SECURITY;
 
 REVOKE ALL ON TABLE public.gateway_rate_limits FROM PUBLIC;
 

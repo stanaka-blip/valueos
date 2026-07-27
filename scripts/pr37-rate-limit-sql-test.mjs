@@ -35,6 +35,8 @@ DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN CREATE ROLE authenticated NOLOGIN; END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN CREATE ROLE service_role NOLOGIN; END IF;
 END $$;
+-- Supabase 本番相当: service_role は BYPASSRLS（RLS ENABLE + policy 0件でも利用可能）
+ALTER ROLE service_role BYPASSRLS;
 `);
 for (const f of [
   "20260727010000_gateway_rate_limits.sql",
