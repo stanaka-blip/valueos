@@ -24,6 +24,7 @@ async function withServer(envExtra, port, fn) {
   await sleep(500);
   const PASSWORD = "test-gateway-password-value";
   const SECRET = randomBytes(32).toString("hex");
+  const origin = `http://127.0.0.1:${port}`;
   const child = spawn("npx", ["next", "dev", "--port", String(port), "--hostname", "127.0.0.1"], {
     cwd: ROOT,
     env: {
@@ -31,6 +32,8 @@ async function withServer(envExtra, port, fn) {
       NODE_ENV: "development",
       INTERNAL_APP_PASSWORD: PASSWORD,
       INTERNAL_AUTH_SECRET: SECRET,
+      // Production と同仕様の完全一致検証を通し、テスト Origin だけを明示する（緩和しない）
+      INTERNAL_APP_ORIGIN: origin,
       NEXT_PUBLIC_SUPABASE_URL: "http://127.0.0.1:9",
       NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "pub",
       SUPABASE_SERVICE_ROLE_KEY: "service-role-test",
@@ -38,7 +41,7 @@ async function withServer(envExtra, port, fn) {
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
-  const base = `http://127.0.0.1:${port}`;
+  const base = origin;
   let ready = false;
   try {
     for (let i = 0; i < 80; i++) {
@@ -53,7 +56,7 @@ async function withServer(envExtra, port, fn) {
       await sleep(500);
     }
     if (!ready) throw new Error(`server not ready on ${port}`);
-    await fn(base, PASSWORD);
+    await fn(base, PASSWORD, origin);
   } finally {
     child.kill("SIGKILL");
     clearNextLock();
@@ -70,10 +73,10 @@ function assert(name, cond, detail = "") {
   }
 }
 
-await withServer({ GATEWAY_RATE_LIMIT_STUB: "allow", GATEWAY_RPC_STUB: "failure" }, 3021, async (base, PASSWORD) => {
+await withServer({ GATEWAY_RATE_LIMIT_STUB: "allow", GATEWAY_RPC_STUB: "failure" }, 3021, async (base, PASSWORD, origin) => {
   const login = await fetch(`${base}/api/auth/login`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", Origin: origin },
     body: JSON.stringify({ password: PASSWORD }),
   });
   const loginData = await login.json();
@@ -84,6 +87,7 @@ await withServer({ GATEWAY_RATE_LIMIT_STUB: "allow", GATEWAY_RPC_STUB: "failure"
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      Origin: origin,
       Cookie: `vos_staff_session=${cookie}`,
       "X-CSRF-Token": loginData.csrfToken,
       "Idempotency-Key": randomUUID(),
@@ -98,10 +102,10 @@ await withServer({ GATEWAY_RATE_LIMIT_STUB: "allow", GATEWAY_RPC_STUB: "failure"
   );
 });
 
-await withServer({ GATEWAY_RATE_LIMIT_STUB: "deny", GATEWAY_RPC_STUB: "success" }, 3022, async (base, PASSWORD) => {
+await withServer({ GATEWAY_RATE_LIMIT_STUB: "deny", GATEWAY_RPC_STUB: "success" }, 3022, async (base, PASSWORD, origin) => {
   const rl = await fetch(`${base}/api/auth/login`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", Origin: origin },
     body: JSON.stringify({ password: PASSWORD }),
   });
   const data = await rl.json();
