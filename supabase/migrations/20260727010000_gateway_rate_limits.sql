@@ -27,7 +27,7 @@ BEGIN
   END IF;
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
     REVOKE ALL ON TABLE public.gateway_rate_limits FROM service_role;
-    GRANT SELECT, INSERT, UPDATE ON TABLE public.gateway_rate_limits TO service_role;
+    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.gateway_rate_limits TO service_role;
   END IF;
 END $$;
 
