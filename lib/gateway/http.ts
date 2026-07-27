@@ -61,14 +61,20 @@ export function assertCsrf(request: NextRequest, session: StaffSession): boolean
   return timingSafeEqual(a, b);
 }
 
-/** open redirect 防止: 同一オリジンの許可パスのみ */
+/** open redirect 防止: 同一オリジンの社内パスのみ。/login・/api は拒否 */
 export function safeNextPath(next: unknown): string {
-  if (typeof next !== "string") return "/cases/new";
-  if (!next.startsWith("/")) return "/cases/new";
-  if (next.startsWith("//")) return "/cases/new";
-  if (next.includes("://")) return "/cases/new";
-  if (next.includes("\\")) return "/cases/new";
-  // 暫定ゲート対象の登録画面のみ許可
-  if (next === "/cases/new" || next.startsWith("/cases/new?")) return "/cases/new";
-  return "/cases/new";
+  const fallback = "/";
+  if (typeof next !== "string") return fallback;
+  if (!next.startsWith("/")) return fallback;
+  if (next.startsWith("//")) return fallback;
+  if (next.includes("://")) return fallback;
+  if (next.includes("\\")) return fallback;
+  const pathOnly = next.split("#")[0] || fallback;
+  if (pathOnly === "/login" || pathOnly.startsWith("/login?") || pathOnly.startsWith("/login/")) {
+    return fallback;
+  }
+  if (pathOnly === "/api" || pathOnly.startsWith("/api/") || pathOnly.startsWith("/api?")) {
+    return fallback;
+  }
+  return pathOnly;
 }

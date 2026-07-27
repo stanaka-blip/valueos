@@ -90,9 +90,10 @@ npm run test:workflow    # WorkflowEngine
 
 ---
 
-## 社内案件登録ゲート（暫定）
+## 社内認証ゲート（暫定）
 
-`/cases/new` と `POST /api/case-registrations` は暫定の社内パスワードゲートで保護されます。  
+ValueOS の社内業務画面は原則すべて暫定の社内パスワードゲートで保護されます（`/dealer/*` 含む。販売店専用 Auth 実装までの暫定）。  
+`/login` と `POST /api/auth/login` のみ未認証で利用できます。`/login` にサイドバーは表示しません。  
 **Supabase Auth の代替として恒久化しない**想定です。service role key をブラウザへ置かないでください。
 
 ### Vercel に設定する環境変数（値はリポジトリへ入れない）
