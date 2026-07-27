@@ -90,6 +90,25 @@ npm run test:workflow    # WorkflowEngine
 
 ---
 
+## 社内案件登録ゲート（暫定）
+
+`/cases/new` と `POST /api/case-registrations` は暫定の社内パスワードゲートで保護されます。  
+**Supabase Auth の代替として恒久化しない**想定です。service role key をブラウザへ置かないでください。
+
+### Vercel に設定する環境変数（値はリポジトリへ入れない）
+
+| 変数名 | 用途 | 生成条件 |
+|---|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | 既存クライアント用 | Supabase プロジェクト URL |
+| `SUPABASE_SERVICE_ROLE_KEY` | サーバーのみ RPC 実行 | Supabase の service_role（`NEXT_PUBLIC_` にしない） |
+| `INTERNAL_APP_PASSWORD` | 暫定社内ログイン | 十分な長さの共有パスフレーズ |
+| `INTERNAL_AUTH_SECRET` | cookie 署名 | **32文字以上**のランダム秘密（例: `openssl rand -base64 48`） |
+
+追加 Migration（人間が適用）: `supabase/migrations/20260727010000_gateway_rate_limits.sql`  
+（レート制限テーブル/RPC。本番適用は別途承認後）
+
+---
+
 ## Learn More
 
 - [Next.js Documentation](https://nextjs.org/docs)
