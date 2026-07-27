@@ -421,6 +421,27 @@ export type Database = {
           },
         ];
       };
+      gateway_rate_limits: {
+        Row: {
+          bucket_key: string;
+          window_started_at: string;
+          hit_count: number;
+          updated_at: string;
+        };
+        Insert: {
+          bucket_key: string;
+          window_started_at: string;
+          hit_count?: number;
+          updated_at?: string;
+        };
+        Update: {
+          bucket_key?: string;
+          window_started_at?: string;
+          hit_count?: number;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       products: {
         Row: {
           id: string;
@@ -483,6 +504,21 @@ export type Database = {
           payload: Json;
         };
         Returns: Json;
+      };
+      gateway_rate_limit_hit: {
+        Args: {
+          p_bucket_key: string;
+          p_limit: number;
+          p_window_seconds: number;
+        };
+        Returns: Json;
+      };
+      gateway_rate_limit_cleanup: {
+        Args: {
+          p_max_age_seconds: number;
+          p_limit?: number;
+        };
+        Returns: number;
       };
     };
     Enums: Record<string, never>;
