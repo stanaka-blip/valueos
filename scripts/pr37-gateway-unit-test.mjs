@@ -75,6 +75,20 @@ const logoutSrc = readFileSync(join(ROOT, "app/api/auth/logout/route.ts"), "utf8
 assert("logout requires csrf", logoutSrc.includes("assertCsrf"));
 assert("logout requires origin", logoutSrc.includes("assertAppOrigin"));
 
+const httpSrc = readFileSync(join(ROOT, "lib/gateway/http.ts"), "utf8");
+assert("safeNext rejects api", httpSrc.includes('pathOnly.startsWith("/api/")'));
+assert("safeNext fallback home", httpSrc.includes('const fallback = "/"'));
+
+const proxySrc = readFileSync(join(ROOT, "proxy.ts"), "utf8");
+assert("proxy public login only", proxySrc.includes('pathname === "/api/auth/login"'));
+assert("proxy protects by default", proxySrc.includes("isPublicPath") && proxySrc.includes("redirect"));
+assert("proxy excludes static", proxySrc.includes("_next/static"));
+
+const sidebarSrc = readFileSync(join(ROOT, "app/components/AppSidebar.tsx"), "utf8");
+assert("sidebar hidden on login", sidebarSrc.includes('pathname === "/login"') && sidebarSrc.includes("return null"));
+assert("sidebar logout posts", sidebarSrc.includes('/api/auth/logout') && sidebarSrc.includes("x-csrf-token"));
+assert("sidebar logout full navigate", sidebarSrc.includes('location.assign("/login")'));
+
 const loginSrc = readFileSync(join(ROOT, "app/api/auth/login/route.ts"), "utf8");
 assert("login password config 503", loginSrc.includes("isAppPasswordConfigured") && loginSrc.includes("CONFIG_ERROR"));
 assert("login global fail bucket", loginSrc.includes("loginGlobalFailBucket"));

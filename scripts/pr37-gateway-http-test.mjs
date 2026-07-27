@@ -118,6 +118,35 @@ try {
   }
 
   {
+    const r = await fetch(`${BASE}/cases`, { redirect: "manual" });
+    const loc = r.headers.get("location") || "";
+    assert("unauth /cases gate", r.status >= 300 && r.status < 400 && loc.includes("/login"), loc);
+  }
+
+  {
+    const r = await fetch(`${BASE}/dealer/orders/new`, { redirect: "manual" });
+    const loc = r.headers.get("location") || "";
+    assert("unauth /dealer gate", r.status >= 300 && r.status < 400 && loc.includes("/login"), loc);
+  }
+
+  {
+    const r = await fetch(`${BASE}/dealers`, { redirect: "manual" });
+    const loc = r.headers.get("location") || "";
+    assert("unauth /dealers gate", r.status >= 300 && r.status < 400 && loc.includes("/login"), loc);
+  }
+
+  {
+    const r = await fetch(`${BASE}/login`);
+    const html = await r.text();
+    assert("login accessible", r.status === 200 && html.includes("社内ログイン"));
+    assert(
+      "login no sidebar",
+      !html.includes("案件管理") && !html.includes("ログアウト"),
+      "sidebar leaked on login"
+    );
+  }
+
+  {
     const r = await fetch(`${BASE}/api/case-registrations`, {
       method: "POST",
       headers: {
@@ -239,6 +268,26 @@ try {
       },
     });
     assert("11 logout ok", r.status === 200);
+  }
+
+  // ログアウト後（cookie なし）は業務画面へ戻れない
+  {
+    const r = await fetch(`${BASE}/cases`, { redirect: "manual" });
+    const loc = r.headers.get("location") || "";
+    assert(
+      "13 after logout /cases blocked",
+      r.status >= 300 && r.status < 400 && loc.includes("/login"),
+      loc
+    );
+  }
+  {
+    const r = await fetch(`${BASE}/dealer/orders/new`, { redirect: "manual" });
+    const loc = r.headers.get("location") || "";
+    assert(
+      "13 after logout /dealer blocked",
+      r.status >= 300 && r.status < 400 && loc.includes("/login"),
+      loc
+    );
   }
 
   {

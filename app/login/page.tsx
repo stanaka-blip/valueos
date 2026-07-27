@@ -21,10 +21,13 @@ function LoginForm() {
     try {
       const res = await fetch("/api/auth/login", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Origin: window.location.origin,
+        },
         body: JSON.stringify({
           password,
-          next: searchParams.get("next") || "/cases/new",
+          next: searchParams.get("next") || "/",
         }),
       });
       const data = (await res.json().catch(() => ({}))) as {
@@ -37,11 +40,11 @@ function LoginForm() {
         setError(data.error_message || "認証に失敗しました");
         return;
       }
-      // login 直後の互換用。PR3 は再読込・別タブでも GET /api/auth/csrf から再取得すること。
+      // login 直後の互換用。再読込・別タブでは GET /api/auth/csrf から再取得すること。
       if (data.csrfToken) {
         sessionStorage.setItem("vos_csrf_token", data.csrfToken);
       }
-      router.replace(data.next === "/cases/new" ? "/cases/new" : "/cases/new");
+      router.replace(typeof data.next === "string" && data.next.startsWith("/") ? data.next : "/");
       router.refresh();
     } catch {
       setError("認証に失敗しました");
@@ -54,7 +57,7 @@ function LoginForm() {
     <div className="mx-auto mt-16 w-full max-w-md rounded-lg bg-white p-8 shadow">
       <h1 className="text-xl font-bold text-gray-900">社内ログイン（暫定）</h1>
       <p className="mt-2 text-sm text-gray-600">
-        案件登録ゲート用の暫定認証です。Supabase Auth ではありません。
+        社内業務画面用の暫定認証です。Supabase Auth ではありません。
       </p>
       <form onSubmit={onSubmit} className="mt-6 space-y-4">
         <label className="block text-sm font-medium text-gray-700">

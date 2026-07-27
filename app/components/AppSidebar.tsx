@@ -1,8 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useState, type ReactNode } from "react";
+
+/** lib/gateway/authCookie の CSRF_HEADER_NAME と一致（client へ server-only を引かない） */
+const CSRF_HEADER_NAME = "x-csrf-token";
 
 type NavItem = {
   name: string;
@@ -313,6 +316,62 @@ function NavLink({
 
 export default function AppSidebar() {
   const pathname = usePathname() || "/";
+  const router = useRouter();
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  // /login ではサイドバーを出さない（認証前の業務ナビ誘導を防ぐ）
+  if (pathname === "/login" || pathname.startsWith("/login/")) {
+    return null;
+  }
+
+  async function onLogout() {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try {
+      const csrfRes = await fetch("/api/auth/csrf", {
+        method: "GET",
+        credentials: "same-origin",
+        cache: "no-store",
+      });
+      const csrfData = (await csrfRes.json().catch(() => ({}))) as {
+        csrfToken?: string;
+      };
+      if (!csrfRes.ok || !csrfData.csrfToken) {
+        window.location.assign("/login");
+        return;
+      }
+
+      const logoutRes = await fetch("/api/auth/logout", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          "Content-Type": "application/json",
+          Origin: window.location.origin,
+          [CSRF_HEADER_NAME]: csrfData.csrfToken,
+        },
+        body: "{}",
+      });
+
+      try {
+        sessionStorage.removeItem("vos_csrf_token");
+      } catch {
+        // ignore
+      }
+
+      if (!logoutRes.ok) {
+        window.location.assign("/login");
+        return;
+      }
+
+      // bfcache で業務画面が残らないようフル遷移
+      window.location.assign("/login");
+      router.refresh();
+    } catch {
+      window.location.assign("/login");
+    } finally {
+      setLoggingOut(false);
+    }
+  }
 
   return (
     <aside className="flex w-60 shrink-0 flex-col bg-gray-900 text-white">
@@ -371,6 +430,17 @@ export default function AppSidebar() {
           </div>
         ))}
       </nav>
+
+      <div className="border-t border-gray-700 p-3">
+        <button
+          type="button"
+          onClick={onLogout}
+          disabled={loggingOut}
+          className="w-full rounded-lg px-3 py-2 text-left text-sm text-gray-300 transition hover:bg-gray-800/70 hover:text-white disabled:opacity-60"
+        >
+          {loggingOut ? "ログアウト中..." : "ログアウト"}
+        </button>
+      </div>
     </aside>
   );
 }
