@@ -23,6 +23,11 @@ type Series = {
   manufacturer_id: string | null;
 };
 
+type Supplier = {
+  id: string;
+  name: string | null;
+};
+
 type ProductForm = {
   manufacturer_id: string;
   series_id: string;
@@ -33,6 +38,7 @@ type ProductForm = {
   unit: string;
   memo: string;
   is_active: boolean;
+  default_supplier_id: string;
 };
 
 export default function NewProductPage() {
@@ -40,6 +46,7 @@ export default function NewProductPage() {
 
   const [manufacturers, setManufacturers] = useState<Manufacturer[]>([]);
   const [seriesList, setSeriesList] = useState<Series[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [initialLoading, setInitialLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [loadError, setLoadError] = useState("");
@@ -55,6 +62,7 @@ export default function NewProductPage() {
     unit: "",
     memo: "",
     is_active: true,
+    default_supplier_id: "",
   });
 
   useEffect(() => {
@@ -62,7 +70,7 @@ export default function NewProductPage() {
       setInitialLoading(true);
       setLoadError("");
 
-      const [mRes, sRes] = await Promise.all([
+      const [mRes, sRes, supplierRes] = await Promise.all([
         supabase
           .from("manufacturers")
           .select("id, name")
@@ -72,6 +80,10 @@ export default function NewProductPage() {
           .from("product_series")
           .select("id, name, manufacturer_id")
           .eq("is_active", true)
+          .order("name", { ascending: true }),
+        supabase
+          .from("suppliers")
+          .select("id, name, is_active")
           .order("name", { ascending: true }),
       ]);
 
@@ -85,9 +97,19 @@ export default function NewProductPage() {
         setInitialLoading(false);
         return;
       }
+      if (supplierRes.error) {
+        setLoadError(`仕入先取得エラー：${supplierRes.error.message}`);
+        setInitialLoading(false);
+        return;
+      }
 
       setManufacturers((mRes.data || []) as Manufacturer[]);
       setSeriesList((sRes.data || []) as Series[]);
+      setSuppliers(
+        ((supplierRes.data || []) as { id: string; name: string | null; is_active: unknown }[])
+          .filter((s) => s.is_active === true || s.is_active === "true" || s.is_active == null)
+          .map((s) => ({ id: s.id, name: s.name }))
+      );
       setInitialLoading(false);
     }
 
@@ -177,6 +199,7 @@ export default function NewProductPage() {
       unit: form.unit.trim() || null,
       memo: form.memo.trim() || null,
       is_active: form.is_active,
+      default_supplier_id: form.default_supplier_id || null,
     });
 
     if (insertError) {
@@ -353,6 +376,26 @@ export default function NewProductPage() {
                 <option value="式">式</option>
                 <option value="kW">kW</option>
                 <option value="kWh">kWh</option>
+              </select>
+            </Field>
+
+            <Field
+              label="標準仕入先"
+              description="案件登録時に自動設定されます。未設定も可能です。"
+            >
+              <select
+                name="default_supplier_id"
+                value={form.default_supplier_id}
+                onChange={handleChange}
+                disabled={submitting}
+                className={inputClassName}
+              >
+                <option value="">未設定</option>
+                {suppliers.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name || "名称未設定"}
+                  </option>
+                ))}
               </select>
             </Field>
 

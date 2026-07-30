@@ -459,6 +459,7 @@ export type Database = {
           specification: string | null;
           price_list_category: string | null;
           updated_at: string | null;
+          default_supplier_id: string | null;
         };
         Insert: {
           id?: string;
@@ -476,6 +477,7 @@ export type Database = {
           specification?: string | null;
           price_list_category?: string | null;
           updated_at?: string | null;
+          default_supplier_id?: string | null;
         };
         Update: {
           id?: string;
@@ -493,8 +495,82 @@ export type Database = {
           specification?: string | null;
           price_list_category?: string | null;
           updated_at?: string | null;
+          default_supplier_id?: string | null;
         };
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: "products_default_supplier_id_fkey";
+            columns: ["default_supplier_id"];
+            isOneToOne: false;
+            referencedRelation: "suppliers";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      packages: {
+        Row: {
+          id: string;
+          created_at: string | null;
+          updated_at: string | null;
+          manufacturer_id: string | null;
+          series_id: string | null;
+          name: string | null;
+          package_code: string | null;
+          capacity: number | null;
+          capacity_unit: string | null;
+          system_type: string | null;
+          warranty_years: number | null;
+          specification: string | null;
+          pricing_method: string | null;
+          memo: string | null;
+          is_active: boolean | null;
+          default_supplier_id: string | null;
+        };
+        Insert: {
+          id?: string;
+          created_at?: string | null;
+          updated_at?: string | null;
+          manufacturer_id?: string | null;
+          series_id?: string | null;
+          name?: string | null;
+          package_code?: string | null;
+          capacity?: number | null;
+          capacity_unit?: string | null;
+          system_type?: string | null;
+          warranty_years?: number | null;
+          specification?: string | null;
+          pricing_method?: string | null;
+          memo?: string | null;
+          is_active?: boolean | null;
+          default_supplier_id?: string | null;
+        };
+        Update: {
+          id?: string;
+          created_at?: string | null;
+          updated_at?: string | null;
+          manufacturer_id?: string | null;
+          series_id?: string | null;
+          name?: string | null;
+          package_code?: string | null;
+          capacity?: number | null;
+          capacity_unit?: string | null;
+          system_type?: string | null;
+          warranty_years?: number | null;
+          specification?: string | null;
+          pricing_method?: string | null;
+          memo?: string | null;
+          is_active?: boolean | null;
+          default_supplier_id?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "packages_default_supplier_id_fkey";
+            columns: ["default_supplier_id"];
+            isOneToOne: false;
+            referencedRelation: "suppliers";
+            referencedColumns: ["id"];
+          },
+        ];
       };
     };
     Views: Record<string, never>;
