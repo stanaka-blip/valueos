@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase";
 
 type Manufacturer = { id: string; name: string | null };
 type Series = { id: string; name: string | null; manufacturer_id: string };
+type Supplier = { id: string; name: string | null };
 type Product = {
   id: string;
   name: string | null;
@@ -23,6 +24,7 @@ export default function EditPackagePage({
   const router = useRouter();
   const [manufacturers, setManufacturers] = useState<Manufacturer[]>([]);
   const [seriesList, setSeriesList] = useState<Series[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -37,12 +39,13 @@ export default function EditPackagePage({
     warranty_years: "",
     memo: "",
     is_active: true,
+    default_supplier_id: "",
   });
   const [lines, setLines] = useState<Line[]>([{ product_id: "", quantity: "1" }]);
 
   useEffect(() => {
     async function load() {
-      const [m, s, p, pkg, items] = await Promise.all([
+      const [m, s, p, pkg, items, suppliersRes] = await Promise.all([
         supabase.from("manufacturers").select("id, name").eq("is_active", true).order("name"),
         supabase.from("product_series").select("id, name, manufacturer_id").eq("is_active", true).order("name"),
         supabase.from("products").select("id, name, model_no, manufacturer_id, is_active").order("name"),
@@ -52,6 +55,7 @@ export default function EditPackagePage({
           .select("id, product_id, quantity")
           .eq("package_id", id)
           .order("sort_order"),
+        supabase.from("suppliers").select("id, name, is_active").order("name"),
       ]);
 
       setManufacturers((m.data as Manufacturer[]) || []);
@@ -69,6 +73,23 @@ export default function EditPackagePage({
       }
 
       const row = pkg.data;
+      const currentSupplierId = (row.default_supplier_id as string | null) || "";
+      const supplierRows = (suppliersRes.data || []) as {
+        id: string;
+        name: string | null;
+        is_active: unknown;
+      }[];
+      setSuppliers(
+        supplierRows
+          .filter(
+            (s) =>
+              s.id === currentSupplierId ||
+              s.is_active === true ||
+              s.is_active === "true" ||
+              s.is_active == null
+          )
+          .map((s) => ({ id: s.id, name: s.name }))
+      );
       setForm({
         manufacturer_id: (row.manufacturer_id as string) || "",
         series_id: (row.series_id as string) || "",
@@ -81,6 +102,7 @@ export default function EditPackagePage({
           row.warranty_years != null ? String(row.warranty_years) : "",
         memo: (row.memo as string) || "",
         is_active: Boolean(row.is_active),
+        default_supplier_id: currentSupplierId,
       });
       setLines(
         (items.data || []).length > 0
@@ -125,6 +147,7 @@ export default function EditPackagePage({
         memo: form.memo.trim() || null,
         is_active: form.is_active,
         updated_at: new Date().toISOString(),
+        default_supplier_id: form.default_supplier_id || null,
       })
       .eq("id", id);
 
@@ -224,6 +247,22 @@ export default function EditPackagePage({
                 }
                 className="w-full rounded-lg border px-4 py-3 text-sm"
               />
+            </Field>
+            <Field label="標準仕入先">
+              <select
+                value={form.default_supplier_id}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, default_supplier_id: e.target.value }))
+                }
+                className="w-full rounded-lg border px-4 py-3 text-sm"
+              >
+                <option value="">未設定</option>
+                {suppliers.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name || "名称未設定"}
+                  </option>
+                ))}
+              </select>
             </Field>
             <Field label="容量">
               <input

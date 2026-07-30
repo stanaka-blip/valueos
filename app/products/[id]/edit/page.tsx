@@ -23,6 +23,11 @@ type Series = {
   manufacturer_id: string | null;
 };
 
+type Supplier = {
+  id: string;
+  name: string | null;
+};
+
 type ProductForm = {
   manufacturer_id: string;
   series_id: string;
@@ -33,6 +38,7 @@ type ProductForm = {
   unit: string;
   memo: string;
   is_active: boolean;
+  default_supplier_id: string;
 };
 
 export default function EditProductPage({
@@ -45,6 +51,7 @@ export default function EditProductPage({
 
   const [manufacturers, setManufacturers] = useState<Manufacturer[]>([]);
   const [seriesList, setSeriesList] = useState<Series[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -59,6 +66,7 @@ export default function EditProductPage({
     unit: "",
     memo: "",
     is_active: true,
+    default_supplier_id: "",
   });
 
   useEffect(() => {
@@ -66,7 +74,7 @@ export default function EditProductPage({
       setLoading(true);
       setError("");
 
-      const [mRes, sRes, pRes] = await Promise.all([
+      const [mRes, sRes, supplierRes, pRes] = await Promise.all([
         supabase
           .from("manufacturers")
           .select("id, name")
@@ -75,13 +83,18 @@ export default function EditProductPage({
           .from("product_series")
           .select("id, name, manufacturer_id")
           .order("name", { ascending: true }),
+        supabase
+          .from("suppliers")
+          .select("id, name, is_active")
+          .order("name", { ascending: true }),
         supabase.from("products").select("*").eq("id", id).maybeSingle(),
       ]);
 
-      if (mRes.error || sRes.error || pRes.error || !pRes.data) {
+      if (mRes.error || sRes.error || supplierRes.error || pRes.error || !pRes.data) {
         setError(
           mRes.error?.message ||
             sRes.error?.message ||
+            supplierRes.error?.message ||
             pRes.error?.message ||
             "商品が見つかりません"
         );
@@ -90,8 +103,25 @@ export default function EditProductPage({
       }
 
       const row = pRes.data;
+      const currentSupplierId = (row.default_supplier_id as string | null) || "";
+      const supplierRows = (supplierRes.data || []) as {
+        id: string;
+        name: string | null;
+        is_active: unknown;
+      }[];
       setManufacturers((mRes.data || []) as Manufacturer[]);
       setSeriesList((sRes.data || []) as Series[]);
+      setSuppliers(
+        supplierRows
+          .filter(
+            (s) =>
+              s.id === currentSupplierId ||
+              s.is_active === true ||
+              s.is_active === "true" ||
+              s.is_active == null
+          )
+          .map((s) => ({ id: s.id, name: s.name }))
+      );
       setForm({
         manufacturer_id: (row.manufacturer_id as string) || "",
         series_id: (row.series_id as string) || "",
@@ -102,6 +132,7 @@ export default function EditProductPage({
         unit: (row.unit as string) || "",
         memo: (row.memo as string) || "",
         is_active: Boolean(row.is_active),
+        default_supplier_id: currentSupplierId,
       });
       setLoading(false);
     }
@@ -170,6 +201,7 @@ export default function EditProductPage({
         unit: form.unit.trim() || null,
         memo: form.memo.trim() || null,
         is_active: form.is_active,
+        default_supplier_id: form.default_supplier_id || null,
       })
       .eq("id", id);
     setSubmitting(false);
@@ -305,6 +337,23 @@ export default function EditProductPage({
                 <option value="式">式</option>
                 <option value="kW">kW</option>
                 <option value="kWh">kWh</option>
+              </select>
+            </Field>
+
+            <Field label="標準仕入先">
+              <select
+                name="default_supplier_id"
+                value={form.default_supplier_id}
+                onChange={handleChange}
+                disabled={submitting}
+                className={inputClassName}
+              >
+                <option value="">未設定</option>
+                {suppliers.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name || "名称未設定"}
+                  </option>
+                ))}
               </select>
             </Field>
 
