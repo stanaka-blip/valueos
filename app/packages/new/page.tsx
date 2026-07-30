@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase";
 
 type Manufacturer = { id: string; name: string | null };
 type Series = { id: string; name: string | null; manufacturer_id: string };
+type Supplier = { id: string; name: string | null };
 type Product = {
   id: string;
   name: string | null;
@@ -18,6 +19,7 @@ export default function NewPackagePage() {
   const router = useRouter();
   const [manufacturers, setManufacturers] = useState<Manufacturer[]>([]);
   const [seriesList, setSeriesList] = useState<Series[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({
@@ -31,15 +33,17 @@ export default function NewPackagePage() {
     warranty_years: "",
     memo: "",
     is_active: true,
+    default_supplier_id: "",
   });
   const [lines, setLines] = useState<Line[]>([{ product_id: "", quantity: "1" }]);
 
   useEffect(() => {
     async function load() {
-      const [m, s, p] = await Promise.all([
+      const [m, s, p, suppliersRes] = await Promise.all([
         supabase.from("manufacturers").select("id, name").eq("is_active", true).order("name"),
         supabase.from("product_series").select("id, name, manufacturer_id").eq("is_active", true).order("name"),
         supabase.from("products").select("id, name, model_no, manufacturer_id, is_active").order("name"),
+        supabase.from("suppliers").select("id, name, is_active").order("name"),
       ]);
       setManufacturers((m.data as Manufacturer[]) || []);
       setSeriesList((s.data as Series[]) || []);
@@ -47,6 +51,11 @@ export default function NewPackagePage() {
         ((p.data as (Product & { is_active: boolean | string | null })[]) || []).filter(
           (row) => row.is_active === true || row.is_active === "true"
         )
+      );
+      setSuppliers(
+        ((suppliersRes.data || []) as { id: string; name: string | null; is_active: unknown }[])
+          .filter((row) => row.is_active === true || row.is_active === "true" || row.is_active == null)
+          .map((row) => ({ id: row.id, name: row.name }))
       );
     }
     load();
@@ -86,6 +95,7 @@ export default function NewPackagePage() {
         memo: form.memo.trim() || null,
         is_active: form.is_active,
         pricing_method: "fixed",
+        default_supplier_id: form.default_supplier_id || null,
       })
       .select("id")
       .single();
@@ -220,6 +230,22 @@ export default function NewPackagePage() {
                 }
                 className="w-full rounded-lg border px-4 py-3 text-sm"
               />
+            </Field>
+            <Field label="標準仕入先">
+              <select
+                value={form.default_supplier_id}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, default_supplier_id: e.target.value }))
+                }
+                className="w-full rounded-lg border px-4 py-3 text-sm"
+              >
+                <option value="">未設定</option>
+                {suppliers.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name || "名称未設定"}
+                  </option>
+                ))}
+              </select>
             </Field>
           </div>
 
