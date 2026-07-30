@@ -84,17 +84,7 @@ export default function CaseRegistrationWizard() {
     };
   }, []);
 
-  // 販売店変更時: 未設定の仕入先へ default_supplier_id を反映
-  useEffect(() => {
-    const dealer = dealers.find((d) => d.id === caseForm.dealer_id);
-    const def = dealer?.default_supplier_id || "";
-    if (!def) return;
-    setLines((prev) =>
-      prev.map((line) => (line.supplier_id ? line : { ...line, supplier_id: def }))
-    );
-  }, [caseForm.dealer_id, dealers]);
-
-  // 価格再取得（販売店・受注日・対象・数量・仕入先変更時）
+  // 価格再取得（販売店・受注日・対象・数量・自動解決仕入先変更時）
   useEffect(() => {
     const seq = ++priceSeqRef.current;
     const dealerId = caseForm.dealer_id;
@@ -216,9 +206,6 @@ export default function CaseRegistrationWizard() {
     }
   }
 
-  const defaultSupplier =
-    dealers.find((d) => d.id === caseForm.dealer_id)?.default_supplier_id || "";
-
   return (
     <div className="mx-auto max-w-5xl px-4 py-6">
       <h1 className="mb-2 text-xl font-bold text-gray-900">案件登録</h1>
@@ -251,7 +238,7 @@ export default function CaseRegistrationWizard() {
           formError={step2FormError}
           lineErrors={step2LineErrors}
           onChangeLine={handleChangeLine}
-          onAddLine={() => setLines((prev) => [...prev, createEmptyLine(defaultSupplier)])}
+          onAddLine={() => setLines((prev) => [...prev, createEmptyLine()])}
           onRemoveLine={(id) =>
             setLines((prev) => (prev.length <= 1 ? prev : prev.filter((l) => l.local_id !== id)))
           }

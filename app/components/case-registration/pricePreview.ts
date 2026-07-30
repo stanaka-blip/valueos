@@ -27,7 +27,7 @@ export async function refreshLinePrices(options: {
       price_error: !dealerId
         ? "販売店を選択してください"
         : !line.supplier_id
-          ? "仕入先を選択してください"
+          ? "標準仕入先が設定されていません"
           : "受注日を入力してください",
     };
   }

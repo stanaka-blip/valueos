@@ -7,6 +7,7 @@ import {
   type ProductOption,
   type SupplierOption,
 } from "./masters";
+import { resolveDefaultSupplierId } from "./resolveDefaultSupplier";
 import type { LineDraft, LineErrors, LineType } from "./types";
 import { lineGrossProfit, linePurchaseSubtotal, lineSalesSubtotal } from "./validation";
 
@@ -32,6 +33,14 @@ type Props = {
   onNext: () => void;
 };
 
+function supplierLabel(
+  supplierId: string,
+  suppliers: SupplierOption[]
+): string {
+  if (!supplierId) return "未設定";
+  return suppliers.find((s) => s.id === supplierId)?.name || "名称未設定";
+}
+
 export default function Step2LinesForm({
   lines,
   products,
@@ -45,6 +54,48 @@ export default function Step2LinesForm({
   onBack,
   onNext,
 }: Props) {
+  function applyLineType(localId: string, lineType: LineType) {
+    onChangeLine(localId, {
+      line_type: lineType,
+      product_id: "",
+      package_id: "",
+      display_name: "",
+      supplier_id: "",
+    });
+  }
+
+  function applyProduct(localId: string, productId: string) {
+    const p = products.find((x) => x.id === productId);
+    onChangeLine(localId, {
+      product_id: productId,
+      package_id: "",
+      display_name: p ? formatProductLabel(p) : "",
+      supplier_id: resolveDefaultSupplierId(
+        "PRODUCT",
+        productId,
+        "",
+        products,
+        packages
+      ),
+    });
+  }
+
+  function applyPackage(localId: string, packageId: string) {
+    const p = packages.find((x) => x.id === packageId);
+    onChangeLine(localId, {
+      package_id: packageId,
+      product_id: "",
+      display_name: p ? formatPackageLabel(p) : "",
+      supplier_id: resolveDefaultSupplierId(
+        "PACKAGE",
+        "",
+        packageId,
+        products,
+        packages
+      ),
+    });
+  }
+
   return (
     <form
       className="space-y-4"
@@ -86,12 +137,7 @@ export default function Step2LinesForm({
                       className={inputClass}
                       value={line.line_type}
                       onChange={(e) =>
-                        onChangeLine(line.local_id, {
-                          line_type: e.target.value as LineType,
-                          product_id: "",
-                          package_id: "",
-                          display_name: "",
-                        })
+                        applyLineType(line.local_id, e.target.value as LineType)
                       }
                     >
                       <option value="PRODUCT">商品</option>
@@ -103,14 +149,7 @@ export default function Step2LinesForm({
                       <select
                         className={inputClass}
                         value={line.product_id}
-                        onChange={(e) => {
-                          const p = products.find((x) => x.id === e.target.value);
-                          onChangeLine(line.local_id, {
-                            product_id: e.target.value,
-                            package_id: "",
-                            display_name: p ? formatProductLabel(p) : "",
-                          });
-                        }}
+                        onChange={(e) => applyProduct(line.local_id, e.target.value)}
                       >
                         <option value="">選択してください</option>
                         {products.map((p) => (
@@ -123,14 +162,7 @@ export default function Step2LinesForm({
                       <select
                         className={inputClass}
                         value={line.package_id}
-                        onChange={(e) => {
-                          const p = packages.find((x) => x.id === e.target.value);
-                          onChangeLine(line.local_id, {
-                            package_id: e.target.value,
-                            product_id: "",
-                            display_name: p ? formatPackageLabel(p) : "",
-                          });
-                        }}
+                        onChange={(e) => applyPackage(line.local_id, e.target.value)}
                       >
                         <option value="">選択してください</option>
                         {packages.map((p) => (
@@ -147,20 +179,9 @@ export default function Step2LinesForm({
                     ) : null}
                   </td>
                   <td className="p-2 min-w-[10rem]">
-                    <select
-                      className={inputClass}
-                      value={line.supplier_id}
-                      onChange={(e) =>
-                        onChangeLine(line.local_id, { supplier_id: e.target.value })
-                      }
-                    >
-                      <option value="">選択してください</option>
-                      {suppliers.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.name}
-                        </option>
-                      ))}
-                    </select>
+                    <p className="px-1 py-2 text-sm text-gray-800">
+                      {supplierLabel(line.supplier_id, suppliers)}
+                    </p>
                     {err.supplier_id ? (
                       <p className="mt-1 text-xs text-red-600">{err.supplier_id}</p>
                     ) : null}
@@ -224,12 +245,7 @@ export default function Step2LinesForm({
                     className={`${inputClass} mt-1`}
                     value={line.line_type}
                     onChange={(e) =>
-                      onChangeLine(line.local_id, {
-                        line_type: e.target.value as LineType,
-                        product_id: "",
-                        package_id: "",
-                        display_name: "",
-                      })
+                      applyLineType(line.local_id, e.target.value as LineType)
                     }
                   >
                     <option value="PRODUCT">商品</option>
@@ -242,14 +258,7 @@ export default function Step2LinesForm({
                     <select
                       className={`${inputClass} mt-1`}
                       value={line.product_id}
-                      onChange={(e) => {
-                        const p = products.find((x) => x.id === e.target.value);
-                        onChangeLine(line.local_id, {
-                          product_id: e.target.value,
-                          package_id: "",
-                          display_name: p ? formatProductLabel(p) : "",
-                        });
-                      }}
+                      onChange={(e) => applyProduct(line.local_id, e.target.value)}
                     >
                       <option value="">選択してください</option>
                       {products.map((p) => (
@@ -262,14 +271,7 @@ export default function Step2LinesForm({
                     <select
                       className={`${inputClass} mt-1`}
                       value={line.package_id}
-                      onChange={(e) => {
-                        const p = packages.find((x) => x.id === e.target.value);
-                        onChangeLine(line.local_id, {
-                          package_id: e.target.value,
-                          product_id: "",
-                          display_name: p ? formatPackageLabel(p) : "",
-                        });
-                      }}
+                      onChange={(e) => applyPackage(line.local_id, e.target.value)}
                     >
                       <option value="">選択してください</option>
                       {packages.map((p) => (
@@ -280,23 +282,12 @@ export default function Step2LinesForm({
                     </select>
                   )}
                 </label>
-                <label className="block text-sm font-medium">
-                  仕入先
-                  <select
-                    className={`${inputClass} mt-1`}
-                    value={line.supplier_id}
-                    onChange={(e) =>
-                      onChangeLine(line.local_id, { supplier_id: e.target.value })
-                    }
-                  >
-                    <option value="">選択してください</option>
-                    {suppliers.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <div className="text-sm">
+                  <p className="font-medium text-gray-800">仕入先</p>
+                  <p className="mt-1 text-gray-700">
+                    {supplierLabel(line.supplier_id, suppliers)}
+                  </p>
+                </div>
                 <label className="block text-sm font-medium">
                   数量
                   <input

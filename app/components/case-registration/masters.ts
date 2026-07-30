@@ -3,19 +3,20 @@ import { supabase } from "@/lib/supabase";
 export type DealerOption = {
   id: string;
   name: string;
-  default_supplier_id: string | null;
 };
 
 export type ProductOption = {
   id: string;
   name: string;
   model_no: string | null;
+  default_supplier_id: string | null;
 };
 
 export type PackageOption = {
   id: string;
   name: string;
   package_code: string | null;
+  default_supplier_id: string | null;
 };
 
 export type SupplierOption = {
@@ -37,6 +38,8 @@ export function formatPackageLabel(p: PackageOption): string {
   return p.package_code ? `${p.name}（${p.package_code}）` : p.name;
 }
 
+export { resolveDefaultSupplierId } from "./resolveDefaultSupplier";
+
 export async function fetchActiveDealers(): Promise<{
   data: DealerOption[];
   errorMessage: string | null;
@@ -44,7 +47,7 @@ export async function fetchActiveDealers(): Promise<{
   try {
     const { data, error } = await supabase
       .from("dealers")
-      .select("id, name, default_supplier_id, is_active")
+      .select("id, name, is_active")
       .order("name", { ascending: true });
     if (error) return { data: [], errorMessage: ERR };
     return {
@@ -53,7 +56,6 @@ export async function fetchActiveDealers(): Promise<{
         .map((d) => ({
           id: d.id as string,
           name: (d.name as string | null) || "名称未設定",
-          default_supplier_id: (d.default_supplier_id as string | null) || null,
         })),
       errorMessage: null,
     };
@@ -69,7 +71,7 @@ export async function fetchActiveProducts(): Promise<{
   try {
     const { data, error } = await supabase
       .from("products")
-      .select("id, name, model_no, is_active")
+      .select("id, name, model_no, is_active, default_supplier_id")
       .order("name", { ascending: true });
     if (error) return { data: [], errorMessage: ERR };
     return {
@@ -79,6 +81,7 @@ export async function fetchActiveProducts(): Promise<{
           id: p.id as string,
           name: (p.name as string | null) || "名称未設定",
           model_no: (p.model_no as string | null) || null,
+          default_supplier_id: (p.default_supplier_id as string | null) || null,
         })),
       errorMessage: null,
     };
@@ -94,7 +97,7 @@ export async function fetchActivePackages(): Promise<{
   try {
     const { data, error } = await supabase
       .from("packages")
-      .select("id, name, package_code, is_active")
+      .select("id, name, package_code, is_active, default_supplier_id")
       .order("name", { ascending: true });
     if (error) return { data: [], errorMessage: ERR };
     return {
@@ -104,6 +107,7 @@ export async function fetchActivePackages(): Promise<{
           id: p.id as string,
           name: (p.name as string | null) || "名称未設定",
           package_code: (p.package_code as string | null) || null,
+          default_supplier_id: (p.default_supplier_id as string | null) || null,
         })),
       errorMessage: null,
     };

@@ -99,6 +99,7 @@ export default function Step4ConfirmForm({
                       id: "",
                       name: "—",
                       model_no: null,
+                      default_supplier_id: null,
                     }
                   )
                 : formatPackageLabel(
@@ -106,6 +107,7 @@ export default function Step4ConfirmForm({
                       id: "",
                       name: "—",
                       package_code: null,
+                      default_supplier_id: null,
                     }
                   ));
             const supplier =
@@ -117,7 +119,7 @@ export default function Step4ConfirmForm({
                 </div>
                 <div className="mt-1 grid grid-cols-2 gap-1 text-gray-600 sm:grid-cols-3">
                   <span>数量: {line.quantity}</span>
-                  <span>仕入先: {supplier}</span>
+                  <span>仕入先（自動決定）: {supplier}</span>
                   <span>販売単価: {yen(line.sales_unit_price || 0)}</span>
                   <span>仕入単価: {yen(line.purchase_unit_price || 0)}</span>
                   <span>販売小計: {yen(lineSalesSubtotal(line))}</span>

@@ -15,6 +15,7 @@ import {
   createIdempotencyKey,
   submitCaseRegistration,
 } from "../app/components/case-registration/submitCaseRegistration.ts";
+import { resolveDefaultSupplierId } from "../app/components/case-registration/resolveDefaultSupplier.ts";
 
 function assert(name: string, cond: unknown, detail = "") {
   if (!cond) {
@@ -75,6 +76,52 @@ async function main() {
   };
   assert("3 PACKAGE alone ok", validateStep2([packageLine]).ok);
 
+  const missingSupplier = { ...productLine, local_id: "l-missing-sup", supplier_id: "" };
+  const missingSupplierResult = validateStep2([missingSupplier]);
+  assert("PR-C missing supplier blocks next", !missingSupplierResult.ok);
+  assert(
+    "PR-C missing supplier JP message",
+    missingSupplierResult.lineErrors["l-missing-sup"]?.supplier_id ===
+      "標準仕入先が設定されていません"
+  );
+
+  const productsMaster = [
+    {
+      id: "prod-1",
+      name: "商品1",
+      model_no: "M1",
+      default_supplier_id: "sup-product",
+    },
+    {
+      id: "prod-2",
+      name: "商品2",
+      model_no: null,
+      default_supplier_id: null,
+    },
+  ];
+  const packagesMaster = [
+    {
+      id: "pkg-1",
+      name: "PKG1",
+      package_code: "P1",
+      default_supplier_id: "sup-package",
+    },
+  ];
+  assert(
+    "PR-C PRODUCT uses products.default_supplier_id",
+    resolveDefaultSupplierId("PRODUCT", "prod-1", "", productsMaster, packagesMaster) ===
+      "sup-product"
+  );
+  assert(
+    "PR-C PACKAGE uses packages.default_supplier_id",
+    resolveDefaultSupplierId("PACKAGE", "", "pkg-1", productsMaster, packagesMaster) ===
+      "sup-package"
+  );
+  assert(
+    "PR-C unset default_supplier becomes empty",
+    resolveDefaultSupplierId("PRODUCT", "prod-2", "", productsMaster, packagesMaster) === ""
+  );
+
   assert("4 mixed PRODUCT/PACKAGE", validateStep2([productLine, packageLine]).ok);
   assert(
     "5 multi lines",
@@ -123,6 +170,10 @@ async function main() {
   assert(
     "2/3/4 body has PRODUCT and PACKAGE",
     body.lines[0].line_type === "PRODUCT" && body.lines[1].line_type === "PACKAGE"
+  );
+  assert(
+    "PR-C gateway body sends resolved supplier_id",
+    body.lines[0].supplier_id === "sup-1" && body.lines[1].supplier_id === "sup-1"
   );
   assert("no department/priority in body", !("department" in body.case) && !("priority" in body.case));
   assert("no request_id in body", !("request_id" in body));

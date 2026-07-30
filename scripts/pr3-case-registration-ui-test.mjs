@@ -71,6 +71,25 @@ assert("STEP2 qty + prices displayed", step2Src.includes("数量") && step2Src.i
 assert("STEP2 qty input bounds", step2Src.includes("min={1}") && step2Src.includes("max={9999}") && step2Src.includes("step={1}"));
 assert("STEP2 qty validate message", validationSrc.includes("数量は1〜9,999の整数で入力してください"));
 assert("STEP2 no manual price UI", !/手動価格|is_manual_price|isManualPrice/.test(step2Src));
+assert("PR-C STEP2 no supplier select", !/name=["']supplier_id["']/.test(step2Src) && !step2Src.includes("onChangeLine(line.local_id, { supplier_id"));
+assert("PR-C resolveDefaultSupplierId used", step2Src.includes("resolveDefaultSupplierId") && read("app/components/case-registration/resolveDefaultSupplier.ts").includes("resolveDefaultSupplierId"));
+assert(
+  "PR-C products/packages default_supplier_id fetched",
+  read("app/components/case-registration/masters.ts").includes("default_supplier_id") &&
+    read("app/components/case-registration/masters.ts").includes('.select("id, name, model_no, is_active, default_supplier_id")') &&
+    read("app/components/case-registration/masters.ts").includes('.select("id, name, package_code, is_active, default_supplier_id")')
+);
+assert(
+  "PR-C no dealer default_supplier for lines",
+  !wizardSrc.includes("dealer?.default_supplier_id") &&
+    !wizardSrc.includes("defaultSupplier") &&
+    !/dealers\.find[\s\S]{0,80}default_supplier_id/.test(wizardSrc)
+);
+assert(
+  "PR-C missing default supplier JP error",
+  validationSrc.includes("標準仕入先が設定されていません")
+);
+assert("PR-C STEP4 shows auto supplier", step4Src.includes("仕入先") && step4Src.includes("supplier_id"));
 assert("12 PC table / SP cards", step2Src.includes("hidden") && step2Src.includes("md:block") && step2Src.includes("md:hidden"));
 assert(
   "STEP3 settlement options",

@@ -42,7 +42,9 @@ export function validateStep2(lines: LineDraft[]): {
     if (line.line_type === "PACKAGE" && !line.package_id) {
       e.package_id = "パッケージを選択してください";
     }
-    if (!line.supplier_id) e.supplier_id = "仕入先は必須です";
+    if (!line.supplier_id) {
+      e.supplier_id = "標準仕入先が設定されていません";
+    }
     const qtyRaw = String(line.quantity ?? "").trim();
     const qty = /^\d+$/.test(qtyRaw) ? Number(qtyRaw) : NaN;
     if (
