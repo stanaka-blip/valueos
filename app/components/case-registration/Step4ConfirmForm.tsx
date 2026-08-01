@@ -2,13 +2,13 @@
 
 import type { DealerOption, PackageOption, ProductOption } from "./masters";
 import { formatPackageLabel, formatProductLabel } from "./masters";
-import type { CaseFormState, LineDraft, SettlementType } from "./types";
+import type { CaseFormState, LineDraft, SettlementFormState, SettlementType } from "./types";
 import { resolvedDeliveryAddress } from "./validation";
 
 type Props = {
   caseForm: CaseFormState;
   lines: LineDraft[];
-  settlementType: SettlementType;
+  settlement: SettlementFormState & { settlement_type: SettlementType };
   dealers: DealerOption[];
   products: ProductOption[];
   packages: PackageOption[];
@@ -21,7 +21,7 @@ type Props = {
 export default function Step4ConfirmForm({
   caseForm,
   lines,
-  settlementType,
+  settlement,
   dealers,
   products,
   packages,
@@ -67,10 +67,34 @@ export default function Step4ConfirmForm({
             <dt className="text-gray-500">納品先</dt>
             <dd>{resolvedDeliveryAddress(caseForm) || "—"}</dd>
           </div>
+        </dl>
+      </section>
+
+      <section className="rounded-lg border border-gray-200 bg-white p-4">
+        <h2 className="mb-3 text-sm font-bold text-gray-900">決済</h2>
+        <dl className="grid gap-2 text-sm text-gray-700 sm:grid-cols-2">
           <div>
             <dt className="text-gray-500">決済区分</dt>
-            <dd className="font-medium">{settlementType}</dd>
+            <dd className="font-medium">{settlement.settlement_type}</dd>
           </div>
+          {settlement.settlement_type === "3社間決済" ? (
+            <>
+              <div>
+                <dt className="text-gray-500">信販会社</dt>
+                <dd>{settlement.finance_company.trim() || "—"}</dd>
+              </div>
+              <div>
+                <dt className="text-gray-500">承認番号</dt>
+                <dd>{settlement.approval_number.trim() || "—"}</dd>
+              </div>
+            </>
+          ) : null}
+          {settlement.settlement_type === "カード" ? (
+            <div>
+              <dt className="text-gray-500">カード会社名</dt>
+              <dd>{settlement.card_brand.trim() || "—"}</dd>
+            </div>
+          ) : null}
         </dl>
       </section>
 

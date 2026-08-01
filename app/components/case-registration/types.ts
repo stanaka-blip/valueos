@@ -1,3 +1,8 @@
+import {
+  CASE_REGISTRATION_SETTLEMENT_TYPES,
+  type CaseRegistrationSettlementType,
+} from "@/lib/caseSettlementTypes";
+
 export const CASE_REGISTRATION_STEPS = [
   { id: 1, label: "案件情報" },
   { id: 2, label: "商品情報" },
@@ -7,8 +12,23 @@ export const CASE_REGISTRATION_STEPS = [
 
 export type CaseRegistrationStepId = (typeof CASE_REGISTRATION_STEPS)[number]["id"];
 
-export const SETTLEMENT_TYPES = ["掛売", "ローン", "現金", "カード", "その他"] as const;
-export type SettlementType = (typeof SETTLEMENT_TYPES)[number];
+/** 案件登録UIが扱う正式決済区分（共通型を再利用） */
+export const SETTLEMENT_TYPES = CASE_REGISTRATION_SETTLEMENT_TYPES;
+export type SettlementType = CaseRegistrationSettlementType;
+
+export type SettlementFormState = {
+  settlement_type: SettlementType | "";
+  finance_company: string;
+  approval_number: string;
+  card_brand: string;
+};
+
+export type SettlementErrors = {
+  form?: string;
+  finance_company?: string;
+  approval_number?: string;
+  card_brand?: string;
+};
 
 export type LineType = "PRODUCT" | "PACKAGE";
 
@@ -79,15 +99,29 @@ export function createInitialCaseForm(): CaseFormState {
   };
 }
 
+export function createInitialSettlementForm(): SettlementFormState {
+  return {
+    settlement_type: "",
+    finance_company: "",
+    approval_number: "",
+    card_brand: "",
+  };
+}
+
 /** 登録ペイロードに影響する入力の指紋（Idempotency-Key 再生成判定用） */
 export function registrationFingerprint(
   caseForm: CaseFormState,
   lines: LineDraft[],
-  settlementType: SettlementType | ""
+  settlement: SettlementFormState
 ): string {
   return JSON.stringify({
     caseForm,
-    settlementType,
+    settlement: {
+      settlement_type: settlement.settlement_type,
+      finance_company: settlement.finance_company,
+      approval_number: settlement.approval_number,
+      card_brand: settlement.card_brand,
+    },
     lines: lines.map((l) => ({
       line_type: l.line_type,
       product_id: l.product_id,
