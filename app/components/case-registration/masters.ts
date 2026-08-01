@@ -9,19 +9,12 @@ export type ProductOption = {
   id: string;
   name: string;
   model_no: string | null;
-  default_supplier_id: string | null;
 };
 
 export type PackageOption = {
   id: string;
   name: string;
   package_code: string | null;
-  default_supplier_id: string | null;
-};
-
-export type SupplierOption = {
-  id: string;
-  name: string;
 };
 
 const ERR = "マスタの取得に失敗しました";
@@ -37,8 +30,6 @@ export function formatProductLabel(p: ProductOption): string {
 export function formatPackageLabel(p: PackageOption): string {
   return p.package_code ? `${p.name}（${p.package_code}）` : p.name;
 }
-
-export { resolveDefaultSupplierId } from "./resolveDefaultSupplier";
 
 export async function fetchActiveDealers(): Promise<{
   data: DealerOption[];
@@ -71,7 +62,7 @@ export async function fetchActiveProducts(): Promise<{
   try {
     const { data, error } = await supabase
       .from("products")
-      .select("id, name, model_no, is_active, default_supplier_id")
+      .select("id, name, model_no, is_active")
       .order("name", { ascending: true });
     if (error) return { data: [], errorMessage: ERR };
     return {
@@ -81,7 +72,6 @@ export async function fetchActiveProducts(): Promise<{
           id: p.id as string,
           name: (p.name as string | null) || "名称未設定",
           model_no: (p.model_no as string | null) || null,
-          default_supplier_id: (p.default_supplier_id as string | null) || null,
         })),
       errorMessage: null,
     };
@@ -97,7 +87,7 @@ export async function fetchActivePackages(): Promise<{
   try {
     const { data, error } = await supabase
       .from("packages")
-      .select("id, name, package_code, is_active, default_supplier_id")
+      .select("id, name, package_code, is_active")
       .order("name", { ascending: true });
     if (error) return { data: [], errorMessage: ERR };
     return {
@@ -107,31 +97,6 @@ export async function fetchActivePackages(): Promise<{
           id: p.id as string,
           name: (p.name as string | null) || "名称未設定",
           package_code: (p.package_code as string | null) || null,
-          default_supplier_id: (p.default_supplier_id as string | null) || null,
-        })),
-      errorMessage: null,
-    };
-  } catch {
-    return { data: [], errorMessage: ERR };
-  }
-}
-
-export async function fetchActiveSuppliers(): Promise<{
-  data: SupplierOption[];
-  errorMessage: string | null;
-}> {
-  try {
-    const { data, error } = await supabase
-      .from("suppliers")
-      .select("id, name, is_active")
-      .order("name", { ascending: true });
-    if (error) return { data: [], errorMessage: ERR };
-    return {
-      data: (data || [])
-        .filter((s) => isActiveFlag(s.is_active) || s.is_active == null)
-        .map((s) => ({
-          id: s.id as string,
-          name: (s.name as string | null) || "名称未設定",
         })),
       errorMessage: null,
     };

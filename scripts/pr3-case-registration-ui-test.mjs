@@ -1,5 +1,5 @@
 /**
- * PR3 案件登録4ステップUI テスト（本番DB書込なし）
+ * 案件登録4ステップUI テスト（本番DB書込なし）
  * 実行: node scripts/pr3-case-registration-ui-test.mjs
  * 振る舞い検証は tsx サブプロセスで path alias 付き import する。
  */
@@ -46,6 +46,7 @@ const step3Src = read("app/components/case-registration/Step3SettlementForm.tsx"
 const step4Src = read("app/components/case-registration/Step4ConfirmForm.tsx");
 const validationSrc = read("app/components/case-registration/validation.ts");
 const typesSrc = read("app/components/case-registration/types.ts");
+const mastersSrc = read("app/components/case-registration/masters.ts");
 
 assert("1 page uses wizard", pageSrc.includes("CaseRegistrationWizard"));
 assert(
@@ -67,36 +68,42 @@ assert("STEP1 required dealer/customer/site/order date", /販売店/.test(step1S
 assert("STEP1 phone optional (no required marker on phone)", !/電話番号[\s\S]{0,80}\*/.test(step1Src));
 assert("STEP1 delivery conditional", step1Src.includes("delivery_same_as_site") && step1Src.includes("納品先住所"));
 assert("STEP2 PRODUCT/PACKAGE", step2Src.includes('value="PRODUCT"') && step2Src.includes('value="PACKAGE"'));
-assert("STEP2 qty + prices displayed", step2Src.includes("数量") && step2Src.includes("販売単価") && step2Src.includes("仕入単価") && step2Src.includes("粗利"));
+assert("STEP2 qty only (no price columns)", step2Src.includes("数量") && !step2Src.includes("販売単価") && !step2Src.includes("仕入単価") && !step2Src.includes("粗利") && !step2Src.includes("販売小計"));
+assert("STEP2 no supplier column/display", !step2Src.includes("仕入先") && !step2Src.includes("supplier_id") && !step2Src.includes("SupplierOption"));
 assert("STEP2 qty input bounds", step2Src.includes("min={1}") && step2Src.includes("max={9999}") && step2Src.includes("step={1}"));
 assert("STEP2 qty validate message", validationSrc.includes("数量は1〜9,999の整数で入力してください"));
 assert("STEP2 no manual price UI", !/手動価格|is_manual_price|isManualPrice/.test(step2Src));
-assert("PR-C STEP2 no supplier select", !/name=["']supplier_id["']/.test(step2Src) && !step2Src.includes("onChangeLine(line.local_id, { supplier_id"));
-assert("PR-C resolveDefaultSupplierId used", step2Src.includes("resolveDefaultSupplierId") && read("app/components/case-registration/resolveDefaultSupplier.ts").includes("resolveDefaultSupplierId"));
+assert("no resolveDefaultSupplier module", !existsSync(join(uiDir, "resolveDefaultSupplier.ts")));
+assert("no pricePreview module", !existsSync(join(uiDir, "pricePreview.ts")));
 assert(
-  "PR-C products/packages default_supplier_id fetched",
-  read("app/components/case-registration/masters.ts").includes("default_supplier_id") &&
-    read("app/components/case-registration/masters.ts").includes('.select("id, name, model_no, is_active, default_supplier_id")') &&
-    read("app/components/case-registration/masters.ts").includes('.select("id, name, package_code, is_active, default_supplier_id")')
+  "masters do not fetch default_supplier_id",
+  !mastersSrc.includes("default_supplier_id") &&
+    mastersSrc.includes('.select("id, name, model_no, is_active")') &&
+    mastersSrc.includes('.select("id, name, package_code, is_active")')
 );
+assert("wizard does not fetch suppliers", !wizardSrc.includes("fetchActiveSuppliers") && !wizardSrc.includes("suppliers"));
+assert("no default supplier required error", !validationSrc.includes("標準仕入先が設定されていません"));
+assert("no price-missing next blockers", !validationSrc.includes("販売単価が取得できません") && !validationSrc.includes("仕入単価が取得できません"));
+assert("gateway body omits supplier_id", !validationSrc.includes("supplier_id"));
+assert("gateway body omits price fields", !/sales_price|purchase_price|sales_price_id|purchase_price_id/.test(validationSrc));
+assert("LineDraft has no supplier/price fields", !typesSrc.includes("supplier_id") && !typesSrc.includes("sales_unit_price") && !typesSrc.includes("purchase_unit_price"));
 assert(
-  "PR-C no dealer default_supplier for lines",
-  !wizardSrc.includes("dealer?.default_supplier_id") &&
-    !wizardSrc.includes("defaultSupplier") &&
-    !/dealers\.find[\s\S]{0,80}default_supplier_id/.test(wizardSrc)
+  "STEP4 name+qty only",
+  step4Src.includes("数量") &&
+    !step4Src.includes("仕入先") &&
+    !step4Src.includes("販売単価") &&
+    !step4Src.includes("仕入単価") &&
+    !step4Src.includes("粗利") &&
+    !step4Src.includes("販売合計") &&
+    !step4Src.includes("supplier_id")
 );
-assert(
-  "PR-C missing default supplier JP error",
-  validationSrc.includes("標準仕入先が設定されていません")
-);
-assert("PR-C STEP4 shows auto supplier", step4Src.includes("仕入先") && step4Src.includes("supplier_id"));
 assert("12 PC table / SP cards", step2Src.includes("hidden") && step2Src.includes("md:block") && step2Src.includes("md:hidden"));
 assert(
   "STEP3 settlement options",
   step3Src.includes("SETTLEMENT_TYPES") &&
     ["掛売", "ローン", "現金", "カード", "その他"].every((t) => typesSrc.includes(t))
 );
-assert("STEP4 confirm totals", step4Src.includes("販売合計") && step4Src.includes("粗利合計") && step4Src.includes("決済区分"));
+assert("STEP4 shows settlement", step4Src.includes("決済区分"));
 assert("8 double submit guard", wizardSrc.includes("if (submitting) return") && step4Src.includes("disabled={submitting}"));
 assert("8 keep submitting on success", wizardSrc.includes("成功後は submitting を解除せず"));
 assert("9 idempotency fingerprint", wizardSrc.includes("registrationFingerprint") && wizardSrc.includes("idempotencyKeyRef"));
@@ -109,8 +116,7 @@ assert("10 success navigates /cases/{id}", wizardSrc.includes("`/cases/${result.
 assert("11 safe error helper used", submitSrc.includes("safeUserErrorMessage"));
 assert("14 no service role in client UI", !/SERVICE_ROLE|service_role|serviceRole/.test(uiBundle));
 assert("no createCaseRegistration direct RPC from wizard", !wizardSrc.includes("createCaseRegistration"));
-assert("price refresh on dealer/date/qty", wizardSrc.includes("refreshLinePrices") && wizardSrc.includes("order_received_date"));
-assert("validate blocks missing price", validationSrc.includes("販売単価が取得できません") && validationSrc.includes("仕入単価が取得できません"));
+assert("no price refresh effect", !wizardSrc.includes("refreshLinePrices"));
 
 // dealer diff
 const dealerDiff = spawnSync("git", ["diff", "--name-only", "origin/main", "--", "app/dealer"], {
@@ -119,17 +125,24 @@ const dealerDiff = spawnSync("git", ["diff", "--name-only", "origin/main", "--",
 });
 assert("15 dealer diff empty", (dealerDiff.stdout || "").trim() === "", dealerDiff.stdout);
 
-// migration / supabase privilege changes should be empty for PR3 scope (warn via assert on tracked paths)
+// migration / supabase privilege / RPC / gateway changes should be empty for this UI PR
 const migDiff = spawnSync(
   "git",
-  ["diff", "--name-only", "origin/main", "--", "supabase/migrations", "lib/gateway", "proxy.ts"],
+  ["diff", "--name-only", "origin/main", "--", "supabase/migrations", "lib/gateway", "lib/cases", "proxy.ts", "app/api"],
   { cwd: ROOT, encoding: "utf8" }
 );
 assert(
-  "no migration/gateway/proxy changes in working tree vs main",
+  "no migration/gateway/rpc/api changes vs main",
   (migDiff.stdout || "").trim() === "",
   migDiff.stdout
 );
+
+const orderDiff = spawnSync(
+  "git",
+  ["diff", "--name-only", "origin/main", "--", "app/orders", "app/invoices", "app/payments"],
+  { cwd: ROOT, encoding: "utf8" }
+);
+assert("no order/invoice/payment changes", (orderDiff.stdout || "").trim() === "", orderDiff.stdout);
 
 // ---------- behavioral (tsx) ----------
 const behaviorFile = join(ROOT, "scripts/pr3-case-registration-ui-behavior.mts");

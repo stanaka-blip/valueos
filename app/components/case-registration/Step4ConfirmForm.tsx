@@ -1,19 +1,9 @@
 "use client";
 
-import type { DealerOption, PackageOption, ProductOption, SupplierOption } from "./masters";
+import type { DealerOption, PackageOption, ProductOption } from "./masters";
 import { formatPackageLabel, formatProductLabel } from "./masters";
 import type { CaseFormState, LineDraft, SettlementType } from "./types";
-import {
-  lineGrossProfit,
-  linePurchaseSubtotal,
-  lineSalesSubtotal,
-  resolvedDeliveryAddress,
-  totals,
-} from "./validation";
-
-function yen(n: number): string {
-  return `¥${Math.round(n).toLocaleString("ja-JP")}`;
-}
+import { resolvedDeliveryAddress } from "./validation";
 
 type Props = {
   caseForm: CaseFormState;
@@ -22,7 +12,6 @@ type Props = {
   dealers: DealerOption[];
   products: ProductOption[];
   packages: PackageOption[];
-  suppliers: SupplierOption[];
   submitting: boolean;
   submitError: string | null;
   onBack: () => void;
@@ -36,14 +25,12 @@ export default function Step4ConfirmForm({
   dealers,
   products,
   packages,
-  suppliers,
   submitting,
   submitError,
   onBack,
   onSubmit,
 }: Props) {
   const dealerName = dealers.find((d) => d.id === caseForm.dealer_id)?.name || "—";
-  const sum = totals(lines);
 
   return (
     <div className="space-y-6">
@@ -99,7 +86,6 @@ export default function Step4ConfirmForm({
                       id: "",
                       name: "—",
                       model_no: null,
-                      default_supplier_id: null,
                     }
                   )
                 : formatPackageLabel(
@@ -107,38 +93,20 @@ export default function Step4ConfirmForm({
                       id: "",
                       name: "—",
                       package_code: null,
-                      default_supplier_id: null,
                     }
                   ));
-            const supplier =
-              suppliers.find((s) => s.id === line.supplier_id)?.name || "—";
             return (
               <li key={line.local_id} className="rounded border border-gray-100 p-3">
                 <div className="font-medium text-gray-900">
                   [{line.line_type}] {name}
                 </div>
-                <div className="mt-1 grid grid-cols-2 gap-1 text-gray-600 sm:grid-cols-3">
-                  <span>数量: {line.quantity}</span>
-                  <span>仕入先（自動決定）: {supplier}</span>
-                  <span>販売単価: {yen(line.sales_unit_price || 0)}</span>
-                  <span>仕入単価: {yen(line.purchase_unit_price || 0)}</span>
-                  <span>販売小計: {yen(lineSalesSubtotal(line))}</span>
-                  <span>仕入小計: {yen(linePurchaseSubtotal(line))}</span>
-                  <span className="font-medium text-gray-800">
-                    粗利: {yen(lineGrossProfit(line))}
-                  </span>
-                </div>
+                <div className="mt-1 text-gray-600">数量: {line.quantity}</div>
               </li>
             );
           })}
         </ul>
-        <div className="mt-4 border-t pt-3 text-sm font-medium text-gray-900">
-          <div>販売合計: {yen(sum.sales)}</div>
-          <div>仕入合計: {yen(sum.purchase)}</div>
-          <div>粗利合計: {yen(sum.gross)}</div>
-        </div>
         <p className="mt-3 text-xs text-gray-500">
-          登録時点の価格を固定保存します（保存時にサーバーが再取得します）。
+          登録時は商品／パッケージと数量のみ保存します。単価の決定は発注工程で行います。
         </p>
       </section>
 
