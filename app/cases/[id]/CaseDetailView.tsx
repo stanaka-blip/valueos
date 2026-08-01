@@ -986,11 +986,24 @@ function SettlementTab({
   loadError?: string;
   dealerPaymentType?: string;
 }) {
+  const type = settlement?.settlementType || "";
+  const isSansha = type === "3社間決済";
+  const isCard = type === "カード";
+
   return (
     <Section title="決済" description="決済フローと入金・請求の条件">
       {settlement ? (
         <div className="mb-6 grid gap-4 rounded-lg border border-gray-200 p-4 sm:grid-cols-2 xl:grid-cols-4">
           <Field label="決済区分" value={settlement.settlementType} />
+          {isSansha ? (
+            <>
+              <Field label="信販会社" value={settlement.financeCompany} />
+              <Field label="承認番号" value={settlement.approvalNumber} />
+            </>
+          ) : null}
+          {isCard ? (
+            <Field label="カード会社名" value={settlement.cardBrand} />
+          ) : null}
           <Field
             label="手数料率"
             value={
@@ -1014,9 +1027,12 @@ function SettlementTab({
                 : ""
             }
           />
-          <Field label="カードブランド" value={settlement.cardBrand} />
-          <Field label="ローンステータス" value={settlement.loanStatus} />
-          <Field label="カードステータス" value={settlement.cardStatus} />
+          {isSansha ? (
+            <Field label="ローンステータス" value={settlement.loanStatus} />
+          ) : null}
+          {isCard ? (
+            <Field label="カードステータス" value={settlement.cardStatus} />
+          ) : null}
           <div className="sm:col-span-2">
             <Field label="支払条件" value={settlement.paymentTerms} />
           </div>
