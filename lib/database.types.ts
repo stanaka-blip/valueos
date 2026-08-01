@@ -427,6 +427,56 @@ export type Database = {
           },
         ];
       };
+      case_line_append_requests: {
+        Row: {
+          request_id: string;
+          case_id: string | null;
+          case_product_id: string | null;
+          case_package_id: string | null;
+          status: string;
+          payload_hash: string;
+          error_code: string | null;
+          error_message: string | null;
+          response: Json | null;
+          created_at: string;
+          completed_at: string | null;
+        };
+        Insert: {
+          request_id: string;
+          case_id?: string | null;
+          case_product_id?: string | null;
+          case_package_id?: string | null;
+          status: string;
+          payload_hash: string;
+          error_code?: string | null;
+          error_message?: string | null;
+          response?: Json | null;
+          created_at?: string;
+          completed_at?: string | null;
+        };
+        Update: {
+          request_id?: string;
+          case_id?: string | null;
+          case_product_id?: string | null;
+          case_package_id?: string | null;
+          status?: string;
+          payload_hash?: string;
+          error_code?: string | null;
+          error_message?: string | null;
+          response?: Json | null;
+          created_at?: string;
+          completed_at?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "case_line_append_requests_case_id_fkey";
+            columns: ["case_id"];
+            isOneToOne: false;
+            referencedRelation: "cases";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       gateway_rate_limits: {
         Row: {
           bucket_key: string;
@@ -582,6 +632,12 @@ export type Database = {
     Views: Record<string, never>;
     Functions: {
       create_case_registration: {
+        Args: {
+          payload: Json;
+        };
+        Returns: Json;
+      };
+      append_case_line: {
         Args: {
           payload: Json;
         };
