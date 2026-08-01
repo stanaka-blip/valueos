@@ -11,7 +11,7 @@ import CaseDetailView, {
   type TaskRow,
 } from "./CaseDetailView";
 import { toSettlementViewData } from "./settlementView";
-import { getCaseSettlementByCaseId } from "@/lib/repositories/caseSettlements";
+import { getCaseSettlementByCaseIdAdmin } from "@/lib/caseSettlements/getCaseSettlementAdmin";
 import { buildWorkflowContext } from "@/lib/workflow/buildContext";
 import { evaluateWorkflow } from "@/lib/workflow/WorkflowEngine";
 
@@ -189,7 +189,7 @@ export default async function CaseDetailPage({
       .eq("case_id", id)
       .order("payment_date", { ascending: false }),
 
-    getCaseSettlementByCaseId(id),
+    getCaseSettlementByCaseIdAdmin(id),
   ]);
 
   if (caseError || !caseData) {
@@ -312,8 +312,16 @@ export default async function CaseDetailPage({
     status: (row.status as string) || null,
   }));
 
-  const settlement = settlementResult.data
-    ? toSettlementViewData(settlementResult.data)
+  // 読取失敗は未設定(null)と同一視しない
+  const settlementRow =
+    settlementResult.ok && settlementResult.data
+      ? settlementResult.data
+      : null;
+  const settlementError = settlementResult.ok
+    ? undefined
+    : settlementResult.error_message;
+  const settlement = settlementRow
+    ? toSettlementViewData(settlementRow)
     : null;
 
   // カラム未適用時は settlement.memo メタの完工日を使う
@@ -327,7 +335,7 @@ export default async function CaseDetailPage({
 
   const workflow = evaluateWorkflow(
     buildWorkflowContext({
-      settlement: settlementResult.data,
+      settlement: settlementRow,
       constructionCompletedDate: viewCase.constructionCompletedDate,
       orders,
       invoices,
@@ -352,7 +360,7 @@ export default async function CaseDetailPage({
         invoices: invoicesError?.message,
         payments: paymentsError?.message,
         tasks: tasksError?.message,
-        settlement: settlementResult.error || undefined,
+        settlement: settlementError,
       }}
     />
   );
