@@ -10,6 +10,12 @@ import type { WorkflowResult } from "@/lib/workflow";
 import SettlementForm from "./SettlementForm";
 import WorkflowPanel from "./WorkflowPanel";
 import type { SettlementViewData } from "./settlementView";
+import {
+  formatNullableYen,
+  formatProfitRate,
+  sumNullableAmounts,
+  type CaseProductDisplayRow,
+} from "./productDisplay";
 
 export type CaseDetailTabId =
   | "basic"
@@ -59,19 +65,7 @@ export type CaseDetailViewData = {
   quantity: string;
 };
 
-export type CaseProductRow = {
-  id: string;
-  productName: string;
-  modelNo: string;
-  category: string;
-  manufacturerName: string;
-  supplierName: string;
-  quantity: string;
-  purchasePrice: number;
-  salesPrice: number;
-  grossProfit: number;
-  memo: string;
-};
+export type CaseProductRow = CaseProductDisplayRow;
 
 export type OrderRow = {
   id: string;
@@ -171,9 +165,9 @@ export default function CaseDetailView({
   const [viewMode, setViewMode] = useState<"detail" | "simple">("detail");
 
   const totals = useMemo(() => {
-    const sales = products.reduce((s, p) => s + p.salesPrice, 0);
-    const purchase = products.reduce((s, p) => s + p.purchasePrice, 0);
-    const profit = products.reduce((s, p) => s + p.grossProfit, 0);
+    const sales = sumNullableAmounts(products.map((p) => p.salesPrice));
+    const purchase = sumNullableAmounts(products.map((p) => p.purchasePrice));
+    const profit = sumNullableAmounts(products.map((p) => p.grossProfit));
     const orderAmount = orders
       .filter((o) => o.status !== "キャンセル")
       .reduce((s, o) => s + o.orderAmount, 0);
@@ -900,12 +894,11 @@ function ProductsTab({
   products: CaseProductRow[];
   error?: string;
 }) {
-  const salesTotal = products.reduce((sum, row) => sum + row.salesPrice, 0);
-  const purchaseTotal = products.reduce(
-    (sum, row) => sum + row.purchasePrice,
-    0
+  const salesTotal = sumNullableAmounts(products.map((row) => row.salesPrice));
+  const purchaseTotal = sumNullableAmounts(
+    products.map((row) => row.purchasePrice)
   );
-  const profitTotal = products.reduce((sum, row) => sum + row.grossProfit, 0);
+  const profitTotal = sumNullableAmounts(products.map((row) => row.grossProfit));
 
   return (
     <Section
@@ -939,10 +932,7 @@ function ProductsTab({
       {!error && products.length > 0 ? (
         <div className="space-y-3">
           {products.map((row) => {
-            const profitRate =
-              row.salesPrice > 0
-                ? `${((row.grossProfit / row.salesPrice) * 100).toFixed(1)}%`
-                : "—";
+            const profitRate = formatProfitRate(row.salesPrice, row.grossProfit);
 
             return (
               <div
@@ -950,15 +940,25 @@ function ProductsTab({
                 className="rounded-lg border border-gray-200 p-4"
               >
                 <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+                  <Field label="種別" value={row.lineTypeLabel} />
+                  <Field label={row.nameLabel} value={row.displayName} />
                   <Field label="メーカー" value={row.manufacturerName} />
                   <Field label="カテゴリ" value={row.category} />
                   <Field label="品番" value={row.modelNo} />
-                  <Field label="商品名" value={row.productName} />
                   <Field label="仕入先" value={row.supplierName} />
                   <Field label="数量" value={row.quantity} />
-                  <Field label="仕入価格" value={formatYen(row.purchasePrice)} />
-                  <Field label="販売価格" value={formatYen(row.salesPrice)} />
-                  <Field label="粗利" value={formatYen(row.grossProfit)} />
+                  <Field
+                    label="仕入価格"
+                    value={formatNullableYen(row.purchasePrice)}
+                  />
+                  <Field
+                    label="販売価格"
+                    value={formatNullableYen(row.salesPrice)}
+                  />
+                  <Field
+                    label="粗利"
+                    value={formatNullableYen(row.grossProfit)}
+                  />
                   <Field label="粗利率" value={profitRate} />
                 </div>
                 {row.memo.trim() ? (

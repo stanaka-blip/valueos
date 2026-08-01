@@ -10,6 +10,7 @@ import CaseDetailView, {
   type PaymentRow,
   type TaskRow,
 } from "./CaseDetailView";
+import { toCaseProductDisplayRow } from "./productDisplay";
 import { toSettlementViewData } from "./settlementView";
 import { getCaseSettlementByCaseIdAdmin } from "@/lib/caseSettlements/getCaseSettlementAdmin";
 import { buildWorkflowContext } from "@/lib/workflow/buildContext";
@@ -35,6 +36,10 @@ type ProductRelation = {
 };
 
 type SupplierRelation = {
+  name: string | null;
+};
+
+type PackageRelation = {
   name: string | null;
 };
 
@@ -114,6 +119,9 @@ export default async function CaseDetailPage({
       .select(
         `
         id,
+        line_type,
+        product_id,
+        package_id,
         quantity,
         purchase_price,
         sales_price,
@@ -126,6 +134,9 @@ export default async function CaseDetailPage({
           manufacturers (
             name
           )
+        ),
+        packages (
+          name
         ),
         suppliers (
           name
@@ -247,24 +258,30 @@ export default async function CaseDetailPage({
     const product = getSingleRelation(
       row.products as ProductRelation | ProductRelation[] | null
     );
+    const pkg = getSingleRelation(
+      row.packages as PackageRelation | PackageRelation[] | null
+    );
     const manufacturer = getSingleRelation(product?.manufacturers);
     const supplier = getSingleRelation(
       row.suppliers as SupplierRelation | SupplierRelation[] | null
     );
 
-    return {
-      id: row.id as string,
+    return toCaseProductDisplayRow(row.id as string, {
+      line_type: row.line_type as string | null,
+      product_id: row.product_id as string | null,
+      package_id: row.package_id as string | null,
+      quantity: row.quantity as number | string | null,
+      purchase_price: row.purchase_price as number | string | null,
+      sales_price: row.sales_price as number | string | null,
+      gross_profit: row.gross_profit as number | string | null,
+      memo: (row.memo as string) || "",
       productName: product?.name || "",
+      packageName: pkg?.name || "",
       modelNo: product?.model_no || "",
       category: product?.category || "",
       manufacturerName: manufacturer?.name || "",
       supplierName: supplier?.name || "",
-      quantity: row.quantity != null ? String(row.quantity) : "",
-      purchasePrice: toNumber(row.purchase_price as number | string | null),
-      salesPrice: toNumber(row.sales_price as number | string | null),
-      grossProfit: toNumber(row.gross_profit as number | string | null),
-      memo: (row.memo as string) || "",
-    };
+    });
   });
 
   const orders: OrderRow[] = (ordersData || []).map((row) => {
