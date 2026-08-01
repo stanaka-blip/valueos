@@ -124,22 +124,6 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
   const body = bodyResult.value as SettlementSaveBody;
 
-  if (
-    process.env.NODE_ENV !== "production" &&
-    process.env.GATEWAY_SETTLEMENT_STUB === "success"
-  ) {
-    const dto = toSafeSettlementSuccess({
-      settlement_id: "22222222-2222-2222-2222-222222222222",
-      created: body.source === "settlement_form",
-    });
-    gatewayLog({
-      route: "cases/settlement",
-      duration_ms: Date.now() - started,
-      ok: true,
-    });
-    return NextResponse.json(dto, { status: 200 });
-  }
-
   const result = await saveCaseSettlementByCaseId(caseId, body);
 
   if (!result.ok) {
@@ -164,6 +148,22 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         field_errors: result.field_errors,
       }),
       { status }
+    );
+  }
+
+  if (!isUuid(result.settlement_id)) {
+    gatewayLog({
+      route: "cases/settlement",
+      error_code: "SETTLEMENT_SAVE_FAILED",
+      duration_ms: Date.now() - started,
+      ok: false,
+    });
+    return NextResponse.json(
+      toSafeSettlementError({
+        error_code: "SETTLEMENT_SAVE_FAILED",
+        error_message: "決済条件を保存できませんでした",
+      }),
+      { status: 502 }
     );
   }
 
