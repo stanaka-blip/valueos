@@ -39,12 +39,18 @@ function suggestSettlementType(
 ): CaseSettlementType {
   const raw = (dealerPaymentType || "").trim();
   if (raw === "前金") return "前金";
-  if (raw === "三社間決済" || raw === "3社間" || raw === "三社間") {
-    return "三社間決済";
+  if (
+    raw === "3社間決済" ||
+    raw === "三社間決済" ||
+    raw === "ローン" ||
+    raw === "3社間" ||
+    raw === "三社間"
+  ) {
+    return "3社間決済";
   }
-  if (raw === "売掛" || raw === "掛売") return "掛売";
+  if (raw === "売掛" || raw === "掛売") return "売掛";
   if (raw === "カード") return "カード";
-  return "掛売";
+  return "売掛";
 }
 
 function initialSettlementType(
