@@ -31,8 +31,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  *       "line_type": "PRODUCT"|"PACKAGE",
  *       "product_id": "uuid|null",        // PRODUCT時必須
  *       "package_id": "uuid|null",        // PACKAGE時必須
- *       "supplier_id": "uuid",            // 必須
- *       "quantity": number,               // > 0
+ *       "supplier_id": "uuid|null",       // 任意（後方互換）。登録時は保存しない
+ *       "quantity": number,               // 1..9999 整数
  *       "memo": "string|null",
  *       "display_name": "string|null"
  *     }
@@ -40,7 +40,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  * }
  * ```
  *
- * 価格・価格ID・粗利・is_manual_price はクライアント入力として採用しない。
+ * 仕入先・販売/仕入価格・価格ID・粗利は登録時に保存しない（NULL）。
+ * 旧payloadの supplier_id は無視して成功する（後方互換）。
+ * is_manual_price はクライアント入力として採用しない。
  * service role key は渡さない（publishable/anon クライアントのみ）。
  */
 
@@ -48,7 +50,8 @@ export type CaseRegistrationLineInput = {
   line_type: "PRODUCT" | "PACKAGE";
   product_id?: string | null;
   package_id?: string | null;
-  supplier_id: string;
+  /** 後方互換用。RPCは登録時に保存しない */
+  supplier_id?: string | null;
   quantity: number;
   memo?: string | null;
   display_name?: string | null;

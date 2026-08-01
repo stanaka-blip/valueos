@@ -1,5 +1,5 @@
 /**
- * PR36: create_case_registration 隔離DBテスト（案C権限含む）
+ * PR36+: create_case_registration 隔離DBテスト（nullable supplier/価格）
  * 本番DBは使用しない。
  */
 import { execFileSync } from "node:child_process";
@@ -9,6 +9,14 @@ import { join } from "node:path";
 
 const DB = "valueos_pr36_rpc_test";
 const ROOT = new URL("..", import.meta.url).pathname;
+
+const dealer = "11111111-1111-1111-1111-111111111111";
+const supplier = "22222222-2222-2222-2222-222222222222";
+const product = "33333333-3333-3333-3333-333333333333";
+const product2 = "33333333-3333-3333-3333-333333333334";
+const pkg = "44444444-4444-4444-4444-444444444444";
+const badId = "99999999-9999-9999-9999-999999999999";
+const emptyPkg = "44444444-4444-4444-4444-444444444449";
 
 function psql(sql, db = DB, role = null) {
   const args = ["-u", "postgres", "psql", "-d", db, "-v", "ON_ERROR_STOP=1", "-At"];
@@ -36,7 +44,6 @@ function setup() {
     encoding: "utf8",
   });
 
-  // roles for privilege tests
   psql(
     `
     DO $$ BEGIN
@@ -47,7 +54,6 @@ function setup() {
     `,
     "postgres"
   );
-  // recreate on test db cluster - roles are cluster-wide, ok
 
   psqlFile(join(ROOT, "scripts/fixtures/pr36-local-schema.sql"));
 
@@ -59,6 +65,7 @@ function setup() {
     "20260726190300_case_packages_case_product_id.sql",
     "20260726210000_case_registration_requests.sql",
     "20260726210100_create_case_registration_rpc.sql",
+    "20260801090000_case_registration_nullable_prices.sql",
   ];
   for (const f of allow) {
     psqlFile(join(ROOT, "supabase/migrations", f));
@@ -71,21 +78,12 @@ function setup() {
     VALUES ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb4', '${supplier}', 'PACKAGE', NULL, '${pkg}', 900000, '2026-01-01', true);
     GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
     GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO service_role;
-    -- 業務表は service_role INVOKER 用。requests は migration 再適用相当で最小権限へ閉じる。
     REVOKE ALL ON FUNCTION public.create_case_registration(jsonb) FROM PUBLIC, anon, authenticated, service_role;
     GRANT EXECUTE ON FUNCTION public.create_case_registration(jsonb) TO service_role;
     REVOKE ALL ON TABLE public.case_registration_requests FROM PUBLIC, anon, authenticated, service_role;
     GRANT SELECT, INSERT, UPDATE ON TABLE public.case_registration_requests TO service_role;
   `);
 }
-
-const dealer = "11111111-1111-1111-1111-111111111111";
-const supplier = "22222222-2222-2222-2222-222222222222";
-const product = "33333333-3333-3333-3333-333333333333";
-const product2 = "33333333-3333-3333-3333-333333333334";
-const pkg = "44444444-4444-4444-4444-444444444444";
-const badId = "99999999-9999-9999-9999-999999999999";
-const emptyPkg = "44444444-4444-4444-4444-444444444449";
 
 function parseJsonLine(out) {
   const line = out
@@ -134,7 +132,6 @@ function callRpc(payload, asRole = null) {
 }
 
 function hasInternalLeak(result) {
-  // request_id はクライアント入力のエコーなので検査対象外。利用者向け文言のみ見る。
   const msg = `${result.error_message || ""}`;
   const code = `${result.error_code || ""}`;
   return (
@@ -144,7 +141,7 @@ function hasInternalLeak(result) {
     /\bINSERT\b/i.test(msg) ||
     /\bUPDATE\b/i.test(msg) ||
     /case_products|case_packages|pg_/i.test(msg) ||
-    !["INVALID_INPUT", "PRICE_NOT_FOUND", "PACKAGE_ITEMS_NOT_FOUND", "PACKAGE_ITEM_PRICE_NOT_FOUND", "REQUEST_ID_CONFLICT", "REGISTRATION_FAILED"].includes(code)
+    !["INVALID_INPUT", "PACKAGE_ITEMS_NOT_FOUND", "REQUEST_ID_CONFLICT", "REGISTRATION_FAILED"].includes(code)
   );
 }
 
@@ -166,6 +163,24 @@ function roleTablePriv(role, priv) {
 
 function count(table, where = "true") {
   return Number(psql(`SELECT count(*) FROM ${table} WHERE ${where};`));
+}
+
+function lineNullPrices(caseId) {
+  return (
+    psql(
+      `SELECT count(*) = 0 FROM case_products
+       WHERE case_id='${caseId}'
+         AND (
+           supplier_id IS NOT NULL
+           OR sales_price IS NOT NULL
+           OR purchase_price IS NOT NULL
+           OR gross_profit IS NOT NULL
+           OR sales_price_id IS NOT NULL
+           OR purchase_price_id IS NOT NULL
+           OR price_fetched_at IS NOT NULL
+         );`
+    ) === "t"
+  );
 }
 
 let failed = 0;
@@ -194,7 +209,6 @@ function basePayload(overrides = {}) {
       {
         line_type: "PRODUCT",
         product_id: product,
-        supplier_id: supplier,
         quantity: 2,
       },
     ],
@@ -234,14 +248,10 @@ assert(
     roleTablePriv("service_role", "DELETE") === false
 );
 
-// empty package
+// empty package still rejected + rollback
 {
   psql(`
     INSERT INTO packages (id, name) VALUES ('${emptyPkg}', 'EMPTY') ON CONFLICT DO NOTHING;
-    INSERT INTO sales_prices (id, dealer_id, price_target_type, package_id, sales_price, start_date, is_active)
-    VALUES ('${randomUUID()}', '${dealer}', 'PACKAGE', '${emptyPkg}', 100, '2026-01-01', true);
-    INSERT INTO purchase_prices (id, supplier_id, price_target_type, package_id, purchase_price, start_date, is_active)
-    VALUES ('${randomUUID()}', '${supplier}', 'PACKAGE', '${emptyPkg}', 50, '2026-01-01', true);
   `);
   const before = {
     cases: count("cases"),
@@ -253,16 +263,17 @@ assert(
   const r = callRpc(
     basePayload({
       request_id: randomUUID(),
-      lines: [{ line_type: "PACKAGE", package_id: emptyPkg, supplier_id: supplier, quantity: 1 }],
+      lines: [{ line_type: "PACKAGE", package_id: emptyPkg, quantity: 1 }],
     })
   );
   assert("5 empty PACKAGE FAILED", r.ok === false && r.error_code === "PACKAGE_ITEMS_NOT_FOUND", JSON.stringify(r));
-  assert("6 empty no business rows", 
+  assert(
+    "6 empty no business rows",
     count("cases") === before.cases &&
-    count("case_products") === before.products &&
-    count("case_packages") === before.packages &&
-    count("case_package_items") === before.items &&
-    count("case_settlements") === before.settlements
+      count("case_products") === before.products &&
+      count("case_packages") === before.packages &&
+      count("case_package_items") === before.items &&
+      count("case_settlements") === before.settlements
   );
   assert("6b no internal leak in message", !hasInternalLeak(r), JSON.stringify(r));
 }
@@ -296,9 +307,8 @@ assert(
       order_received_date: "2026-07-26",
     },
     settlement: { settlement_type: "掛売" },
-    lines: [{ line_type: "PRODUCT", product_id: product, supplier_id: supplier, quantity: 1 }],
+    lines: [{ line_type: "PRODUCT", product_id: product, quantity: 1 }],
   };
-  // reorder keys
   const p2 = {
     lines: p1.lines,
     settlement: p1.settlement,
@@ -320,7 +330,6 @@ assert(
   const lines = Array.from({ length: 101 }, () => ({
     line_type: "PRODUCT",
     product_id: product,
-    supplier_id: supplier,
     quantity: 1,
   }));
   const r = callRpc(basePayload({ request_id: randomUUID(), lines }));
@@ -337,11 +346,29 @@ assert(
     const r = callRpc(
       basePayload({
         request_id: randomUUID(),
-        lines: [{ line_type: "PRODUCT", product_id: product, supplier_id: supplier, quantity: qty }],
+        lines: [{ line_type: "PRODUCT", product_id: product, quantity: qty }],
       })
     );
     assert(`11 qty ${label} rejected`, r.ok === false && r.error_code === "INVALID_INPUT", JSON.stringify(r));
   }
+  assert(
+    "11b qty 1 ok",
+    callRpc(
+      basePayload({
+        request_id: randomUUID(),
+        lines: [{ line_type: "PRODUCT", product_id: product, quantity: 1 }],
+      })
+    ).ok === true
+  );
+  assert(
+    "11c qty 9999 ok",
+    callRpc(
+      basePayload({
+        request_id: randomUUID(),
+        lines: [{ line_type: "PRODUCT", product_id: product, quantity: 9999 }],
+      })
+    ).ok === true
+  );
 }
 
 // empty required strings
@@ -356,56 +383,109 @@ assert(
   assert("13 long string rejected", r.ok === false && r.error_code === "INVALID_INPUT", JSON.stringify(r));
 }
 
-// error sanitization on price miss
+// PRODUCT without supplier/prices (and even with prices deleted) succeeds with NULL snapshots
 {
   psql(`DELETE FROM sales_prices WHERE product_id='${product2}';`);
+  psql(`DELETE FROM purchase_prices WHERE product_id='${product2}';`);
   const r = callRpc(
     basePayload({
       request_id: randomUUID(),
-      lines: [{ line_type: "PRODUCT", product_id: product2, supplier_id: supplier, quantity: 1 }],
+      lines: [{ line_type: "PRODUCT", product_id: product2, quantity: 1 }],
     })
   );
-  const s = JSON.stringify(r);
-  assert("14 no uuid/sql/constraint", r.error_code === "PRICE_NOT_FOUND" && !hasInternalLeak(r), s);
-  psql(`INSERT INTO sales_prices (id, dealer_id, price_target_type, product_id, sales_price, start_date, is_active)
-        VALUES ('${randomUUID()}', '${dealer}', 'PRODUCT', '${product2}', 5000, '2026-01-01', true);`);
+  assert("14 PRODUCT no prices ok", r.ok === true, JSON.stringify(r));
+  assert("14b PRODUCT null snapshots", lineNullPrices(r.case_id), r.case_id);
 }
 
-// success paths
+// success paths without supplier_id
 {
   const r = callRpc(basePayload({ request_id: randomUUID() }));
-  assert("15 PRODUCT success", r.ok === true, JSON.stringify(r));
+  assert("15 PRODUCT success no supplier", r.ok === true && lineNullPrices(r.case_id), JSON.stringify(r));
 }
 {
   const r = callRpc(
     basePayload({
       request_id: randomUUID(),
-      lines: [{ line_type: "PACKAGE", package_id: pkg, supplier_id: supplier, quantity: 1 }],
+      lines: [{ line_type: "PACKAGE", package_id: pkg, quantity: 1 }],
     })
   );
-  assert("16 PACKAGE success", r.ok === true && count("case_packages", `case_id='${r.case_id}' AND case_product_id IS NOT NULL`) === 1, JSON.stringify(r));
+  assert(
+    "16 PACKAGE success no supplier",
+    r.ok === true &&
+      count("case_packages", `case_id='${r.case_id}' AND case_product_id IS NOT NULL`) === 1 &&
+      lineNullPrices(r.case_id) &&
+      count("case_package_items", `case_package_id IN (SELECT id FROM case_packages WHERE case_id='${r.case_id}') AND unit_purchase_price IS NULL`) >= 1,
+    JSON.stringify(r)
+  );
 }
 {
   const r = callRpc(
     basePayload({
       request_id: randomUUID(),
       lines: [
-        { line_type: "PACKAGE", package_id: pkg, supplier_id: supplier, quantity: 1 },
-        { line_type: "PRODUCT", product_id: product, supplier_id: supplier, quantity: 2 },
+        { line_type: "PACKAGE", package_id: pkg, quantity: 1 },
+        { line_type: "PRODUCT", product_id: product, quantity: 2 },
       ],
     })
   );
-  assert("17 mixed success", r.ok === true && count("case_products", `case_id='${r.case_id}'`) === 2, JSON.stringify(r));
+  assert(
+    "17 mixed success",
+    r.ok === true && count("case_products", `case_id='${r.case_id}'`) === 2 && lineNullPrices(r.case_id),
+    JSON.stringify(r)
+  );
 }
 
-// price miss rollback
+// multi lines
 {
-  const before = count("cases");
-  psql(`DELETE FROM purchase_prices WHERE product_id='${product}' AND price_target_type='PRODUCT';`);
+  const r = callRpc(
+    basePayload({
+      request_id: randomUUID(),
+      lines: [
+        { line_type: "PRODUCT", product_id: product, quantity: 1 },
+        { line_type: "PRODUCT", product_id: product2, quantity: 2 },
+        { line_type: "PACKAGE", package_id: pkg, quantity: 3 },
+      ],
+    })
+  );
+  assert("17b multi lines", r.ok === true && count("case_products", `case_id='${r.case_id}'`) === 3, JSON.stringify(r));
+}
+
+// old payload with supplier_id still works, but supplier/prices are NOT saved
+{
+  const r = callRpc(
+    basePayload({
+      request_id: randomUUID(),
+      lines: [{ line_type: "PRODUCT", product_id: product, supplier_id: supplier, quantity: 1 }],
+    })
+  );
+  assert("18 legacy supplier_id accepted", r.ok === true, JSON.stringify(r));
+  assert("18b legacy supplier not persisted", lineNullPrices(r.case_id), r.case_id);
+}
+
+// existing priced rows are not modified by new registrations
+{
+  const legacyId = randomUUID();
+  psql(`
+    INSERT INTO cases (id, case_no, dealer_id, customer_name, site_address, status)
+    VALUES ('${legacyId}', 'LEGACY-1', '${dealer}', '既存', '住所', '新規受付');
+    INSERT INTO case_products (
+      case_id, line_type, product_id, supplier_id, quantity,
+      sales_price, purchase_price, gross_profit, is_manual_price
+    ) VALUES (
+      '${legacyId}', 'PRODUCT', '${product}', '${supplier}', 1,
+      10000, 6000, 4000, false
+    );
+  `);
+  const before = psql(
+    `SELECT supplier_id::text || '|' || sales_price::text || '|' || purchase_price::text || '|' || gross_profit::text
+     FROM case_products WHERE case_id='${legacyId}' LIMIT 1;`
+  );
   const r = callRpc(basePayload({ request_id: randomUUID() }));
-  assert("18 price miss rollback", r.ok === false && count("cases") === before, JSON.stringify(r));
-  psql(`INSERT INTO purchase_prices (id, supplier_id, price_target_type, product_id, purchase_price, start_date, is_active)
-        VALUES ('${randomUUID()}', '${supplier}', 'PRODUCT', '${product}', 1000, '2026-01-01', true);`);
+  const after = psql(
+    `SELECT supplier_id::text || '|' || sales_price::text || '|' || purchase_price::text || '|' || gross_profit::text
+     FROM case_products WHERE case_id='${legacyId}' LIMIT 1;`
+  );
+  assert("19 existing priced row unchanged", r.ok === true && before === after && before.includes(supplier), `${before} vs ${after}`);
 }
 
 // parallel
@@ -423,25 +503,34 @@ assert(
     .filter((s) => s.startsWith("{"))
     .map((l) => JSON.parse(l));
   const caseIds = new Set(results.filter((r) => r.ok).map((r) => r.case_id));
-  assert("19 parallel one case", caseIds.size === 1 && results.length === 2, JSON.stringify(results));
+  assert("20 parallel one case", caseIds.size === 1 && results.length === 2, JSON.stringify(results));
 }
 
-// legacy success extras
-{
-  const r = callRpc(basePayload({ request_id: randomUUID(), lines: [
-    { line_type: "PRODUCT", product_id: product, supplier_id: supplier, quantity: 1 },
-    { line_type: "PRODUCT", product_id: product2, supplier_id: supplier, quantity: 2 },
-  ]}));
-  assert("legacy multi product", r.ok === true, JSON.stringify(r));
-}
 {
   const r = callRpc(basePayload({ request_id: randomUUID(), is_manual_price: true }));
   assert("legacy manual rejected", r.ok === false && r.error_code === "INVALID_INPUT", JSON.stringify(r));
 }
 {
-  const bad = basePayload({ request_id: randomUUID(), lines: [{ line_type: "PRODUCT", product_id: badId, supplier_id: supplier, quantity: 1 }]});
+  const bad = basePayload({
+    request_id: randomUUID(),
+    lines: [{ line_type: "PRODUCT", product_id: badId, quantity: 1 }],
+  });
   const r = callRpc(bad);
   assert("legacy bad id", r.ok === false && r.error_code === "INVALID_INPUT", JSON.stringify(r));
+}
+
+// columns nullable after migration
+{
+  const nullable = psql(`
+    SELECT count(*) = 7 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='case_products'
+      AND column_name IN (
+        'supplier_id','sales_price','purchase_price','gross_profit',
+        'sales_price_id','purchase_price_id','price_fetched_at'
+      )
+      AND is_nullable='YES';
+  `);
+  assert("21 case_products price cols nullable", nullable === "t", nullable);
 }
 
 console.log(failed === 0 ? "\nALL_TESTS_PASSED" : `\nFAILED_COUNT=${failed}`);
