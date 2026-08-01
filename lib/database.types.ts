@@ -94,6 +94,8 @@ export type Database = {
           deposit_amount: number | null;
           payment_terms: string | null;
           card_brand: string | null;
+          finance_company: string | null;
+          approval_number: string | null;
           memo: string | null;
           loan_status: string | null;
           loan_status_updated_at: string | null;
@@ -112,6 +114,8 @@ export type Database = {
           deposit_amount?: number | null;
           payment_terms?: string | null;
           card_brand?: string | null;
+          finance_company?: string | null;
+          approval_number?: string | null;
           memo?: string | null;
           loan_status?: string | null;
           loan_status_updated_at?: string | null;
@@ -130,6 +134,8 @@ export type Database = {
           deposit_amount?: number | null;
           payment_terms?: string | null;
           card_brand?: string | null;
+          finance_company?: string | null;
+          approval_number?: string | null;
           memo?: string | null;
           loan_status?: string | null;
           loan_status_updated_at?: string | null;
