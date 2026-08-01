@@ -7,10 +7,9 @@ import {
   CASE_SETTLEMENT_TYPES,
   type CaseSettlementType,
 } from "@/lib/caseSettlementTypes";
-import { upsertCaseSettlementByCaseId } from "@/lib/repositories/caseSettlements";
 
+import { submitCaseSettlement } from "./submitCaseSettlement";
 import {
-  resolveSettlementDetailColumns,
   validateSettlementDetailFields,
   type SettlementViewData,
 } from "./settlementView";
@@ -133,37 +132,30 @@ export default function SettlementForm({
     }
     setFieldErrors({});
 
-    const existingDetail = settlement
-      ? {
-          financeCompany: settlement.financeCompany,
-          approvalNumber: settlement.approvalNumber,
-          cardBrand: settlement.cardBrand,
-        }
-      : null;
-    const detailColumns = resolveSettlementDetailColumns(
-      settlementType,
-      detailInput,
-      existingDetail
-    );
-
-    const result = await upsertCaseSettlementByCaseId(caseId, {
-      settlement_type: settlementType,
-      fee_rate: parseOptionalNumber(feeRate),
-      fee_amount: parseOptionalNumber(feeAmount) ?? 0,
-      deposit_rate: parseOptionalNumber(depositRate),
-      deposit_amount: parseOptionalNumber(depositAmount),
-      payment_terms: paymentTerms.trim() || null,
-      ...detailColumns,
-      memo: memo.trim() || null,
-      // Workflow ステータスは WorkflowPanel で更新。ここでは既存値を維持。
-      loan_status: settlement?.loanStatus || null,
-      card_status: settlement?.cardStatus || null,
+    const result = await submitCaseSettlement({
+      caseId,
+      body: {
+        source: "settlement_form",
+        settlement_type: settlementType,
+        fee_rate: parseOptionalNumber(feeRate),
+        fee_amount: parseOptionalNumber(feeAmount) ?? 0,
+        deposit_rate: parseOptionalNumber(depositRate),
+        deposit_amount: parseOptionalNumber(depositAmount),
+        payment_terms: paymentTerms.trim() || null,
+        finance_company: financeCompany,
+        approval_number: approvalNumber,
+        card_brand: cardBrand,
+        memo: memo.trim() || null,
+      },
     });
 
     setSaving(false);
 
-    if (result.error) {
-      setError(result.error);
+    if (!result.ok) {
+      if (result.field_errors) {
+        setFieldErrors(result.field_errors);
+      }
+      setError(result.error_message);
       return;
     }
 
