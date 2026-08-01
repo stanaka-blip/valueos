@@ -34,16 +34,9 @@ export type LineDraft = {
   line_type: LineType;
   product_id: string;
   package_id: string;
-  supplier_id: string;
   quantity: string;
   memo: string;
   display_name: string;
-  sales_unit_price: number | null;
-  purchase_unit_price: number | null;
-  sales_found: boolean;
-  purchase_found: boolean;
-  price_error: string | null;
-  price_loading: boolean;
 };
 
 export type CaseFormErrors = Partial<Record<keyof CaseFormState, string>>;
@@ -52,27 +45,18 @@ export type LineErrors = {
   line_type?: string;
   product_id?: string;
   package_id?: string;
-  supplier_id?: string;
   quantity?: string;
-  price?: string;
 };
 
-export function createEmptyLine(defaultSupplierId = ""): LineDraft {
+export function createEmptyLine(): LineDraft {
   return {
     local_id: `line-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
     line_type: "PRODUCT",
     product_id: "",
     package_id: "",
-    supplier_id: defaultSupplierId,
     quantity: "1",
     memo: "",
     display_name: "",
-    sales_unit_price: null,
-    purchase_unit_price: null,
-    sales_found: false,
-    purchase_found: false,
-    price_error: null,
-    price_loading: false,
   };
 }
 
@@ -108,7 +92,6 @@ export function registrationFingerprint(
       line_type: l.line_type,
       product_id: l.product_id,
       package_id: l.package_id,
-      supplier_id: l.supplier_id,
       quantity: l.quantity,
       memo: l.memo,
       display_name: l.display_name,

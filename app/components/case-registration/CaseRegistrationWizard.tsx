@@ -6,13 +6,10 @@ import {
   fetchActiveDealers,
   fetchActivePackages,
   fetchActiveProducts,
-  fetchActiveSuppliers,
   type DealerOption,
   type PackageOption,
   type ProductOption,
-  type SupplierOption,
 } from "./masters";
-import { refreshLinePrices } from "./pricePreview";
 import Step1CaseForm from "./Step1CaseForm";
 import Step2LinesForm from "./Step2LinesForm";
 import Step3SettlementForm from "./Step3SettlementForm";
@@ -47,7 +44,6 @@ export default function CaseRegistrationWizard() {
   const [dealers, setDealers] = useState<DealerOption[]>([]);
   const [products, setProducts] = useState<ProductOption[]>([]);
   const [packages, setPackages] = useState<PackageOption[]>([]);
-  const [suppliers, setSuppliers] = useState<SupplierOption[]>([]);
   const [masterError, setMasterError] = useState<string | null>(null);
 
   const [step1Errors, setStep1Errors] = useState<CaseFormErrors>({});
@@ -59,81 +55,27 @@ export default function CaseRegistrationWizard() {
 
   const idempotencyKeyRef = useRef<string | null>(null);
   const fingerprintForKeyRef = useRef<string>("");
-  const priceSeqRef = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const [d, p, pkg, s] = await Promise.all([
+      const [d, p, pkg] = await Promise.all([
         fetchActiveDealers(),
         fetchActiveProducts(),
         fetchActivePackages(),
-        fetchActiveSuppliers(),
       ]);
       if (cancelled) return;
-      if (d.errorMessage || p.errorMessage || pkg.errorMessage || s.errorMessage) {
+      if (d.errorMessage || p.errorMessage || pkg.errorMessage) {
         setMasterError("マスタの取得に失敗しました");
       }
       setDealers(d.data);
       setProducts(p.data);
       setPackages(pkg.data);
-      setSuppliers(s.data);
     })();
     return () => {
       cancelled = true;
     };
   }, []);
-
-  // 価格再取得（販売店・受注日・対象・数量・自動解決仕入先変更時）
-  useEffect(() => {
-    const seq = ++priceSeqRef.current;
-    const dealerId = caseForm.dealer_id;
-    const asOf = caseForm.order_received_date;
-    const snapshot = lines;
-
-    setLines((prev) =>
-      prev.map((l) => ({ ...l, price_loading: true, price_error: null }))
-    );
-
-    (async () => {
-      const nextLines = await Promise.all(
-        snapshot.map((line) =>
-          refreshLinePrices({
-            line,
-            dealerId,
-            asOfDate: asOf,
-          })
-        )
-      );
-      if (seq !== priceSeqRef.current) return;
-      setLines((prev) => {
-        const byId = new Map(nextLines.map((l) => [l.local_id, l]));
-        return prev.map((l) => {
-          const priced = byId.get(l.local_id);
-          if (!priced) return l;
-          return {
-            ...l,
-            sales_unit_price: priced.sales_unit_price,
-            purchase_unit_price: priced.purchase_unit_price,
-            sales_found: priced.sales_found,
-            purchase_found: priced.purchase_found,
-            price_error: priced.price_error,
-            price_loading: priced.price_loading,
-          };
-        });
-      });
-    })();
-    // lines の構造キーのみ依存（価格フィールドは含めない）
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    caseForm.dealer_id,
-    caseForm.order_received_date,
-    lines
-      .map((l) =>
-        [l.local_id, l.line_type, l.product_id, l.package_id, l.supplier_id, l.quantity].join(":")
-      )
-      .join("|"),
-  ]);
 
   function ensureIdempotencyKey(): string {
     const fp = registrationFingerprint(caseForm, lines, settlementType);
@@ -210,7 +152,7 @@ export default function CaseRegistrationWizard() {
     <div className="mx-auto max-w-5xl px-4 py-6">
       <h1 className="mb-2 text-xl font-bold text-gray-900">案件登録</h1>
       <p className="mb-4 text-sm text-gray-600">
-        社内向け4ステップ登録です。保存はサーバー経由のみ行います。
+        社内向け4ステップ登録です。商品／パッケージと数量を指定して登録します。保存はサーバー経由のみ行います。
       </p>
       <StepChrome step={step} />
       {masterError ? (
@@ -234,7 +176,6 @@ export default function CaseRegistrationWizard() {
           lines={lines}
           products={products}
           packages={packages}
-          suppliers={suppliers}
           formError={step2FormError}
           lineErrors={step2LineErrors}
           onChangeLine={handleChangeLine}
@@ -265,7 +206,6 @@ export default function CaseRegistrationWizard() {
           dealers={dealers}
           products={products}
           packages={packages}
-          suppliers={suppliers}
           submitting={submitting}
           submitError={submitError}
           onBack={() => setStep(3)}

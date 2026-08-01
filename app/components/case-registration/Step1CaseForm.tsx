@@ -89,7 +89,7 @@ export default function Step1CaseForm({
         </label>
 
         <label className="block text-sm font-medium text-gray-700">
-          受注日（価格基準日） <span className="text-red-600">*</span>
+          受注日 <span className="text-red-600">*</span>
           <input
             type="date"
             className={inputClass}

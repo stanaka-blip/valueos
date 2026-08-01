@@ -5,25 +5,16 @@ import {
   formatProductLabel,
   type PackageOption,
   type ProductOption,
-  type SupplierOption,
 } from "./masters";
-import { resolveDefaultSupplierId } from "./resolveDefaultSupplier";
 import type { LineDraft, LineErrors, LineType } from "./types";
-import { lineGrossProfit, linePurchaseSubtotal, lineSalesSubtotal } from "./validation";
 
 const inputClass =
   "w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900";
-
-function yen(n: number | null | undefined): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  return `¥${Math.round(n).toLocaleString("ja-JP")}`;
-}
 
 type Props = {
   lines: LineDraft[];
   products: ProductOption[];
   packages: PackageOption[];
-  suppliers: SupplierOption[];
   formError: string | null;
   lineErrors: Record<string, LineErrors>;
   onChangeLine: (localId: string, patch: Partial<LineDraft>) => void;
@@ -33,19 +24,10 @@ type Props = {
   onNext: () => void;
 };
 
-function supplierLabel(
-  supplierId: string,
-  suppliers: SupplierOption[]
-): string {
-  if (!supplierId) return "未設定";
-  return suppliers.find((s) => s.id === supplierId)?.name || "名称未設定";
-}
-
 export default function Step2LinesForm({
   lines,
   products,
   packages,
-  suppliers,
   formError,
   lineErrors,
   onChangeLine,
@@ -60,7 +42,6 @@ export default function Step2LinesForm({
       product_id: "",
       package_id: "",
       display_name: "",
-      supplier_id: "",
     });
   }
 
@@ -70,13 +51,6 @@ export default function Step2LinesForm({
       product_id: productId,
       package_id: "",
       display_name: p ? formatProductLabel(p) : "",
-      supplier_id: resolveDefaultSupplierId(
-        "PRODUCT",
-        productId,
-        "",
-        products,
-        packages
-      ),
     });
   }
 
@@ -86,13 +60,6 @@ export default function Step2LinesForm({
       package_id: packageId,
       product_id: "",
       display_name: p ? formatPackageLabel(p) : "",
-      supplier_id: resolveDefaultSupplierId(
-        "PACKAGE",
-        "",
-        packageId,
-        products,
-        packages
-      ),
     });
   }
 
@@ -118,12 +85,7 @@ export default function Step2LinesForm({
             <tr className="border-b bg-gray-50 text-left text-gray-600">
               <th className="p-2">種別</th>
               <th className="p-2">対象</th>
-              <th className="p-2">仕入先</th>
               <th className="p-2">数量</th>
-              <th className="p-2">販売単価</th>
-              <th className="p-2">仕入単価</th>
-              <th className="p-2">販売小計</th>
-              <th className="p-2">粗利</th>
               <th className="p-2" />
             </tr>
           </thead>
@@ -178,14 +140,6 @@ export default function Step2LinesForm({
                       </p>
                     ) : null}
                   </td>
-                  <td className="p-2 min-w-[10rem]">
-                    <p className="px-1 py-2 text-sm text-gray-800">
-                      {supplierLabel(line.supplier_id, suppliers)}
-                    </p>
-                    {err.supplier_id ? (
-                      <p className="mt-1 text-xs text-red-600">{err.supplier_id}</p>
-                    ) : null}
-                  </td>
                   <td className="p-2 w-24">
                     <input
                       className={inputClass}
@@ -202,14 +156,6 @@ export default function Step2LinesForm({
                       <p className="mt-1 text-xs text-red-600">{err.quantity}</p>
                     ) : null}
                   </td>
-                  <td className="p-2 whitespace-nowrap">
-                    {line.price_loading ? "取得中…" : yen(line.sales_unit_price)}
-                  </td>
-                  <td className="p-2 whitespace-nowrap">
-                    {line.price_loading ? "取得中…" : yen(line.purchase_unit_price)}
-                  </td>
-                  <td className="p-2 whitespace-nowrap">{yen(lineSalesSubtotal(line))}</td>
-                  <td className="p-2 whitespace-nowrap">{yen(lineGrossProfit(line))}</td>
                   <td className="p-2">
                     <button
                       type="button"
@@ -219,11 +165,6 @@ export default function Step2LinesForm({
                     >
                       削除
                     </button>
-                    {err.price || line.price_error ? (
-                      <p className="mt-1 text-xs text-red-600">
-                        {err.price || line.price_error}
-                      </p>
-                    ) : null}
                   </td>
                 </tr>
               );
@@ -282,12 +223,6 @@ export default function Step2LinesForm({
                     </select>
                   )}
                 </label>
-                <div className="text-sm">
-                  <p className="font-medium text-gray-800">仕入先</p>
-                  <p className="mt-1 text-gray-700">
-                    {supplierLabel(line.supplier_id, suppliers)}
-                  </p>
-                </div>
                 <label className="block text-sm font-medium">
                   数量
                   <input
@@ -302,26 +237,9 @@ export default function Step2LinesForm({
                     }
                   />
                 </label>
-                <div className="grid grid-cols-2 gap-2 text-sm text-gray-700">
-                  <div>販売単価: {line.price_loading ? "取得中…" : yen(line.sales_unit_price)}</div>
-                  <div>仕入単価: {line.price_loading ? "取得中…" : yen(line.purchase_unit_price)}</div>
-                  <div>販売小計: {yen(lineSalesSubtotal(line))}</div>
-                  <div>仕入小計: {yen(linePurchaseSubtotal(line))}</div>
-                  <div className="col-span-2 font-medium">粗利: {yen(lineGrossProfit(line))}</div>
-                </div>
-                {err.price ||
-                line.price_error ||
-                err.product_id ||
-                err.package_id ||
-                err.supplier_id ||
-                err.quantity ? (
+                {err.product_id || err.package_id || err.quantity ? (
                   <p className="text-sm text-red-600">
-                    {err.price ||
-                      line.price_error ||
-                      err.product_id ||
-                      err.package_id ||
-                      err.supplier_id ||
-                      err.quantity}
+                    {err.product_id || err.package_id || err.quantity}
                   </p>
                 ) : null}
                 <button

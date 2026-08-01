@@ -15,7 +15,6 @@ import {
   createIdempotencyKey,
   submitCaseRegistration,
 } from "../app/components/case-registration/submitCaseRegistration.ts";
-import { resolveDefaultSupplierId } from "../app/components/case-registration/resolveDefaultSupplier.ts";
 
 function assert(name: string, cond: unknown, detail = "") {
   if (!cond) {
@@ -46,81 +45,26 @@ async function main() {
   assert("1 phone optional", !("customer_phone" in validateStep1(ok1)));
 
   const productLine = {
-    ...createEmptyLine("sup-1"),
+    ...createEmptyLine(),
     local_id: "l1",
     line_type: "PRODUCT" as const,
     product_id: "prod-1",
     quantity: "2",
-    sales_unit_price: 1000,
-    purchase_unit_price: 600,
-    sales_found: true,
-    purchase_found: true,
-    price_loading: false,
-    price_error: null,
   };
   assert("2 PRODUCT alone ok", validateStep2([productLine]).ok);
 
   const packageLine = {
-    ...createEmptyLine("sup-1"),
+    ...createEmptyLine(),
     local_id: "l2",
     line_type: "PACKAGE" as const,
     package_id: "pkg-1",
     product_id: "",
     quantity: "1",
-    sales_unit_price: 5000,
-    purchase_unit_price: 3000,
-    sales_found: true,
-    purchase_found: true,
-    price_loading: false,
-    price_error: null,
   };
   assert("3 PACKAGE alone ok", validateStep2([packageLine]).ok);
 
-  const missingSupplier = { ...productLine, local_id: "l-missing-sup", supplier_id: "" };
-  const missingSupplierResult = validateStep2([missingSupplier]);
-  assert("PR-C missing supplier blocks next", !missingSupplierResult.ok);
-  assert(
-    "PR-C missing supplier JP message",
-    missingSupplierResult.lineErrors["l-missing-sup"]?.supplier_id ===
-      "標準仕入先が設定されていません"
-  );
-
-  const productsMaster = [
-    {
-      id: "prod-1",
-      name: "商品1",
-      model_no: "M1",
-      default_supplier_id: "sup-product",
-    },
-    {
-      id: "prod-2",
-      name: "商品2",
-      model_no: null,
-      default_supplier_id: null,
-    },
-  ];
-  const packagesMaster = [
-    {
-      id: "pkg-1",
-      name: "PKG1",
-      package_code: "P1",
-      default_supplier_id: "sup-package",
-    },
-  ];
-  assert(
-    "PR-C PRODUCT uses products.default_supplier_id",
-    resolveDefaultSupplierId("PRODUCT", "prod-1", "", productsMaster, packagesMaster) ===
-      "sup-product"
-  );
-  assert(
-    "PR-C PACKAGE uses packages.default_supplier_id",
-    resolveDefaultSupplierId("PACKAGE", "", "pkg-1", productsMaster, packagesMaster) ===
-      "sup-package"
-  );
-  assert(
-    "PR-C unset default_supplier becomes empty",
-    resolveDefaultSupplierId("PRODUCT", "prod-2", "", productsMaster, packagesMaster) === ""
-  );
+  const missingTarget = { ...productLine, local_id: "l-missing", product_id: "" };
+  assert("missing PRODUCT id blocks", !validateStep2([missingTarget]).ok);
 
   assert("4 mixed PRODUCT/PACKAGE", validateStep2([productLine, packageLine]).ok);
   assert(
@@ -132,14 +76,8 @@ async function main() {
     ]).ok
   );
 
-  const missingPrice = {
-    ...productLine,
-    sales_found: false,
-    sales_unit_price: null,
-    price_error: "販売単価が見つかりません",
-  };
-  assert("6 missing price blocks", !validateStep2([missingPrice]).ok);
-  assert("6 missing price message", !!validateStep2([missingPrice]).lineErrors.l1?.price);
+  // 価格なしでも次へ進める（登録時は価格を扱わない）
+  assert("6 no price fields required", validateStep2([productLine]).ok);
 
   const qtyMsg = "数量は1〜9,999の整数で入力してください";
   function withQty(line: typeof productLine, quantity: string, localId: string) {
@@ -172,12 +110,20 @@ async function main() {
     body.lines[0].line_type === "PRODUCT" && body.lines[1].line_type === "PACKAGE"
   );
   assert(
-    "PR-C gateway body sends resolved supplier_id",
-    body.lines[0].supplier_id === "sup-1" && body.lines[1].supplier_id === "sup-1"
+    "gateway body omits supplier_id",
+    !("supplier_id" in body.lines[0]) && !("supplier_id" in body.lines[1])
+  );
+  assert(
+    "gateway body omits prices",
+    !("sales_price" in body.lines[0]) &&
+      !("purchase_price" in body.lines[0]) &&
+      !("sales_price_id" in body.lines[0]) &&
+      !("purchase_price_id" in body.lines[0])
   );
   assert("no department/priority in body", !("department" in body.case) && !("priority" in body.case));
   assert("no request_id in body", !("request_id" in body));
   assert("delivery resolved from site", body.case.delivery_address === "東京都");
+  assert("qty preserved in body", body.lines[0].quantity === 2 && body.lines[1].quantity === 1);
 
   assert(
     "11 safe error strips service role",
@@ -192,6 +138,10 @@ async function main() {
   const fp2 = registrationFingerprint({ ...ok1, customer_name: "顧客B" }, [productLine], "現金");
   assert("9 fingerprint changes on edit", fp1 !== fp2);
   assert("9 fingerprint stable", registrationFingerprint(ok1, [productLine], "現金") === fp1);
+  assert(
+    "9 fingerprint omits supplier/price",
+    !fp1.includes("supplier_id") && !fp1.includes("sales_unit_price")
+  );
 
   const key1 = createIdempotencyKey();
   const key2 = createIdempotencyKey();
