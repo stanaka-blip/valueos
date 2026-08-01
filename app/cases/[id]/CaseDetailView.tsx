@@ -11,34 +11,21 @@ import SettlementForm from "./SettlementForm";
 import WorkflowPanel from "./WorkflowPanel";
 import type { SettlementViewData } from "./settlementView";
 import {
+  CASE_DETAIL_TABS,
+  resolveCaseDetailTabId,
+  type CaseDetailTabId,
+} from "./caseDetailTabs";
+import {
   formatNullableYen,
   formatProfitRate,
   sumNullableAmounts,
   type CaseProductDisplayRow,
 } from "./productDisplay";
 
-export type CaseDetailTabId =
-  | "basic"
-  | "products"
-  | "settlement"
-  | "purchase"
-  | "delivery"
-  | "invoice"
-  | "receipt"
-  | "payment"
-  | "profit";
+export type { CaseDetailTabId };
+export { resolveCaseDetailTabId };
 
-const TABS: { id: CaseDetailTabId; label: string }[] = [
-  { id: "basic", label: "基本情報" },
-  { id: "products", label: "商品" },
-  { id: "settlement", label: "決済" },
-  { id: "purchase", label: "仕入" },
-  { id: "delivery", label: "納品" },
-  { id: "invoice", label: "請求" },
-  { id: "receipt", label: "入金" },
-  { id: "payment", label: "支払" },
-  { id: "profit", label: "粗利" },
-];
+const TABS = CASE_DETAIL_TABS;
 
 export type CaseDetailViewData = {
   id: string;
@@ -116,6 +103,8 @@ type CaseDetailViewProps = {
   settlement: SettlementViewData | null;
   workflow: WorkflowResult;
   dealerPaymentType?: string;
+  /** URL ?tab= などからの初期タブ（未指定時は基本情報） */
+  initialTab?: CaseDetailTabId;
   errors: {
     products?: string;
     orders?: string;
@@ -159,9 +148,10 @@ export default function CaseDetailView({
   settlement,
   workflow,
   dealerPaymentType,
+  initialTab = "basic",
   errors,
 }: CaseDetailViewProps) {
-  const [tab, setTab] = useState<CaseDetailTabId>("basic");
+  const [tab, setTab] = useState<CaseDetailTabId>(initialTab);
   const [viewMode, setViewMode] = useState<"detail" | "simple">("detail");
 
   const totals = useMemo(() => {
