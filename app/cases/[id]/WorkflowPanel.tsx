@@ -45,6 +45,7 @@ export default function WorkflowPanel({
     setMessage(null);
 
     const now = new Date().toISOString();
+    // 決済詳細列は SettlementForm 側の責務。ここでは既存値を維持し NULL 上書きしない。
     const baseSettlement = {
       settlement_type: settlement.settlementType,
       fee_rate: settlement.feeRate,
@@ -53,6 +54,8 @@ export default function WorkflowPanel({
       deposit_amount: settlement.depositAmount,
       payment_terms: settlement.paymentTerms || null,
       card_brand: settlement.cardBrand || null,
+      finance_company: settlement.financeCompany || null,
+      approval_number: settlement.approvalNumber || null,
     };
 
     // 1) 正式カラムへ保存を試行

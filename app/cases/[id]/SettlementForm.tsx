@@ -9,7 +9,11 @@ import {
 } from "@/lib/caseSettlementTypes";
 import { upsertCaseSettlementByCaseId } from "@/lib/repositories/caseSettlements";
 
-import type { SettlementViewData } from "./settlementView";
+import {
+  resolveSettlementDetailColumns,
+  validateSettlementDetailFields,
+  type SettlementViewData,
+} from "./settlementView";
 
 type Props = {
   caseId: string;
@@ -91,9 +95,20 @@ export default function SettlementForm({
     settlement?.paymentTerms || ""
   );
   const [cardBrand, setCardBrand] = useState(settlement?.cardBrand || "");
+  const [financeCompany, setFinanceCompany] = useState(
+    settlement?.financeCompany || ""
+  );
+  const [approvalNumber, setApprovalNumber] = useState(
+    settlement?.approvalNumber || ""
+  );
   const [memo, setMemo] = useState(settlement?.memo || "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<{
+    finance_company?: string;
+    approval_number?: string;
+    card_brand?: string;
+  }>({});
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -102,6 +117,35 @@ export default function SettlementForm({
     setError(null);
     setSavedMessage(null);
 
+    const detailInput = {
+      financeCompany,
+      approvalNumber,
+      cardBrand,
+    };
+    const detailErrors = validateSettlementDetailFields(
+      settlementType,
+      detailInput
+    );
+    if (Object.keys(detailErrors).length > 0) {
+      setFieldErrors(detailErrors);
+      setSaving(false);
+      return;
+    }
+    setFieldErrors({});
+
+    const existingDetail = settlement
+      ? {
+          financeCompany: settlement.financeCompany,
+          approvalNumber: settlement.approvalNumber,
+          cardBrand: settlement.cardBrand,
+        }
+      : null;
+    const detailColumns = resolveSettlementDetailColumns(
+      settlementType,
+      detailInput,
+      existingDetail
+    );
+
     const result = await upsertCaseSettlementByCaseId(caseId, {
       settlement_type: settlementType,
       fee_rate: parseOptionalNumber(feeRate),
@@ -109,7 +153,7 @@ export default function SettlementForm({
       deposit_rate: parseOptionalNumber(depositRate),
       deposit_amount: parseOptionalNumber(depositAmount),
       payment_terms: paymentTerms.trim() || null,
-      card_brand: cardBrand.trim() || null,
+      ...detailColumns,
       memo: memo.trim() || null,
       // Workflow ステータスは WorkflowPanel で更新。ここでは既存値を維持。
       loan_status: settlement?.loanStatus || null,
@@ -168,15 +212,61 @@ export default function SettlementForm({
           </select>
         </label>
 
-        <label className="block text-sm">
-          <span className="text-xs font-medium text-gray-400">カードブランド</span>
-          <input
-            value={cardBrand}
-            onChange={(e) => setCardBrand(e.target.value)}
-            placeholder="Visa / など"
-            className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
-          />
-        </label>
+        {settlementType === "3社間決済" ? (
+          <>
+            <label className="block text-sm">
+              <span className="text-xs font-medium text-gray-400">
+                信販会社 <span className="text-red-500">*</span>
+              </span>
+              <input
+                value={financeCompany}
+                onChange={(e) => setFinanceCompany(e.target.value)}
+                placeholder="例: ○○信販"
+                className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+              />
+              {fieldErrors.finance_company ? (
+                <span className="mt-1 block text-xs text-red-600">
+                  {fieldErrors.finance_company}
+                </span>
+              ) : null}
+            </label>
+            <label className="block text-sm">
+              <span className="text-xs font-medium text-gray-400">
+                承認番号 <span className="text-red-500">*</span>
+              </span>
+              <input
+                value={approvalNumber}
+                onChange={(e) => setApprovalNumber(e.target.value)}
+                placeholder="承認番号"
+                className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+              />
+              {fieldErrors.approval_number ? (
+                <span className="mt-1 block text-xs text-red-600">
+                  {fieldErrors.approval_number}
+                </span>
+              ) : null}
+            </label>
+          </>
+        ) : null}
+
+        {settlementType === "カード" ? (
+          <label className="block text-sm">
+            <span className="text-xs font-medium text-gray-400">
+              カード会社名 <span className="text-red-500">*</span>
+            </span>
+            <input
+              value={cardBrand}
+              onChange={(e) => setCardBrand(e.target.value)}
+              placeholder="例: Visa / Mastercard"
+              className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+            />
+            {fieldErrors.card_brand ? (
+              <span className="mt-1 block text-xs text-red-600">
+                {fieldErrors.card_brand}
+              </span>
+            ) : null}
+          </label>
+        ) : null}
 
         <label className="block text-sm">
           <span className="text-xs font-medium text-gray-400">
