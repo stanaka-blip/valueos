@@ -1,5 +1,9 @@
 import {
+  CASE_REGISTRATION_SETTLEMENT_TYPES,
   CASE_SETTLEMENT_TYPES,
+  isCaseRegistrationSettlementType,
+  type CaseRegistrationSettlementPayload,
+  type CaseRegistrationSettlementType,
   type CaseSettlementType,
 } from "@/lib/caseSettlementTypes";
 import type {
@@ -14,8 +18,16 @@ export type CaseSettlementsResult<T> = {
   error: string | null;
 };
 
-export { CASE_SETTLEMENT_TYPES };
-export type { CaseSettlementType };
+export {
+  CASE_REGISTRATION_SETTLEMENT_TYPES,
+  CASE_SETTLEMENT_TYPES,
+  isCaseRegistrationSettlementType,
+};
+export type {
+  CaseRegistrationSettlementPayload,
+  CaseRegistrationSettlementType,
+  CaseSettlementType,
+};
 
 function toErrorMessage(error: { message: string } | null): string | null {
   return error?.message ?? null;

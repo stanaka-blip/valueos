@@ -66,6 +66,8 @@ function setup() {
     "20260726210000_case_registration_requests.sql",
     "20260726210100_create_case_registration_rpc.sql",
     "20260801090000_case_registration_nullable_prices.sql",
+    "20260801140000_case_settlements_finance_detail_columns.sql",
+    "20260801160000_case_registration_settlement_spec.sql",
     // hotfix is applied mid-test after reproducing prod-like NOT NULL failure
   ];
   for (const f of allow) {
@@ -237,7 +239,7 @@ function basePayload(overrides = {}) {
       customer_phone: "090",
       ...(caseOverride || {}),
     },
-    settlement: settlement || { settlement_type: "掛売" },
+    settlement: settlement || { settlement_type: "売掛" },
     lines: lines || [
       {
         line_type: "PRODUCT",
@@ -339,7 +341,7 @@ assert(
       site_address: "住所",
       order_received_date: "2026-07-26",
     },
-    settlement: { settlement_type: "掛売" },
+    settlement: { settlement_type: "売掛" },
     lines: [{ line_type: "PRODUCT", product_id: product, quantity: 1 }],
   };
   const p2 = {
