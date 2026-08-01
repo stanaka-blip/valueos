@@ -6,7 +6,11 @@ import {
   toSafeCaseLineError,
   toSafeCaseLineSuccess,
 } from "@/lib/caseLines/safeCaseLineDto";
-import { isUuid } from "@/lib/gateway/authCookie";
+import {
+  AuthConfigError,
+  deriveCaseLineAppendRequestId,
+  isUuid,
+} from "@/lib/gateway/authCookie";
 import {
   assertCsrf,
   getSessionFromRequest,
@@ -22,8 +26,9 @@ type RouteParams = { params: Promise<{ id: string }> };
 
 /**
  * 案件詳細の PRODUCT / PACKAGE 明細追加。
- * - cookie / CSRF / Origin / JSON Content-Type 必須
- * - service role はサーバー内のみ（ブラウザ直接 INSERT しない）
+ * - cookie / CSRF / Origin / JSON Content-Type / Idempotency-Key 必須
+ * - case_id は URL を正とする（body の case_id / request_id は信用しない）
+ * - append_case_line RPC を service_role でのみ実行
  */
 export async function POST(request: NextRequest, { params }: RouteParams) {
   const started = Date.now();
@@ -94,6 +99,33 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     );
   }
 
+  const idempotencyKey = request.headers.get("idempotency-key") || "";
+  if (!isUuid(idempotencyKey)) {
+    return NextResponse.json(
+      toSafeCaseLineError({
+        error_code: "BAD_REQUEST",
+        error_message: "Idempotency-Key が必要です",
+      }),
+      { status: 400 }
+    );
+  }
+
+  let requestId: string;
+  try {
+    requestId = deriveCaseLineAppendRequestId(session.sid, idempotencyKey);
+  } catch (e) {
+    if (e instanceof AuthConfigError) {
+      return NextResponse.json(
+        toSafeCaseLineError({
+          error_code: "CONFIG_ERROR",
+          error_message: "サーバー設定が完了していません",
+        }),
+        { status: 503 }
+      );
+    }
+    throw e;
+  }
+
   const bodyResult = await readJsonBodyLimited(request);
   if (!bodyResult.ok) {
     return NextResponse.json(
@@ -103,6 +135,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           bodyResult.reason === "TOO_LARGE"
             ? "リクエストが大きすぎます"
             : "不正なリクエストです",
+        request_id: requestId,
       }),
       { status: bodyResult.reason === "TOO_LARGE" ? 413 : 400 }
     );
@@ -117,13 +150,24 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       toSafeCaseLineError({
         error_code: "INVALID_INPUT",
         error_message: "入力内容が正しくありません",
+        request_id: requestId,
       }),
       { status: 400 }
     );
   }
 
-  const body = bodyResult.value as AddCaseLineBody;
-  const result = await addCaseLineByCaseId(caseId, body);
+  const input = bodyResult.value as Record<string, unknown>;
+  // client request_id / case_id は信用しない
+  const {
+    request_id: _ignoredRequestId,
+    case_id: _ignoredCaseId,
+    ...rest
+  } = input;
+  void _ignoredRequestId;
+  void _ignoredCaseId;
+
+  const body = rest as AddCaseLineBody;
+  const result = await addCaseLineByCaseId(caseId, requestId, body);
 
   if (!result.ok) {
     const status =
@@ -132,11 +176,13 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         : result.error_code === "CONFIG_ERROR"
           ? 503
           : result.error_code === "INVALID_INPUT" ||
-              result.error_code === "PACKAGE_ITEMS_NOT_FOUND"
+              result.error_code === "PACKAGE_ITEMS_NOT_FOUND" ||
+              result.error_code === "REQUEST_ID_CONFLICT"
             ? 400
             : 502;
     gatewayLog({
       route: "cases/lines",
+      request_id: requestId,
       error_code: result.error_code,
       duration_ms: Date.now() - started,
       ok: false,
@@ -146,6 +192,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         error_code: result.error_code,
         error_message: result.error_message,
         field_errors: result.field_errors,
+        request_id: result.request_id || requestId,
       }),
       { status }
     );
@@ -154,6 +201,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   if (!isUuid(result.case_product_id)) {
     gatewayLog({
       route: "cases/lines",
+      request_id: requestId,
       error_code: "LINE_ADD_FAILED",
       duration_ms: Date.now() - started,
       ok: false,
@@ -162,6 +210,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       toSafeCaseLineError({
         error_code: "LINE_ADD_FAILED",
         error_message: "明細を追加できませんでした",
+        request_id: requestId,
       }),
       { status: 502 }
     );
@@ -169,6 +218,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
   gatewayLog({
     route: "cases/lines",
+    request_id: requestId,
     duration_ms: Date.now() - started,
     ok: true,
   });
@@ -177,6 +227,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       case_product_id: result.case_product_id,
       line_type: result.line_type,
       case_package_id: result.case_package_id,
+      request_id: result.request_id,
+      idempotent_replay: result.idempotent_replay,
     }),
     { status: 200 }
   );

@@ -1,9 +1,9 @@
 /**
- * PR-B: 案件詳細 明細追加 API
+ * PR-B: 案件詳細 明細追加 API（RPC + 冪等）
  * 実行: node scripts/pr-case-detail-line-add-api-test.mjs
  */
 import { spawn, spawnSync, execSync } from "node:child_process";
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -28,36 +28,57 @@ const addSrc = read("lib/caseLines/addCaseLine.ts");
 const coreSrc = read("lib/caseLines/addCaseLineCore.ts");
 const logicSrc = read("lib/caseLines/addCaseLineLogic.ts");
 const dtoSrc = read("lib/caseLines/safeCaseLineDto.ts");
+const migrationSrc = read(
+  "supabase/migrations/20260801170000_append_case_line_rpc.sql"
+);
 const productsNewSrc = read("app/cases/[id]/products/new/page.tsx");
+const authSrc = read("lib/gateway/authCookie.ts");
 
 assert("route is POST", routeSrc.includes("export async function POST"));
 assert("route checks Origin", routeSrc.includes("assertAppOrigin"));
 assert("route checks session", routeSrc.includes("getSessionFromRequest"));
 assert("route checks CSRF", routeSrc.includes("assertCsrf"));
 assert("route checks JSON CT", routeSrc.includes("requireJsonContentType"));
+assert(
+  "route requires Idempotency-Key",
+  routeSrc.includes("idempotency-key") && routeSrc.includes("Idempotency-Key が必要")
+);
+assert(
+  "route derives request id from session",
+  routeSrc.includes("deriveCaseLineAppendRequestId")
+);
+assert(
+  "route ignores client request_id/case_id",
+  routeSrc.includes("_ignoredRequestId") && routeSrc.includes("_ignoredCaseId")
+);
 assert("route uses addCaseLineByCaseId", routeSrc.includes("addCaseLineByCaseId"));
 assert("add uses getServiceRoleSupabase", addSrc.includes("getServiceRoleSupabase"));
 assert("add is server-only", addSrc.includes('import "server-only"'));
-assert("PRODUCT null prices", coreSrc.includes("sales_price: null") && coreSrc.includes("purchase_price: null"));
-assert("PACKAGE writes three tables", coreSrc.includes("case_packages") && coreSrc.includes("case_package_items"));
-assert("empty package rejected", coreSrc.includes("PACKAGE_ITEMS_NOT_FOUND"));
-assert("cleanup on failure", coreSrc.includes("cleanupLineArtifacts"));
+assert("core calls append_case_line RPC", coreSrc.includes('rpc("append_case_line"'));
+assert("no compensation delete in core", !coreSrc.includes("cleanupLineArtifacts") && !coreSrc.includes(".delete()"));
 assert("qty bounds in logic", logicSrc.includes("MAX_LINE_QTY") && logicSrc.includes("9999"));
-assert("safe dto sanitizes", dtoSrc.includes("sanitizeErrorMessage"));
+assert("safe dto has REQUEST_ID_CONFLICT", dtoSrc.includes("REQUEST_ID_CONFLICT"));
+assert(
+  "migration defines RPC + ledger",
+  migrationSrc.includes("append_case_line") &&
+    migrationSrc.includes("case_line_append_requests") &&
+    migrationSrc.includes("SECURITY INVOKER") &&
+    migrationSrc.includes("pg_advisory_xact_lock")
+);
+assert(
+  "migration revokes anon/authenticated",
+  migrationSrc.includes("REVOKE ALL ON FUNCTION public.append_case_line") &&
+    migrationSrc.includes("FROM anon") &&
+    migrationSrc.includes("GRANT EXECUTE") &&
+    migrationSrc.includes("TO service_role")
+);
 assert(
   "products/new form not replaced in this PR",
   productsNewSrc.includes('.from("case_products").insert')
 );
 assert(
-  "no migration / DDL in PR-B sources",
-  !coreSrc.includes("ALTER TABLE") &&
-    !logicSrc.includes("CREATE FUNCTION") &&
-    !routeSrc.includes("GRANT ")
-);
-assert(
-  "service role not in route response helpers leak pattern",
-  !routeSrc.includes("SUPABASE_SERVICE_ROLE_KEY") &&
-    !dtoSrc.includes("SERVICE_ROLE_KEY")
+  "deriveCaseLineAppendRequestId namespace separated",
+  authSrc.includes("case-line-append:v1")
 );
 
 const behavior = spawnSync(
@@ -68,6 +89,14 @@ const behavior = spawnSync(
 process.stdout.write(behavior.stdout || "");
 process.stderr.write(behavior.stderr || "");
 assert("behavior exit 0", behavior.status === 0, `status=${behavior.status}`);
+
+const db = spawnSync("node", ["scripts/pr-case-detail-line-add-api-db-test.mjs"], {
+  cwd: ROOT,
+  encoding: "utf8",
+});
+process.stdout.write(db.stdout || "");
+process.stderr.write(db.stderr || "");
+assert("db test exit 0", db.status === 0, `status=${db.status}`);
 
 function clearNextLock() {
   try {
@@ -155,6 +184,7 @@ try {
       headers: {
         "Content-Type": "application/json",
         Origin: ORIGIN,
+        "Idempotency-Key": randomUUID(),
       },
       body: JSON.stringify({
         line_type: "PRODUCT",
@@ -189,6 +219,7 @@ try {
         Origin: "http://evil.example",
         Cookie: `vos_staff_session=${cookie}`,
         "X-CSRF-Token": csrf,
+        "Idempotency-Key": randomUUID(),
       },
       body: JSON.stringify({
         line_type: "PRODUCT",
@@ -212,6 +243,7 @@ try {
         Origin: ORIGIN,
         Cookie: `vos_staff_session=${cookie}`,
         "X-CSRF-Token": "wrong-csrf-token-value-xxx",
+        "Idempotency-Key": randomUUID(),
       },
       body: JSON.stringify({
         line_type: "PRODUCT",
@@ -235,6 +267,30 @@ try {
         Origin: ORIGIN,
         Cookie: `vos_staff_session=${cookie}`,
         "X-CSRF-Token": csrf,
+      },
+      body: JSON.stringify({
+        line_type: "PRODUCT",
+        product_id: PRODUCT_ID,
+        quantity: 1,
+      }),
+    });
+    const data = await r.json();
+    assert(
+      "missing Idempotency-Key → 400",
+      r.status === 400 && data.error_code === "BAD_REQUEST",
+      `${r.status} ${JSON.stringify(data)}`
+    );
+  }
+
+  {
+    const r = await fetch(`${BASE}/api/cases/${CASE_ID}/lines`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Origin: ORIGIN,
+        Cookie: `vos_staff_session=${cookie}`,
+        "X-CSRF-Token": csrf,
+        "Idempotency-Key": randomUUID(),
       },
       body: JSON.stringify({
         line_type: "PRODUCT",

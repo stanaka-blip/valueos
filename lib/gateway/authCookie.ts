@@ -138,20 +138,40 @@ export function authCookieOptions() {
   };
 }
 
-/** サーバー派生 request_id。secret 欠落時は固定値フォールバックせず失敗。 */
-export function deriveRequestId(sessionId: string, idempotencyKey: string): string {
+function deriveNamespacedRequestId(
+  namespace: string,
+  sessionId: string,
+  idempotencyKey: string
+): string {
   const secret = getAuthSecret();
   if (!secret) {
     throw new AuthConfigError();
   }
   const digest = createHmac("sha256", secret)
-    .update(`case-reg:v1:${sessionId}:${idempotencyKey}`)
+    .update(`${namespace}:${sessionId}:${idempotencyKey}`)
     .digest();
   const bytes = Buffer.from(digest.subarray(0, 16));
   bytes[6] = (bytes[6] & 0x0f) | 0x40;
   bytes[8] = (bytes[8] & 0x3f) | 0x80;
   const hex = bytes.toString("hex");
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+/** 案件登録用。サーバー派生 request_id。secret 欠落時は固定値フォールバックせず失敗。 */
+export function deriveRequestId(sessionId: string, idempotencyKey: string): string {
+  return deriveNamespacedRequestId("case-reg:v1", sessionId, idempotencyKey);
+}
+
+/** 案件明細追記用。登録用 deriveRequestId とは名前空間を分離。 */
+export function deriveCaseLineAppendRequestId(
+  sessionId: string,
+  idempotencyKey: string
+): string {
+  return deriveNamespacedRequestId(
+    "case-line-append:v1",
+    sessionId,
+    idempotencyKey
+  );
 }
 
 const UUID_RE =

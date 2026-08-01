@@ -1,10 +1,13 @@
 /**
- * PR-B: 案件詳細 明細追加 API 振る舞い（DBモック）
+ * PR-B: 案件詳細 明細追加（RPC化）振る舞いテスト（DB非依存）
  * 実行: npx tsx scripts/pr-case-detail-line-add-api-behavior.mts
  */
 import assert from "node:assert/strict";
 
-import { addCaseLineByCaseIdWithClient } from "../lib/caseLines/addCaseLineCore.ts";
+import {
+  addCaseLineByCaseIdWithClient,
+  buildAppendCaseLinePayload,
+} from "../lib/caseLines/addCaseLineCore.ts";
 import { validateAddCaseLineBody } from "../lib/caseLines/addCaseLineLogic.ts";
 import {
   toSafeCaseLineError,
@@ -26,200 +29,47 @@ function check(name: string, fn: () => void | Promise<void>) {
 const CASE_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const PRODUCT_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const PACKAGE_ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
-const CASE_PRODUCT_ID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
-const CASE_PACKAGE_ID = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
-const PKG_ITEM_ID = "ffffffff-ffff-4fff-8fff-ffffffffffff";
-const ITEM_PRODUCT_ID = "11111111-1111-4111-8111-111111111111";
+const REQUEST_ID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+const CASE_PRODUCT_ID = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
 
-type Store = {
-  cases: Set<string>;
-  products: Set<string>;
-  packages: Map<string, Record<string, unknown>>;
-  packageItems: Map<string, Array<Record<string, unknown>>>;
-  caseProducts: Array<Record<string, unknown>>;
-  casePackages: Array<Record<string, unknown>>;
-  casePackageItems: Array<Record<string, unknown>>;
-  failOn?: string;
-};
-
-function createMockClient(store: Store) {
-  function from(table: string) {
-    const state: {
-      filters: Record<string, unknown>;
-      payload: unknown;
-      op: "select" | "insert" | "delete";
-      ascending?: boolean;
-    } = { filters: {}, payload: null, op: "select" };
-
-    const builder: Record<string, unknown> = {
-      select(..._args: unknown[]) {
-        return builder;
-      },
-      insert(payload: unknown) {
-        state.op = "insert";
-        state.payload = payload;
-        return builder;
-      },
-      delete() {
-        state.op = "delete";
-        return builder;
-      },
-      eq(col: string, val: unknown) {
-        state.filters[col] = val;
-        return builder;
-      },
-      order(_col: string, opts?: { ascending?: boolean }) {
-        state.ascending = opts?.ascending;
-        return builder;
-      },
-      async maybeSingle() {
-        if (table === "cases" && state.op === "select") {
-          const id = state.filters.id as string;
-          return store.cases.has(id)
-            ? { data: { id }, error: null }
-            : { data: null, error: null };
-        }
-        if (table === "products" && state.op === "select") {
-          const id = state.filters.id as string;
-          return store.products.has(id)
-            ? { data: { id }, error: null }
-            : { data: null, error: null };
-        }
-        if (table === "packages" && state.op === "select") {
-          const id = state.filters.id as string;
-          const row = store.packages.get(id);
-          return row
-            ? { data: row, error: null }
-            : { data: null, error: null };
-        }
-        if (table === "manufacturers" || table === "product_series") {
-          return { data: { name: "テスト" }, error: null };
-        }
-        return { data: null, error: null };
-      },
-      async single() {
-        if (store.failOn === `${table}:insert` && state.op === "insert") {
-          return { data: null, error: { message: "forced fail" } };
-        }
-        if (table === "case_products" && state.op === "insert") {
-          const row = {
-            id: CASE_PRODUCT_ID,
-            ...(state.payload as object),
-          };
-          store.caseProducts.push(row);
-          return { data: row, error: null };
-        }
-        if (table === "case_packages" && state.op === "insert") {
-          const row = {
-            id: CASE_PACKAGE_ID,
-            ...(state.payload as object),
-          };
-          store.casePackages.push(row);
-          return { data: { id: CASE_PACKAGE_ID }, error: null };
-        }
-        return { data: null, error: { message: "unexpected single" } };
-      },
-      then(resolve: (v: unknown) => void, reject?: (e: unknown) => void) {
-        // Thenable for insert() without select / delete / select lists
-        Promise.resolve()
-          .then(() => execute())
-          .then(resolve, reject);
-      },
-    };
-
-    async function execute() {
-      if (table === "package_items" && state.op === "select") {
-        const pkgId = state.filters.package_id as string;
+function mockRpcClient(handler: (payload: unknown) => unknown) {
+  return {
+    rpc: async (name: string, args: { payload: unknown }) => {
+      assert.equal(name, "append_case_line");
+      try {
+        return { data: handler(args.payload), error: null };
+      } catch (e) {
         return {
-          data: store.packageItems.get(pkgId) || [],
-          error: null,
+          data: null,
+          error: { message: e instanceof Error ? e.message : "rpc error" },
         };
       }
-      if (table === "case_package_items" && state.op === "insert") {
-        if (store.failOn === "case_package_items:insert") {
-          return { data: null, error: { message: "forced items fail" } };
-        }
-        const rows = Array.isArray(state.payload)
-          ? state.payload
-          : [state.payload];
-        for (const r of rows) {
-          store.casePackageItems.push(r as Record<string, unknown>);
-        }
-        return { data: rows, error: null };
-      }
-      if (table === "case_package_items" && state.op === "delete") {
-        const id = state.filters.case_package_id;
-        store.casePackageItems = store.casePackageItems.filter(
-          (r) => r.case_package_id !== id
-        );
-        return { data: null, error: null };
-      }
-      if (table === "case_packages" && state.op === "delete") {
-        const id = state.filters.id;
-        store.casePackages = store.casePackages.filter((r) => r.id !== id);
-        return { data: null, error: null };
-      }
-      if (table === "case_products" && state.op === "delete") {
-        const id = state.filters.id;
-        store.caseProducts = store.caseProducts.filter((r) => r.id !== id);
-        return { data: null, error: null };
-      }
-      return { data: null, error: null };
-    }
-
-    // Make builder thenable for await client.from().insert()
-    (builder as { then: typeof builder.then }).then = (
-      resolve: (v: unknown) => void,
-      reject?: (e: unknown) => void
-    ) => {
-      Promise.resolve()
-        .then(() => execute())
-        .then(resolve, reject);
-    };
-
-    return builder;
-  }
-
-  return { from } as unknown as Parameters<
-    typeof addCaseLineByCaseIdWithClient
-  >[2];
+    },
+  } as unknown as Parameters<typeof addCaseLineByCaseIdWithClient>[3];
 }
 
 await check("qty boundaries", () => {
-  assert.equal(validateAddCaseLineBody({
-    line_type: "PRODUCT",
-    product_id: PRODUCT_ID,
-    quantity: 0,
-  }).ok, false);
-  assert.equal(validateAddCaseLineBody({
-    line_type: "PRODUCT",
-    product_id: PRODUCT_ID,
-    quantity: 10000,
-  }).ok, false);
-  assert.equal(validateAddCaseLineBody({
-    line_type: "PRODUCT",
-    product_id: PRODUCT_ID,
-    quantity: 1.5,
-  }).ok, false);
-  assert.equal(validateAddCaseLineBody({
-    line_type: "PRODUCT",
-    product_id: PRODUCT_ID,
-    quantity: 1,
-  }).ok, true);
-  assert.equal(validateAddCaseLineBody({
-    line_type: "PRODUCT",
-    product_id: PRODUCT_ID,
-    quantity: 9999,
-  }).ok, true);
-});
-
-await check("rejects XOR / manual price", () => {
   assert.equal(
     validateAddCaseLineBody({
       line_type: "PRODUCT",
       product_id: PRODUCT_ID,
-      package_id: PACKAGE_ID,
-      quantity: 1,
+      quantity: 0,
+    }).ok,
+    false
+  );
+  assert.equal(
+    validateAddCaseLineBody({
+      line_type: "PRODUCT",
+      product_id: PRODUCT_ID,
+      quantity: 10000,
+    }).ok,
+    false
+  );
+  assert.equal(
+    validateAddCaseLineBody({
+      line_type: "PRODUCT",
+      product_id: PRODUCT_ID,
+      quantity: 1.5,
     }).ok,
     false
   );
@@ -228,228 +78,132 @@ await check("rejects XOR / manual price", () => {
       line_type: "PRODUCT",
       product_id: PRODUCT_ID,
       quantity: 1,
-      is_manual_price: true,
     }).ok,
-    false
+    true
+  );
+  assert.equal(
+    validateAddCaseLineBody({
+      line_type: "PRODUCT",
+      product_id: PRODUCT_ID,
+      quantity: 9999,
+    }).ok,
+    true
   );
 });
 
-await check("PRODUCT success with null prices", async () => {
-  const store: Store = {
-    cases: new Set([CASE_ID]),
-    products: new Set([PRODUCT_ID]),
-    packages: new Map(),
-    packageItems: new Map(),
-    caseProducts: [],
-    casePackages: [],
-    casePackageItems: [],
-  };
-  const client = createMockClient(store);
+await check("payload omits prices and uses URL case_id", () => {
+  const built = buildAppendCaseLinePayload(CASE_ID, REQUEST_ID, {
+    line_type: "PRODUCT",
+    product_id: PRODUCT_ID,
+    quantity: 2,
+    sales_price: 9999,
+    purchase_price: 1111,
+    supplier_id: "ignored",
+    case_id: "ffffffff-ffff-4fff-8fff-ffffffffffff",
+    request_id: "11111111-1111-4111-8111-111111111111",
+  } as never);
+  assert.equal(built.ok, true);
+  if (!built.ok) return;
+  assert.equal(built.payload.case_id, CASE_ID);
+  assert.equal(built.payload.request_id, REQUEST_ID);
+  assert.equal(built.payload.product_id, PRODUCT_ID);
+  assert.equal("sales_price" in built.payload, false);
+  assert.equal("supplier_id" in built.payload, false);
+});
+
+await check("PRODUCT success via RPC mapping", async () => {
+  const client = mockRpcClient((payload) => {
+    const p = payload as Record<string, unknown>;
+    assert.equal(p.line_type, "PRODUCT");
+    assert.equal(p.case_id, CASE_ID);
+    return {
+      ok: true,
+      status: "COMPLETED",
+      request_id: REQUEST_ID,
+      case_id: CASE_ID,
+      case_product_id: CASE_PRODUCT_ID,
+      case_package_id: null,
+      line_type: "PRODUCT",
+      idempotent_replay: false,
+    };
+  });
   const r = await addCaseLineByCaseIdWithClient(
     CASE_ID,
-    {
-      line_type: "PRODUCT",
-      product_id: PRODUCT_ID,
-      quantity: 2,
-      sales_price: 9999,
-      purchase_price: 1111,
-      supplier_id: "should-be-ignored",
-    },
+    REQUEST_ID,
+    { line_type: "PRODUCT", product_id: PRODUCT_ID, quantity: 1 },
     client
   );
   assert.equal(r.ok, true);
   if (!r.ok) return;
-  assert.equal(r.line_type, "PRODUCT");
   assert.equal(r.case_product_id, CASE_PRODUCT_ID);
-  assert.equal(store.caseProducts.length, 1);
-  const row = store.caseProducts[0];
-  assert.equal(row.sales_price, null);
-  assert.equal(row.purchase_price, null);
-  assert.equal(row.gross_profit, null);
-  assert.equal(row.supplier_id, null);
-  assert.equal(row.package_id, null);
-  assert.equal(row.quantity, 2);
+  assert.equal(r.line_type, "PRODUCT");
+  assert.equal(r.idempotent_replay, false);
 });
 
-await check("PACKAGE success expands items", async () => {
-  const store: Store = {
-    cases: new Set([CASE_ID]),
-    products: new Set(),
-    packages: new Map([
-      [
-        PACKAGE_ID,
-        {
-          id: PACKAGE_ID,
-          name: "標準セット",
-          package_code: "P1",
-          manufacturer_id: null,
-          series_id: null,
-          capacity: 1,
-          capacity_unit: "台",
-          system_type: null,
-          warranty_years: 1,
-          specification: null,
-        },
-      ],
-    ]),
-    packageItems: new Map([
-      [
-        PACKAGE_ID,
-        [
-          {
-            id: PKG_ITEM_ID,
-            product_id: ITEM_PRODUCT_ID,
-            quantity: 3,
-            requirement_type: "required",
-            selection_group: null,
-            sort_order: 1,
-            display_name: "本体",
-            is_hidden: false,
-            products: {
-              id: ITEM_PRODUCT_ID,
-              name: "部材A",
-              model_no: "A-1",
-              category: "cat",
-              product_type: "part",
-              unit: "台",
-              specification: null,
-            },
-          },
-        ],
-      ],
-    ]),
-    caseProducts: [],
-    casePackages: [],
-    casePackageItems: [],
-  };
-  const client = createMockClient(store);
+await check("PACKAGE empty items mapped from RPC", async () => {
+  const client = mockRpcClient(() => ({
+    ok: false,
+    status: "FAILED",
+    request_id: REQUEST_ID,
+    error_code: "PACKAGE_ITEMS_NOT_FOUND",
+    error_message: "パッケージ構成が登録されていません",
+    idempotent_replay: false,
+  }));
   const r = await addCaseLineByCaseIdWithClient(
     CASE_ID,
-    { line_type: "PACKAGE", package_id: PACKAGE_ID, quantity: 2 },
-    client
-  );
-  assert.equal(r.ok, true);
-  if (!r.ok) return;
-  assert.equal(r.line_type, "PACKAGE");
-  assert.equal(r.case_package_id, CASE_PACKAGE_ID);
-  assert.equal(store.caseProducts.length, 1);
-  assert.equal(store.casePackages.length, 1);
-  assert.equal(store.casePackageItems.length, 1);
-  assert.equal(store.casePackageItems[0].quantity, 6);
-  assert.equal(store.casePackageItems[0].unit_purchase_price, null);
-  assert.equal(store.casePackageItems[0].total_purchase_price, null);
-  assert.equal(store.caseProducts[0].sales_price, null);
-});
-
-await check("PACKAGE empty items rejected with no inserts", async () => {
-  const store: Store = {
-    cases: new Set([CASE_ID]),
-    products: new Set(),
-    packages: new Map([
-      [
-        PACKAGE_ID,
-        {
-          id: PACKAGE_ID,
-          name: "空セット",
-          package_code: null,
-          manufacturer_id: null,
-          series_id: null,
-          capacity: null,
-          capacity_unit: null,
-          system_type: null,
-          warranty_years: null,
-          specification: null,
-        },
-      ],
-    ]),
-    packageItems: new Map([[PACKAGE_ID, []]]),
-    caseProducts: [],
-    casePackages: [],
-    casePackageItems: [],
-  };
-  const client = createMockClient(store);
-  const r = await addCaseLineByCaseIdWithClient(
-    CASE_ID,
+    REQUEST_ID,
     { line_type: "PACKAGE", package_id: PACKAGE_ID, quantity: 1 },
     client
   );
   assert.equal(r.ok, false);
   if (r.ok) return;
   assert.equal(r.error_code, "PACKAGE_ITEMS_NOT_FOUND");
-  assert.equal(store.caseProducts.length, 0);
-  assert.equal(store.casePackages.length, 0);
-  assert.equal(store.casePackageItems.length, 0);
 });
 
-await check("mid-fail cleans up (no residual)", async () => {
-  const store: Store = {
-    cases: new Set([CASE_ID]),
-    products: new Set(),
-    packages: new Map([
-      [
-        PACKAGE_ID,
-        {
-          id: PACKAGE_ID,
-          name: "標準セット",
-          package_code: "P1",
-          manufacturer_id: null,
-          series_id: null,
-          capacity: null,
-          capacity_unit: null,
-          system_type: null,
-          warranty_years: null,
-          specification: null,
-        },
-      ],
-    ]),
-    packageItems: new Map([
-      [
-        PACKAGE_ID,
-        [
-          {
-            id: PKG_ITEM_ID,
-            product_id: ITEM_PRODUCT_ID,
-            quantity: 1,
-            requirement_type: null,
-            selection_group: null,
-            sort_order: 0,
-            display_name: null,
-            is_hidden: false,
-            products: {
-              id: ITEM_PRODUCT_ID,
-              name: "X",
-              model_no: null,
-              category: null,
-              product_type: null,
-              unit: null,
-              specification: null,
-            },
-          },
-        ],
-      ],
-    ]),
-    caseProducts: [],
-    casePackages: [],
-    casePackageItems: [],
-    failOn: "case_package_items:insert",
-  };
-  const client = createMockClient(store);
+await check("idempotent replay mapping", async () => {
+  const client = mockRpcClient(() => ({
+    ok: true,
+    status: "COMPLETED",
+    request_id: REQUEST_ID,
+    case_id: CASE_ID,
+    case_product_id: CASE_PRODUCT_ID,
+    line_type: "PRODUCT",
+    idempotent_replay: true,
+  }));
   const r = await addCaseLineByCaseIdWithClient(
     CASE_ID,
-    { line_type: "PACKAGE", package_id: PACKAGE_ID, quantity: 1 },
+    REQUEST_ID,
+    { line_type: "PRODUCT", product_id: PRODUCT_ID, quantity: 1 },
+    client
+  );
+  assert.equal(r.ok, true);
+  if (!r.ok) return;
+  assert.equal(r.idempotent_replay, true);
+});
+
+await check("REQUEST_ID_CONFLICT mapping", async () => {
+  const client = mockRpcClient(() => ({
+    ok: false,
+    status: "FAILED",
+    request_id: REQUEST_ID,
+    error_code: "REQUEST_ID_CONFLICT",
+    error_message: "同じリクエストIDで異なる内容は受け付けできません",
+  }));
+  const r = await addCaseLineByCaseIdWithClient(
+    CASE_ID,
+    REQUEST_ID,
+    { line_type: "PRODUCT", product_id: PRODUCT_ID, quantity: 1 },
     client
   );
   assert.equal(r.ok, false);
-  assert.equal(store.caseProducts.length, 0, "case_products residual");
-  assert.equal(store.casePackages.length, 0, "case_packages residual");
-  assert.equal(store.casePackageItems.length, 0, "items residual");
+  if (!r.ok) assert.equal(r.error_code, "REQUEST_ID_CONFLICT");
 });
 
 await check("safe DTO hides internals / service role", () => {
   const err = toSafeCaseLineError({
     error_code: "LINE_ADD_FAILED",
     error_message:
-      'insert into case_products violated constraint SERVICE_ROLE key sk_test',
+      "insert into case_products violated constraint SERVICE_ROLE key sk_test",
   });
   assert.equal(err.ok, false);
   assert.ok(!JSON.stringify(err).includes("SERVICE_ROLE"));
@@ -459,31 +213,22 @@ await check("safe DTO hides internals / service role", () => {
   const ok = toSafeCaseLineSuccess({
     case_product_id: CASE_PRODUCT_ID,
     line_type: "PRODUCT",
+    request_id: REQUEST_ID,
+    idempotent_replay: false,
   });
-  assert.deepEqual(Object.keys(ok).sort(), [
-    "case_product_id",
-    "line_type",
-    "ok",
-  ]);
+  assert.equal(ok.ok, true);
+  assert.equal(ok.request_id, REQUEST_ID);
 });
 
-await check("case not found", async () => {
-  const store: Store = {
-    cases: new Set(),
-    products: new Set([PRODUCT_ID]),
-    packages: new Map(),
-    packageItems: new Map(),
-    caseProducts: [],
-    casePackages: [],
-    casePackageItems: [],
-  };
-  const r = await addCaseLineByCaseIdWithClient(
-    CASE_ID,
-    { line_type: "PRODUCT", product_id: PRODUCT_ID, quantity: 1 },
-    createMockClient(store)
+await check("no compensation helpers remain in core", async () => {
+  const fs = await import("node:fs");
+  const src = fs.readFileSync(
+    new URL("../lib/caseLines/addCaseLineCore.ts", import.meta.url),
+    "utf8"
   );
-  assert.equal(r.ok, false);
-  if (!r.ok) assert.equal(r.error_code, "NOT_FOUND");
+  assert.equal(src.includes("cleanupLineArtifacts"), false);
+  assert.equal(src.includes(".delete()"), false);
+  assert.ok(src.includes('rpc("append_case_line"'));
 });
 
 if (failed > 0) {

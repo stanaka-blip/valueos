@@ -8,6 +8,7 @@ const ALLOWED = new Set([
   "CONFIG_ERROR",
   "NOT_FOUND",
   "PACKAGE_ITEMS_NOT_FOUND",
+  "REQUEST_ID_CONFLICT",
   "LINE_ADD_FAILED",
   "RATE_LIMITED",
 ]);
@@ -17,6 +18,8 @@ export type SafeCaseLineDto = {
   case_product_id?: string;
   case_package_id?: string;
   line_type?: string;
+  request_id?: string;
+  idempotent_replay?: boolean;
   error_code?: string;
   error_message?: string;
   field_errors?: Record<string, string>;
@@ -26,6 +29,7 @@ export function toSafeCaseLineError(input: {
   error_code?: string;
   error_message?: string;
   field_errors?: Record<string, string | undefined>;
+  request_id?: string;
 }): SafeCaseLineDto {
   const code =
     typeof input.error_code === "string" && ALLOWED.has(input.error_code)
@@ -48,6 +52,9 @@ export function toSafeCaseLineError(input: {
       input.error_message,
       "明細を追加できませんでした"
     ),
+    ...(typeof input.request_id === "string"
+      ? { request_id: input.request_id }
+      : {}),
     ...(Object.keys(field_errors).length > 0 ? { field_errors } : {}),
   };
 }
@@ -56,6 +63,8 @@ export function toSafeCaseLineSuccess(input: {
   case_product_id: string;
   line_type: string;
   case_package_id?: string;
+  request_id?: string;
+  idempotent_replay?: boolean;
 }): SafeCaseLineDto {
   return {
     ok: true,
@@ -64,5 +73,9 @@ export function toSafeCaseLineSuccess(input: {
     ...(input.case_package_id
       ? { case_package_id: input.case_package_id }
       : {}),
+    ...(typeof input.request_id === "string"
+      ? { request_id: input.request_id }
+      : {}),
+    idempotent_replay: input.idempotent_replay === true,
   };
 }
