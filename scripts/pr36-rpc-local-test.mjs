@@ -66,10 +66,18 @@ function setup() {
     "20260726210000_case_registration_requests.sql",
     "20260726210100_create_case_registration_rpc.sql",
     "20260801090000_case_registration_nullable_prices.sql",
+    // hotfix is applied mid-test after reproducing prod-like NOT NULL failure
   ];
   for (const f of allow) {
     psqlFile(join(ROOT, "supabase/migrations", f));
   }
+
+  // Production-equivalent: package item price columns are NOT NULL
+  psql(`
+    ALTER TABLE public.case_package_items
+      ALTER COLUMN unit_purchase_price SET NOT NULL,
+      ALTER COLUMN total_purchase_price SET NOT NULL;
+  `);
 
   psql(`
     INSERT INTO sales_prices (id, dealer_id, price_target_type, product_id, package_id, sales_price, start_date, is_active)
@@ -83,6 +91,31 @@ function setup() {
     REVOKE ALL ON TABLE public.case_registration_requests FROM PUBLIC, anon, authenticated, service_role;
     GRANT SELECT, INSERT, UPDATE ON TABLE public.case_registration_requests TO service_role;
   `);
+}
+
+const HOTFIX_MIGRATION = "20260801120000_case_package_items_prices_nullable.sql";
+
+function packageItemPriceColsNullable() {
+  return (
+    psql(`
+      SELECT count(*) = 2 FROM information_schema.columns
+      WHERE table_schema='public' AND table_name='case_package_items'
+        AND column_name IN ('unit_purchase_price','total_purchase_price')
+        AND is_nullable='YES';
+    `) === "t"
+  );
+}
+
+function packageItemPricesAllNull(caseId) {
+  return (
+    psql(`
+      SELECT count(*) > 0 AND count(*) FILTER (
+        WHERE unit_purchase_price IS NOT NULL OR total_purchase_price IS NOT NULL
+      ) = 0
+      FROM case_package_items
+      WHERE case_package_id IN (SELECT id FROM case_packages WHERE case_id='${caseId}');
+    `) === "t"
+  );
 }
 
 function parseJsonLine(out) {
@@ -383,6 +416,56 @@ assert(
   assert("13 long string rejected", r.ok === false && r.error_code === "INVALID_INPUT", JSON.stringify(r));
 }
 
+// Reproduce production bug: PACKAGE insert of NULL prices fails while columns are NOT NULL
+{
+  assert("13c prod-like NOT NULL before hotfix", packageItemPriceColsNullable() === false);
+  const beforeItems = count("case_package_items");
+  const r = callRpc(
+    basePayload({
+      request_id: randomUUID(),
+      lines: [{ line_type: "PACKAGE", package_id: pkg, quantity: 1 }],
+    })
+  );
+  assert(
+    "13d PACKAGE fails under NOT NULL price cols",
+    r.ok === false && r.error_code === "REGISTRATION_FAILED",
+    JSON.stringify(r)
+  );
+  assert("13e PACKAGE failure rolls back items", count("case_package_items") === beforeItems);
+}
+
+// Apply hotfix (and re-apply for idempotency)
+{
+  psqlFile(join(ROOT, "supabase/migrations", HOTFIX_MIGRATION));
+  assert("13f hotfix makes price cols nullable", packageItemPriceColsNullable() === true);
+  psqlFile(join(ROOT, "supabase/migrations", HOTFIX_MIGRATION));
+  assert("13g hotfix re-apply is no-op", packageItemPriceColsNullable() === true);
+}
+
+// Seed a legacy priced case_package_items row (must remain unchanged by later registrations)
+const legacyPkgCaseId = randomUUID();
+const legacyCasePackageId = randomUUID();
+const legacyItemId = randomUUID();
+const legacyItemFpBefore = (() => {
+  psql(`
+    INSERT INTO cases (id, case_no, dealer_id, customer_name, site_address, status)
+    VALUES ('${legacyPkgCaseId}', 'LEGACY-PKG-1', '${dealer}', '既存PKG', '住所', '新規受付');
+    INSERT INTO case_packages (id, case_id, package_id, quantity)
+    VALUES ('${legacyCasePackageId}', '${legacyPkgCaseId}', '${pkg}', 1);
+    INSERT INTO case_package_items (
+      id, case_package_id, product_id, quantity,
+      unit_purchase_price, total_purchase_price, is_selected, is_added_manually, is_hidden, sort_order
+    ) VALUES (
+      '${legacyItemId}', '${legacyCasePackageId}', '${product}', 1,
+      5000, 5000, true, false, false, 0
+    );
+  `);
+  return psql(`
+    SELECT coalesce(unit_purchase_price::text,'') || '|' || coalesce(total_purchase_price::text,'') || '|' || coalesce(quantity::text,'')
+    FROM case_package_items WHERE id='${legacyItemId}';
+  `);
+})();
+
 // PRODUCT without supplier/prices (and even with prices deleted) succeeds with NULL snapshots
 {
   psql(`DELETE FROM sales_prices WHERE product_id='${product2}';`);
@@ -414,7 +497,7 @@ assert(
     r.ok === true &&
       count("case_packages", `case_id='${r.case_id}' AND case_product_id IS NOT NULL`) === 1 &&
       lineNullPrices(r.case_id) &&
-      count("case_package_items", `case_package_id IN (SELECT id FROM case_packages WHERE case_id='${r.case_id}') AND unit_purchase_price IS NULL`) >= 1,
+      packageItemPricesAllNull(r.case_id),
     JSON.stringify(r)
   );
 }
@@ -430,7 +513,10 @@ assert(
   );
   assert(
     "17 mixed success",
-    r.ok === true && count("case_products", `case_id='${r.case_id}'`) === 2 && lineNullPrices(r.case_id),
+    r.ok === true &&
+      count("case_products", `case_id='${r.case_id}'`) === 2 &&
+      lineNullPrices(r.case_id) &&
+      packageItemPricesAllNull(r.case_id),
     JSON.stringify(r)
   );
 }
@@ -488,6 +574,19 @@ assert(
   assert("19 existing priced row unchanged", r.ok === true && before === after && before.includes(supplier), `${before} vs ${after}`);
 }
 
+// existing priced case_package_items row unchanged after successful PACKAGE registrations
+{
+  const after = psql(`
+    SELECT coalesce(unit_purchase_price::text,'') || '|' || coalesce(total_purchase_price::text,'') || '|' || coalesce(quantity::text,'')
+    FROM case_package_items WHERE id='${legacyItemId}';
+  `);
+  assert(
+    "19b existing package item prices unchanged",
+    after === legacyItemFpBefore && after === "5000|5000|1",
+    `${legacyItemFpBefore} vs ${after}`
+  );
+}
+
 // parallel
 {
   const rid = randomUUID();
@@ -531,6 +630,7 @@ assert(
       AND is_nullable='YES';
   `);
   assert("21 case_products price cols nullable", nullable === "t", nullable);
+  assert("21b case_package_items price cols nullable", packageItemPriceColsNullable() === true);
 }
 
 console.log(failed === 0 ? "\nALL_TESTS_PASSED" : `\nFAILED_COUNT=${failed}`);
