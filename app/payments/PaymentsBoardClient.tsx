@@ -70,8 +70,8 @@ export default function PaymentsBoardClient({
           r.settlementTypeLabel === settlementType ||
           (settlementType === "売掛" &&
             (r.settlementType === "掛売" || r.settlementType === "売掛")) ||
-          (settlementType === "ローン" &&
-            ["ローン", "三社間決済", "3社間", "三社間"].includes(
+          ((settlementType === "3社間決済" || settlementType === "ローン") &&
+            ["3社間決済", "ローン", "三社間決済", "3社間", "三社間"].includes(
               r.settlementType
             ));
         if (!match) return false;
