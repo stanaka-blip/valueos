@@ -44,7 +44,7 @@ export type SettlementRule = {
   /** SETTLEMENT_RULES のキー（例: 前金） */
   key: string;
   label: string;
-  /** DB に保存されうる別名（三社間決済 / ローン / 掛売 / 売掛 など） */
+  /** DB に保存されうる別名（3社間決済 / ローン / 三社間決済 / 掛売 / 売掛 など） */
   aliases: readonly string[];
   canOrderWhen: readonly WorkflowCondition[];
   canInvoiceWhen: readonly WorkflowCondition[];

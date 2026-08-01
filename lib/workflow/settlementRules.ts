@@ -42,6 +42,7 @@ export const SETTLEMENT_RULES = {
   売掛: {
     key: "売掛",
     label: "売掛",
+    // 正式値は「売掛」。dealer等の旧値「掛売」も読取互換。
     aliases: ["売掛", "掛売"],
     canOrderWhen: [{ type: "settlement_confirmed" }],
     canInvoiceWhen: [{ type: "all_orders_delivered" }],
@@ -74,10 +75,11 @@ export const SETTLEMENT_RULES = {
       paymentDue: "end_of_next_month",
     },
   },
-  ローン: {
-    key: "ローン",
-    label: "ローン（3社間）",
-    aliases: ["ローン", "三社間決済", "3社間", "三社間"],
+  "3社間決済": {
+    key: "3社間決済",
+    label: "3社間決済",
+    // 正式値は「3社間決済」。旧「ローン」「三社間決済」等も読取互換。
+    aliases: ["3社間決済", "ローン", "三社間決済", "3社間", "三社間"],
     canOrderWhen: [
       {
         type: "status_in",

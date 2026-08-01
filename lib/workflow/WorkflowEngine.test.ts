@@ -136,25 +136,35 @@ test("前金: 請求額未設定時の入金あり", () => {
 // 【ローン】
 // ---------------------------------------------------------------------------
 
-test("ローン: 未申請", () => {
+test("3社間決済: 未申請（旧ローン別名）", () => {
   const r = evaluate({
     settlementType: "ローン",
     loanStatus: "未申請",
   });
-  assert.equal(r.ruleKey, "ローン");
+  assert.equal(r.ruleKey, "3社間決済");
   assert.equal(r.canOrder, false);
   assert.equal(r.canInvoice, false);
   assert.equal(r.currentState, "ローン承認待ち");
 });
 
-test("ローン: 審査中", () => {
+test("3社間決済: 審査中（旧三社間決済別名）", () => {
   const r = evaluate({
     settlementType: "三社間決済",
     loanStatus: "申請中",
   });
+  assert.equal(r.ruleKey, "3社間決済");
   assert.equal(r.canOrder, false);
   assert.equal(r.currentState, "ローン承認待ち");
   assert.ok(r.warnings.some((w) => w.includes("ローン未承認")));
+});
+
+test("3社間決済: 正式値", () => {
+  const r = evaluate({
+    settlementType: "3社間決済",
+    loanStatus: "未申請",
+  });
+  assert.equal(r.ruleKey, "3社間決済");
+  assert.equal(r.canOrder, false);
 });
 
 test("ローン: 承認済", () => {
