@@ -5,10 +5,10 @@ import { useState } from "react";
 
 import { CARD_STATUSES, LOAN_STATUSES } from "@/lib/workflow";
 import { writeWorkflowMeta } from "@/lib/workflow/workflowMeta";
-import { upsertCaseSettlementByCaseId } from "@/lib/repositories/caseSettlements";
 import { supabase } from "@/lib/supabase";
 import type { WorkflowResult } from "@/lib/workflow";
 
+import { submitCaseSettlement } from "./submitCaseSettlement";
 import type { SettlementViewData } from "./settlementView";
 
 type Props = {
@@ -45,59 +45,47 @@ export default function WorkflowPanel({
     setMessage(null);
 
     const now = new Date().toISOString();
-    // 決済詳細列は SettlementForm 側の責務。ここでは既存値を維持し NULL 上書きしない。
-    const baseSettlement = {
-      settlement_type: settlement.settlementType,
-      fee_rate: settlement.feeRate,
-      fee_amount: settlement.feeAmount,
-      deposit_rate: settlement.depositRate,
-      deposit_amount: settlement.depositAmount,
-      payment_terms: settlement.paymentTerms || null,
-      card_brand: settlement.cardBrand || null,
-      finance_company: settlement.financeCompany || null,
-      approval_number: settlement.approvalNumber || null,
-    };
 
-    // 1) 正式カラムへ保存を試行
-    let settlementResult = await upsertCaseSettlementByCaseId(caseId, {
-      ...baseSettlement,
-      memo: settlement.memo || null,
-      loan_status: loanStatus || null,
-      loan_status_updated_at: now,
-      card_status: cardStatus || null,
-      card_status_updated_at: now,
-    });
-
-    // 2) カラム未適用時は memo メタへフォールバック
-    if (
-      settlementResult.error &&
-      /loan_status|card_status|schema cache/i.test(settlementResult.error)
-    ) {
-      const memoWithMeta = writeWorkflowMeta(settlement.memo, {
+    // 1) 正式カラムへ保存を試行（詳細列はサーバーが既存値維持）
+    let settlementResult = await submitCaseSettlement({
+      caseId,
+      body: {
+        source: "workflow_panel",
+        memo: settlement.memo || null,
         loan_status: loanStatus || null,
         card_status: cardStatus || null,
-        construction_completed_date: completedDate || null,
-      });
-      settlementResult = await upsertCaseSettlementByCaseId(caseId, {
-        ...baseSettlement,
-        memo: memoWithMeta,
-      });
-      if (settlementResult.error) {
-        setSaving(false);
-        setError(settlementResult.error);
-        return;
+        loan_status_updated_at: now,
+        card_status_updated_at: now,
+      },
+    });
+
+    if (!settlementResult.ok) {
+      if (settlementResult.error_code === "SETTLEMENT_SAVE_FAILED") {
+        // カラム未適用時は memo メタへフォールバック（status 列は書かない）
+        const memoWithMeta = writeWorkflowMeta(settlement.memo, {
+          loan_status: loanStatus || null,
+          card_status: cardStatus || null,
+          construction_completed_date: completedDate || null,
+        });
+        const fallback = await submitCaseSettlement({
+          caseId,
+          body: {
+            source: "workflow_panel",
+            memo: memoWithMeta,
+            update_status_columns: false,
+          },
+        });
+        if (fallback.ok) {
+          setSaving(false);
+          setMessage(
+            "ワークフロー状態を更新しました（memoフォールバック。DDL適用後は正式カラムへ移行してください）"
+          );
+          router.refresh();
+          return;
+        }
       }
       setSaving(false);
-      setMessage(
-        "ワークフロー状態を更新しました（memoフォールバック。DDL適用後は正式カラムへ移行してください）"
-      );
-      router.refresh();
-      return;
-    }
-
-    if (settlementResult.error) {
-      setSaving(false);
-      setError(settlementResult.error);
+      setError(settlementResult.error_message);
       return;
     }
 
@@ -118,17 +106,20 @@ export default function WorkflowPanel({
         card_status: cardStatus || null,
         construction_completed_date: completedDate || null,
       });
-      const memoResult = await upsertCaseSettlementByCaseId(caseId, {
-        ...baseSettlement,
-        memo: memoWithMeta,
-        loan_status: loanStatus || null,
-        loan_status_updated_at: now,
-        card_status: cardStatus || null,
-        card_status_updated_at: now,
+      const memoResult = await submitCaseSettlement({
+        caseId,
+        body: {
+          source: "workflow_panel",
+          memo: memoWithMeta,
+          loan_status: loanStatus || null,
+          card_status: cardStatus || null,
+          loan_status_updated_at: now,
+          card_status_updated_at: now,
+        },
       });
       setSaving(false);
-      if (memoResult.error) {
-        setError(memoResult.error);
+      if (!memoResult.ok) {
+        setError(memoResult.error_message);
         return;
       }
       setMessage("ワークフロー状態を更新しました（完工日はmemoフォールバック）");
