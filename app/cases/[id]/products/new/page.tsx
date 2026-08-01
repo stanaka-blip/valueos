@@ -1,273 +1,292 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { fetchActivePurchaseUnitPrice } from "@/lib/purchasePrices";
-import { supabase } from "@/lib/supabase";
 
-type Product = {
-  id: string;
-  name: string | null;
-  model_no: string | null;
-  category: string | null;
-  manufacturers:
-    | { name: string | null }
-    | { name: string | null }[]
-    | null;
-};
+import {
+  fetchActivePackages,
+  fetchActiveProducts,
+  formatPackageLabel,
+  formatProductLabel,
+  type PackageOption,
+  type ProductOption,
+} from "@/app/components/case-registration/masters";
+import {
+  createEmptyLine,
+  type LineDraft,
+  type LineErrors,
+  type LineType,
+} from "@/app/components/case-registration/types";
+import { validateStep2 } from "@/app/components/case-registration/validation";
+import {
+  caseLineFingerprint,
+  createIdempotencyKey,
+  submitCaseLine,
+} from "../../submitCaseLine";
 
-type Supplier = {
-  id: string;
-  name: string | null;
-};
+const inputClass =
+  "w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900";
+
+const LINE_LOCAL_ID = "case-detail-add-line";
 
 export default function NewCaseProductPage() {
   const router = useRouter();
   const params = useParams();
   const caseId = params.id as string;
 
-  const [products, setProducts] = useState<Product[]>([]);
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [products, setProducts] = useState<ProductOption[]>([]);
+  const [packages, setPackages] = useState<PackageOption[]>([]);
+  const [masterError, setMasterError] = useState<string | null>(null);
 
-  const [form, setForm] = useState({
-    product_id: "",
-    supplier_id: "",
-    quantity: "1",
-    purchase_price: "",
-    sales_price: "",
-    memo: "",
-  });
+  const [lineType, setLineType] = useState<LineType>("PRODUCT");
+  const [productId, setProductId] = useState("");
+  const [packageId, setPackageId] = useState("");
+  const [quantity, setQuantity] = useState("1");
 
-  const [loading, setLoading] = useState(false);
+  const [lineErrors, setLineErrors] = useState<LineErrors>({});
+  const [formError, setFormError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const idempotencyKeyRef = useRef<string | null>(null);
+  const fingerprintForKeyRef = useRef<string>("");
 
   useEffect(() => {
-    async function fetchData() {
-      const { data: productData } = await supabase
-        .from("products")
-        .select(`
-          id,
-          name,
-          model_no,
-          category,
-          manufacturers (name)
-        `)
-        .eq("is_active", true)
-        .order("created_at", { ascending: false });
-
-      const { data: supplierData } = await supabase
-        .from("suppliers")
-        .select("id, name")
-        .eq("is_active", true)
-        .order("name", { ascending: true });
-
-      setProducts((productData as Product[]) || []);
-      setSuppliers(supplierData || []);
-    }
-
-    fetchData();
+    let cancelled = false;
+    (async () => {
+      const [p, pkg] = await Promise.all([
+        fetchActiveProducts(),
+        fetchActivePackages(),
+      ]);
+      if (cancelled) return;
+      if (p.errorMessage || pkg.errorMessage) {
+        setMasterError("マスタの取得に失敗しました");
+      }
+      setProducts(p.data);
+      setPackages(pkg.data);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  useEffect(() => {
-    async function fetchPrice() {
-      if (!form.product_id || !form.supplier_id) return;
+  function currentInput() {
+    return {
+      line_type: lineType,
+      product_id: productId,
+      package_id: packageId,
+      quantity,
+    };
+  }
 
-      const result = await fetchActivePurchaseUnitPrice(supabase, {
-        productId: form.product_id,
-        supplierId: form.supplier_id,
-      });
-
-      if (result.error) {
-        console.log("価格取得なし", result.error);
-        return;
-      }
-
-      if (!result.found) {
-        console.log("価格取得なし: 有効な purchase_prices が見つかりません");
-        return;
-      }
-
-      setForm((prev) => ({
-        ...prev,
-        purchase_price: String(result.unitPrice),
-      }));
+  function ensureIdempotencyKey(): string {
+    const fp = caseLineFingerprint(currentInput());
+    if (!idempotencyKeyRef.current || fingerprintForKeyRef.current !== fp) {
+      idempotencyKeyRef.current = createIdempotencyKey();
+      fingerprintForKeyRef.current = fp;
     }
+    return idempotencyKeyRef.current;
+  }
 
-    void fetchPrice();
-  }, [form.product_id, form.supplier_id]);
+  function toLineDraft(): LineDraft {
+    const empty = createEmptyLine();
+    return {
+      ...empty,
+      local_id: LINE_LOCAL_ID,
+      line_type: lineType,
+      product_id: lineType === "PRODUCT" ? productId : "",
+      package_id: lineType === "PACKAGE" ? packageId : "",
+      quantity,
+      memo: "",
+      display_name: "",
+    };
+  }
 
-  function handleChange(
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
-  ) {
-    setForm({ ...form, [e.target.name]: e.target.value });
+  function applyLineType(next: LineType) {
+    setLineType(next);
+    setProductId("");
+    setPackageId("");
+    setLineErrors({});
+    setFormError(null);
+    setSubmitError(null);
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (submitting) return;
 
-    const quantity = Number(form.quantity);
-    // フォームの仕入価格は単価。case_products.purchase_price は合計で保存する。
-    const purchaseUnitPrice = Number(form.purchase_price);
-    const purchasePriceTotal = Math.round(purchaseUnitPrice * quantity);
-    const salesPrice = Number(form.sales_price);
-    const grossProfit = salesPrice - purchasePriceTotal;
+    const result = validateStep2([toLineDraft()]);
+    setFormError(result.formError);
+    setLineErrors(result.lineErrors[LINE_LOCAL_ID] || {});
+    if (!result.ok) return;
 
-    setLoading(true);
-
-    const { error } = await supabase.from("case_products").insert({
-      case_id: caseId,
-      product_id: form.product_id,
-      supplier_id: form.supplier_id,
-      quantity,
-      purchase_price: purchasePriceTotal,
-      sales_price: salesPrice,
-      gross_profit: grossProfit,
-      memo: form.memo,
-    });
-
-    setLoading(false);
-
-    if (error) {
-      alert("登録に失敗しました：" + error.message);
-      return;
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      const key = ensureIdempotencyKey();
+      const submitResult = await submitCaseLine({
+        caseId,
+        input: currentInput(),
+        idempotencyKey: key,
+      });
+      if (!submitResult.ok) {
+        setSubmitError(submitResult.error_message);
+        if (submitResult.field_errors) {
+          setLineErrors({
+            product_id: submitResult.field_errors.product_id,
+            package_id: submitResult.field_errors.package_id,
+            quantity: submitResult.field_errors.quantity,
+            line_type: submitResult.field_errors.line_type,
+          });
+        }
+        setSubmitting(false);
+        return;
+      }
+      // 成功後は submitting を解除せず二重送信を防ぐ
+      router.replace(`/cases/${caseId}?tab=products`);
+      router.refresh();
+    } catch {
+      setSubmitError("明細を追加できませんでした");
+      setSubmitting(false);
     }
-
-    router.push(`/cases/${caseId}`);
-    router.refresh();
   }
 
   return (
     <>
       <header className="border-b bg-white px-8 py-5">
-        <h1 className="text-2xl font-bold text-gray-900">案件商品追加</h1>
-        <p className="text-sm text-gray-500">案件に商品・仕入先・金額を追加します</p>
+        <h1 className="text-2xl font-bold text-gray-900">案件明細追加</h1>
+        <p className="text-sm text-gray-500">
+          商品またはパッケージと数量を指定して追加します。価格はサーバー側で解決されます。
+        </p>
       </header>
 
       <main className="p-8">
         <form
           onSubmit={handleSubmit}
-          className="mx-auto max-w-5xl rounded-xl bg-white p-8 shadow-sm"
+          noValidate
+          className="mx-auto max-w-2xl space-y-6 rounded-xl bg-white p-8 shadow-sm"
         >
-          <div className="grid gap-6 md:grid-cols-2">
-            <Field label="商品">
+          {masterError ? (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              {masterError}
+            </div>
+          ) : null}
+          {formError ? (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              {formError}
+            </div>
+          ) : null}
+          {submitError ? (
+            <div
+              role="alert"
+              className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+            >
+              {submitError}
+            </div>
+          ) : null}
+
+          <label className="block">
+            <p className="mb-2 text-sm font-bold text-gray-700">種別</p>
+            <select
+              className={inputClass}
+              value={lineType}
+              onChange={(e) => applyLineType(e.target.value as LineType)}
+              disabled={submitting}
+            >
+              <option value="PRODUCT">商品</option>
+              <option value="PACKAGE">パッケージ</option>
+            </select>
+            {lineErrors.line_type ? (
+              <p className="mt-1 text-xs text-red-600">{lineErrors.line_type}</p>
+            ) : null}
+          </label>
+
+          {lineType === "PRODUCT" ? (
+            <label className="block">
+              <p className="mb-2 text-sm font-bold text-gray-700">商品</p>
               <select
-                name="product_id"
-                value={form.product_id}
-                onChange={handleChange}
-                required
-                className="w-full rounded-lg border px-4 py-3 text-sm"
+                className={inputClass}
+                value={productId}
+                onChange={(e) => {
+                  setProductId(e.target.value);
+                  setSubmitError(null);
+                }}
+                disabled={submitting}
               >
                 <option value="">商品を選択</option>
-                {products.map((product) => {
-                  const manufacturer = Array.isArray(product.manufacturers)
-                    ? product.manufacturers[0]
-                    : product.manufacturers;
-                  return (
-                  <option key={product.id} value={product.id}>
-                    {manufacturer?.name || "-"} / {product.category || "-"} /{" "}
-                    {product.model_no || "-"} / {product.name || "-"}
-                  </option>
-                  );
-                })}
-              </select>
-            </Field>
-
-            <Field label="仕入先">
-              <select
-                name="supplier_id"
-                value={form.supplier_id}
-                onChange={handleChange}
-                required
-                className="w-full rounded-lg border px-4 py-3 text-sm"
-              >
-                <option value="">仕入先を選択</option>
-                {suppliers.map((supplier) => (
-                  <option key={supplier.id} value={supplier.id}>
-                    {supplier.name}
+                {products.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {formatProductLabel(p)}
                   </option>
                 ))}
               </select>
-            </Field>
+              {lineErrors.product_id ? (
+                <p className="mt-1 text-xs text-red-600">{lineErrors.product_id}</p>
+              ) : null}
+            </label>
+          ) : (
+            <label className="block">
+              <p className="mb-2 text-sm font-bold text-gray-700">パッケージ</p>
+              <select
+                className={inputClass}
+                value={packageId}
+                onChange={(e) => {
+                  setPackageId(e.target.value);
+                  setSubmitError(null);
+                }}
+                disabled={submitting}
+              >
+                <option value="">パッケージを選択</option>
+                {packages.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {formatPackageLabel(p)}
+                  </option>
+                ))}
+              </select>
+              {lineErrors.package_id ? (
+                <p className="mt-1 text-xs text-red-600">{lineErrors.package_id}</p>
+              ) : null}
+            </label>
+          )}
 
-            <Field label="数量">
-              <input
-                type="number"
-                name="quantity"
-                value={form.quantity}
-                onChange={handleChange}
-                required
-                className="w-full rounded-lg border px-4 py-3 text-sm"
-              />
-            </Field>
+          <label className="block">
+            <p className="mb-2 text-sm font-bold text-gray-700">数量</p>
+            <input
+              type="text"
+              inputMode="numeric"
+              className={inputClass}
+              value={quantity}
+              onChange={(e) => {
+                setQuantity(e.target.value);
+                setSubmitError(null);
+              }}
+              disabled={submitting}
+              autoComplete="off"
+            />
+            {lineErrors.quantity ? (
+              <p className="mt-1 text-xs text-red-600">{lineErrors.quantity}</p>
+            ) : null}
+          </label>
 
-            <Field label="仕入価格">
-              <input
-                type="number"
-                name="purchase_price"
-                value={form.purchase_price}
-                onChange={handleChange}
-                required
-                className="w-full rounded-lg border px-4 py-3 text-sm"
-              />
-            </Field>
-
-            <Field label="販売価格">
-              <input
-                type="number"
-                name="sales_price"
-                value={form.sales_price}
-                onChange={handleChange}
-                required
-                className="w-full rounded-lg border px-4 py-3 text-sm"
-              />
-            </Field>
-          </div>
-
-          <div className="mt-6">
-            <Field label="備考">
-              <textarea
-                name="memo"
-                value={form.memo}
-                onChange={handleChange}
-                rows={4}
-                className="w-full rounded-lg border px-4 py-3 text-sm"
-              />
-            </Field>
-          </div>
-
-          <div className="mt-8 flex gap-4">
+          <div className="flex gap-4 pt-2">
             <button
               type="button"
-              onClick={() => router.push(`/cases/${caseId}`)}
-              className="rounded-lg border px-6 py-3 text-sm font-bold text-gray-700"
+              onClick={() => router.push(`/cases/${caseId}?tab=products`)}
+              disabled={submitting}
+              className="rounded-lg border px-6 py-3 text-sm font-bold text-gray-700 disabled:opacity-50"
             >
               キャンセル
             </button>
-
             <button
               type="submit"
-              disabled={loading}
+              disabled={submitting}
               className="rounded-lg bg-gray-900 px-6 py-3 text-sm font-bold text-white disabled:opacity-50"
             >
-              {loading ? "登録中..." : "登録する"}
+              {submitting ? "追加中..." : "追加する"}
             </button>
           </div>
         </form>
       </main>
     </>
-  );
-}
-
-function Field({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <label className="block">
-      <p className="mb-2 text-sm font-bold text-gray-700">{label}</p>
-      {children}
-    </label>
   );
 }

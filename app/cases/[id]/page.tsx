@@ -10,6 +10,7 @@ import CaseDetailView, {
   type PaymentRow,
   type TaskRow,
 } from "./CaseDetailView";
+import { resolveCaseDetailTabId } from "./caseDetailTabs";
 import { toCaseProductDisplayRow } from "./productDisplay";
 import { toSettlementViewData } from "./settlementView";
 import { getCaseSettlementByCaseIdAdmin } from "@/lib/caseSettlements/getCaseSettlementAdmin";
@@ -68,10 +69,13 @@ function toNumber(value: number | string | null | undefined): number {
 
 export default async function CaseDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ tab?: string }>;
 }) {
   const { id } = await params;
+  const { tab: tabParam } = await searchParams;
 
   const [
     { data: caseData, error: caseError },
@@ -371,6 +375,7 @@ export default async function CaseDetailPage({
       settlement={settlement}
       workflow={workflow}
       dealerPaymentType={dealer?.payment_type || undefined}
+      initialTab={resolveCaseDetailTabId(tabParam)}
       errors={{
         products: caseProductsError?.message,
         orders: ordersError?.message,
