@@ -19,16 +19,19 @@ import { createIdempotencyKey, submitCaseRegistration } from "./submitCaseRegist
 import {
   createEmptyLine,
   createInitialCaseForm,
+  createInitialSettlementForm,
   registrationFingerprint,
   type CaseFormErrors,
   type CaseFormState,
   type CaseRegistrationStepId,
   type LineDraft,
   type LineErrors,
-  type SettlementType,
+  type SettlementErrors,
+  type SettlementFormState,
 } from "./types";
 import {
   buildGatewayBody,
+  hasSettlementErrors,
   validateStep1,
   validateStep2,
   validateStep3,
@@ -39,7 +42,9 @@ export default function CaseRegistrationWizard() {
   const [step, setStep] = useState<CaseRegistrationStepId>(1);
   const [caseForm, setCaseForm] = useState<CaseFormState>(createInitialCaseForm);
   const [lines, setLines] = useState<LineDraft[]>([createEmptyLine()]);
-  const [settlementType, setSettlementType] = useState<SettlementType | "">("");
+  const [settlement, setSettlement] = useState<SettlementFormState>(
+    createInitialSettlementForm
+  );
 
   const [dealers, setDealers] = useState<DealerOption[]>([]);
   const [products, setProducts] = useState<ProductOption[]>([]);
@@ -49,7 +54,7 @@ export default function CaseRegistrationWizard() {
   const [step1Errors, setStep1Errors] = useState<CaseFormErrors>({});
   const [step2FormError, setStep2FormError] = useState<string | null>(null);
   const [step2LineErrors, setStep2LineErrors] = useState<Record<string, LineErrors>>({});
-  const [step3Error, setStep3Error] = useState<string | null>(null);
+  const [step3Errors, setStep3Errors] = useState<SettlementErrors>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -78,7 +83,7 @@ export default function CaseRegistrationWizard() {
   }, []);
 
   function ensureIdempotencyKey(): string {
-    const fp = registrationFingerprint(caseForm, lines, settlementType);
+    const fp = registrationFingerprint(caseForm, lines, settlement);
     if (!idempotencyKeyRef.current || fingerprintForKeyRef.current !== fp) {
       idempotencyKeyRef.current = createIdempotencyKey();
       fingerprintForKeyRef.current = fp;
@@ -112,9 +117,9 @@ export default function CaseRegistrationWizard() {
   }
 
   function goStep4() {
-    const err = validateStep3(settlementType);
-    setStep3Error(err);
-    if (err) return;
+    const errors = validateStep3(settlement);
+    setStep3Errors(errors);
+    if (hasSettlementErrors(errors)) return;
     setStep(4);
   }
 
@@ -122,8 +127,13 @@ export default function CaseRegistrationWizard() {
     if (submitting) return;
     const e1 = validateStep1(caseForm);
     const e2 = validateStep2(lines);
-    const e3 = validateStep3(settlementType);
-    if (Object.keys(e1).length || !e2.ok || e3 || !settlementType) {
+    const e3 = validateStep3(settlement);
+    if (
+      Object.keys(e1).length ||
+      !e2.ok ||
+      hasSettlementErrors(e3) ||
+      !settlement.settlement_type
+    ) {
       setSubmitError("入力内容を確認してください");
       return;
     }
@@ -132,7 +142,12 @@ export default function CaseRegistrationWizard() {
     setSubmitError(null);
     try {
       const key = ensureIdempotencyKey();
-      const body = buildGatewayBody(caseForm, lines, settlementType);
+      const body = buildGatewayBody(caseForm, lines, {
+        settlement_type: settlement.settlement_type,
+        finance_company: settlement.finance_company,
+        approval_number: settlement.approval_number,
+        card_brand: settlement.card_brand,
+      });
       const result = await submitCaseRegistration({ body, idempotencyKey: key });
       if (!result.ok) {
         setSubmitError(result.error_message);
@@ -190,19 +205,22 @@ export default function CaseRegistrationWizard() {
 
       {step === 3 ? (
         <Step3SettlementForm
-          settlementType={settlementType}
-          error={step3Error}
-          onChange={setSettlementType}
+          settlement={settlement}
+          errors={step3Errors}
+          onChange={setSettlement}
           onBack={() => setStep(2)}
           onNext={goStep4}
         />
       ) : null}
 
-      {step === 4 && settlementType ? (
+      {step === 4 && settlement.settlement_type ? (
         <Step4ConfirmForm
           caseForm={caseForm}
           lines={lines}
-          settlementType={settlementType}
+          settlement={{
+            ...settlement,
+            settlement_type: settlement.settlement_type,
+          }}
           dealers={dealers}
           products={products}
           packages={packages}

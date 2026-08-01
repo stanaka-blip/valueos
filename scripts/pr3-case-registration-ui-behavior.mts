@@ -3,11 +3,13 @@ import {
   validateStep2,
   validateStep3,
   buildGatewayBody,
+  hasSettlementErrors,
   safeUserErrorMessage,
 } from "../app/components/case-registration/validation.ts";
 import {
   createEmptyLine,
   createInitialCaseForm,
+  createInitialSettlementForm,
   registrationFingerprint,
   SETTLEMENT_TYPES,
 } from "../app/components/case-registration/types.ts";
@@ -15,6 +17,7 @@ import {
   createIdempotencyKey,
   submitCaseRegistration,
 } from "../app/components/case-registration/submitCaseRegistration.ts";
+import { CASE_REGISTRATION_SETTLEMENT_TYPES } from "../lib/caseSettlementTypes.ts";
 
 function assert(name: string, cond: unknown, detail = "") {
   if (!cond) {
@@ -23,6 +26,17 @@ function assert(name: string, cond: unknown, detail = "") {
   } else {
     console.log("OK", name);
   }
+}
+
+function settlementOf(
+  type: (typeof SETTLEMENT_TYPES)[number] | "",
+  extras: Partial<ReturnType<typeof createInitialSettlementForm>> = {}
+) {
+  return {
+    ...createInitialSettlementForm(),
+    settlement_type: type,
+    ...extras,
+  };
 }
 
 async function main() {
@@ -98,32 +112,115 @@ async function main() {
   assert("qty empty PACKAGE reject", validateStep2([withQty(packageLine, "", "q13")]).lineErrors.q13?.quantity === qtyMsg);
   assert("qty non-numeric reject", validateStep2([withQty(productLine, "abc", "q14")]).lineErrors.q14?.quantity === qtyMsg);
 
-  assert("3 settlement required", validateStep3("") !== null);
   assert(
-    "3 settlement accepts all",
-    SETTLEMENT_TYPES.every((t) => validateStep3(t) === null)
+    "settlement types match common formal set",
+    SETTLEMENT_TYPES.join(",") === CASE_REGISTRATION_SETTLEMENT_TYPES.join(",")
+  );
+  assert(
+    "settlement types are formal four",
+    SETTLEMENT_TYPES.length === 4 &&
+      SETTLEMENT_TYPES.join(",") === "前金,売掛,3社間決済,カード"
   );
 
-  const body = buildGatewayBody(ok1, [productLine, packageLine], "現金");
+  assert("3 settlement required", hasSettlementErrors(validateStep3(settlementOf(""))));
+  assert(
+    "3 前金/売掛 ok without extras",
+    !hasSettlementErrors(validateStep3(settlementOf("前金"))) &&
+      !hasSettlementErrors(validateStep3(settlementOf("売掛")))
+  );
+  assert(
+    "3 3社間 requires finance + approval",
+    validateStep3(settlementOf("3社間決済")).finance_company === "信販会社は必須です" &&
+      validateStep3(settlementOf("3社間決済")).approval_number === "承認番号は必須です"
+  );
+  assert(
+    "3 3社間 ok with details",
+    !hasSettlementErrors(
+      validateStep3(
+        settlementOf("3社間決済", {
+          finance_company: "オリコ",
+          approval_number: "AP-1",
+        })
+      )
+    )
+  );
+  assert(
+    "3 カード requires brand",
+    validateStep3(settlementOf("カード")).card_brand === "カード会社名は必須です"
+  );
+  assert(
+    "3 カード ok with brand",
+    !hasSettlementErrors(validateStep3(settlementOf("カード", { card_brand: "VISA" })))
+  );
+
+  const bodyMaebarai = buildGatewayBody(ok1, [productLine, packageLine], {
+    settlement_type: "前金",
+    finance_company: "ignored",
+    approval_number: "ignored",
+    card_brand: "ignored",
+  });
   assert(
     "2/3/4 body has PRODUCT and PACKAGE",
-    body.lines[0].line_type === "PRODUCT" && body.lines[1].line_type === "PACKAGE"
+    bodyMaebarai.lines[0].line_type === "PRODUCT" &&
+      bodyMaebarai.lines[1].line_type === "PACKAGE"
   );
   assert(
     "gateway body omits supplier_id",
-    !("supplier_id" in body.lines[0]) && !("supplier_id" in body.lines[1])
+    !("supplier_id" in bodyMaebarai.lines[0]) && !("supplier_id" in bodyMaebarai.lines[1])
   );
   assert(
     "gateway body omits prices",
-    !("sales_price" in body.lines[0]) &&
-      !("purchase_price" in body.lines[0]) &&
-      !("sales_price_id" in body.lines[0]) &&
-      !("purchase_price_id" in body.lines[0])
+    !("sales_price" in bodyMaebarai.lines[0]) &&
+      !("purchase_price" in bodyMaebarai.lines[0]) &&
+      !("sales_price_id" in bodyMaebarai.lines[0]) &&
+      !("purchase_price_id" in bodyMaebarai.lines[0])
   );
-  assert("no department/priority in body", !("department" in body.case) && !("priority" in body.case));
-  assert("no request_id in body", !("request_id" in body));
-  assert("delivery resolved from site", body.case.delivery_address === "東京都");
-  assert("qty preserved in body", body.lines[0].quantity === 2 && body.lines[1].quantity === 1);
+  assert(
+    "前金 settlement nulls details",
+    bodyMaebarai.settlement.settlement_type === "前金" &&
+      bodyMaebarai.settlement.finance_company === null &&
+      bodyMaebarai.settlement.approval_number === null &&
+      bodyMaebarai.settlement.card_brand === null
+  );
+
+  const bodySansha = buildGatewayBody(ok1, [productLine], {
+    settlement_type: "3社間決済",
+    finance_company: " アプラス ",
+    approval_number: " Z-9 ",
+    card_brand: "should-null",
+  });
+  assert(
+    "3社間 settlement payload",
+    bodySansha.settlement.settlement_type === "3社間決済" &&
+      bodySansha.settlement.finance_company === "アプラス" &&
+      bodySansha.settlement.approval_number === "Z-9" &&
+      bodySansha.settlement.card_brand === null
+  );
+
+  const bodyCard = buildGatewayBody(ok1, [productLine], {
+    settlement_type: "カード",
+    finance_company: "should-null",
+    approval_number: "should-null",
+    card_brand: " JCB ",
+  });
+  assert(
+    "カード settlement payload uses card_brand",
+    bodyCard.settlement.settlement_type === "カード" &&
+      bodyCard.settlement.card_brand === "JCB" &&
+      bodyCard.settlement.finance_company === null &&
+      bodyCard.settlement.approval_number === null
+  );
+
+  assert(
+    "no department/priority in body",
+    !("department" in bodyMaebarai.case) && !("priority" in bodyMaebarai.case)
+  );
+  assert("no request_id in body", !("request_id" in bodyMaebarai));
+  assert("delivery resolved from site", bodyMaebarai.case.delivery_address === "東京都");
+  assert(
+    "qty preserved in body",
+    bodyMaebarai.lines[0].quantity === 2 && bodyMaebarai.lines[1].quantity === 1
+  );
 
   assert(
     "11 safe error strips service role",
@@ -134,10 +231,21 @@ async function main() {
     safeUserErrorMessage("PRICE_NOT_FOUND", "価格が見つかりません").includes("価格")
   );
 
-  const fp1 = registrationFingerprint(ok1, [productLine], "現金");
-  const fp2 = registrationFingerprint({ ...ok1, customer_name: "顧客B" }, [productLine], "現金");
+  const settleUri = settlementOf("売掛");
+  const fp1 = registrationFingerprint(ok1, [productLine], settleUri);
+  const fp2 = registrationFingerprint(
+    { ...ok1, customer_name: "顧客B" },
+    [productLine],
+    settleUri
+  );
+  const fp3 = registrationFingerprint(
+    ok1,
+    [productLine],
+    settlementOf("3社間決済", { finance_company: "オリコ", approval_number: "1" })
+  );
   assert("9 fingerprint changes on edit", fp1 !== fp2);
-  assert("9 fingerprint stable", registrationFingerprint(ok1, [productLine], "現金") === fp1);
+  assert("9 fingerprint stable", registrationFingerprint(ok1, [productLine], settleUri) === fp1);
+  assert("9 fingerprint includes settlement detail", fp1 !== fp3 && fp3.includes("オリコ"));
   assert(
     "9 fingerprint omits supplier/price",
     !fp1.includes("supplier_id") && !fp1.includes("sales_unit_price")
@@ -168,8 +276,8 @@ async function main() {
     } as Response;
   }) as typeof fetch;
 
-  const r1 = await submitCaseRegistration({ body, idempotencyKey: key1 });
-  const r2 = await submitCaseRegistration({ body, idempotencyKey: key1 });
+  const r1 = await submitCaseRegistration({ body: bodyMaebarai, idempotencyKey: key1 });
+  const r2 = await submitCaseRegistration({ body: bodyMaebarai, idempotencyKey: key1 });
   assert(
     "7 csrf then post order",
     calls[0].url.includes("/api/auth/csrf") && calls[1].url.includes("/api/case-registrations")
@@ -180,6 +288,15 @@ async function main() {
   assert("9 same key resent", h1["Idempotency-Key"] === key1 && h3["Idempotency-Key"] === key1);
   assert("7 no Origin in headers", !("Origin" in h1));
   assert("10 returns case_id", r1.ok && r1.case_id === "case-abc" && r2.ok);
+
+  const posted = JSON.parse(String(calls[1].init.body));
+  assert(
+    "gateway post includes settlement detail keys",
+    posted.settlement &&
+      "finance_company" in posted.settlement &&
+      "approval_number" in posted.settlement &&
+      "card_brand" in posted.settlement
+  );
 
   globalThis.fetch = (async (url: RequestInfo | URL) => {
     if (String(url).includes("csrf")) {
@@ -196,7 +313,7 @@ async function main() {
     } as Response;
   }) as typeof fetch;
 
-  const err = await submitCaseRegistration({ body, idempotencyKey: key2 });
+  const err = await submitCaseRegistration({ body: bodyMaebarai, idempotencyKey: key2 });
   assert(
     "11 unsafe server text scrubbed",
     !err.ok &&

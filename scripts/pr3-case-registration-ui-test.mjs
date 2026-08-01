@@ -46,6 +46,7 @@ const step3Src = read("app/components/case-registration/Step3SettlementForm.tsx"
 const step4Src = read("app/components/case-registration/Step4ConfirmForm.tsx");
 const validationSrc = read("app/components/case-registration/validation.ts");
 const typesSrc = read("app/components/case-registration/types.ts");
+const commonSettlementTypesSrc = read("lib/caseSettlementTypes.ts");
 const mastersSrc = read("app/components/case-registration/masters.ts");
 
 assert("1 page uses wizard", pageSrc.includes("CaseRegistrationWizard"));
@@ -99,11 +100,30 @@ assert(
 );
 assert("12 PC table / SP cards", step2Src.includes("hidden") && step2Src.includes("md:block") && step2Src.includes("md:hidden"));
 assert(
-  "STEP3 settlement options",
+  "STEP3 formal settlement options only",
   step3Src.includes("SETTLEMENT_TYPES") &&
-    ["掛売", "ローン", "現金", "カード", "その他"].every((t) => typesSrc.includes(t))
+    typesSrc.includes("CASE_REGISTRATION_SETTLEMENT_TYPES") &&
+    ["前金", "売掛", "3社間決済", "カード"].every((t) =>
+      commonSettlementTypesSrc.includes(`"${t}"`)
+    ) &&
+    commonSettlementTypesSrc.includes("CASE_REGISTRATION_SETTLEMENT_TYPES") &&
+    !typesSrc.includes("掛売") &&
+    !typesSrc.includes("ローン") &&
+    !typesSrc.includes("現金") &&
+    !typesSrc.includes('"その他"')
+);
+assert("STEP3 requires finance fields for 3社間", step3Src.includes("信販会社") && step3Src.includes("承認番号"));
+assert("STEP3 requires card company name", step3Src.includes("カード会社名"));
+assert(
+  "STEP3 payload fields in validation",
+  validationSrc.includes("finance_company") &&
+    validationSrc.includes("approval_number") &&
+    validationSrc.includes("card_brand") &&
+    validationSrc.includes("buildSettlementPayload")
 );
 assert("STEP4 shows settlement", step4Src.includes("決済区分"));
+assert("STEP4 shows finance details", step4Src.includes("信販会社") && step4Src.includes("承認番号"));
+assert("STEP4 shows card company name", step4Src.includes("カード会社名"));
 assert("8 double submit guard", wizardSrc.includes("if (submitting) return") && step4Src.includes("disabled={submitting}"));
 assert("8 keep submitting on success", wizardSrc.includes("成功後は submitting を解除せず"));
 assert("9 idempotency fingerprint", wizardSrc.includes("registrationFingerprint") && wizardSrc.includes("idempotencyKeyRef"));
@@ -143,6 +163,17 @@ const orderDiff = spawnSync(
   { cwd: ROOT, encoding: "utf8" }
 );
 assert("no order/invoice/payment changes", (orderDiff.stdout || "").trim() === "", orderDiff.stdout);
+
+const caseDetailDiff = spawnSync(
+  "git",
+  ["diff", "--name-only", "origin/main", "--", "app/cases/[id]", "lib/caseSettlementTypes.ts"],
+  { cwd: ROOT, encoding: "utf8" }
+);
+assert(
+  "no case detail UI / shared settlement types edits",
+  (caseDetailDiff.stdout || "").trim() === "",
+  caseDetailDiff.stdout
+);
 
 // ---------- behavioral (tsx) ----------
 const behaviorFile = join(ROOT, "scripts/pr3-case-registration-ui-behavior.mts");

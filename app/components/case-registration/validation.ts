@@ -3,8 +3,12 @@ import type {
   CaseFormState,
   LineDraft,
   LineErrors,
+  SettlementErrors,
+  SettlementFormState,
   SettlementType,
 } from "./types";
+
+const MAX_SETTLEMENT_DETAIL_LEN = 500;
 
 export function validateStep1(caseForm: CaseFormState): CaseFormErrors {
   const errors: CaseFormErrors = {};
@@ -59,8 +63,42 @@ export function validateStep2(lines: LineDraft[]): {
   };
 }
 
-export function validateStep3(settlementType: SettlementType | ""): string | null {
-  return settlementType ? null : "決済区分は必須です";
+export function hasSettlementErrors(errors: SettlementErrors): boolean {
+  return Object.keys(errors).length > 0;
+}
+
+export function validateStep3(settlement: SettlementFormState): SettlementErrors {
+  const errors: SettlementErrors = {};
+  if (!settlement.settlement_type) {
+    errors.form = "決済区分は必須です";
+    return errors;
+  }
+
+  if (settlement.settlement_type === "3社間決済") {
+    const finance = settlement.finance_company.trim();
+    const approval = settlement.approval_number.trim();
+    if (!finance) {
+      errors.finance_company = "信販会社は必須です";
+    } else if (finance.length > MAX_SETTLEMENT_DETAIL_LEN) {
+      errors.finance_company = "信販会社名が長すぎます";
+    }
+    if (!approval) {
+      errors.approval_number = "承認番号は必須です";
+    } else if (approval.length > MAX_SETTLEMENT_DETAIL_LEN) {
+      errors.approval_number = "承認番号が長すぎます";
+    }
+  }
+
+  if (settlement.settlement_type === "カード") {
+    const brand = settlement.card_brand.trim();
+    if (!brand) {
+      errors.card_brand = "カード会社名は必須です";
+    } else if (brand.length > MAX_SETTLEMENT_DETAIL_LEN) {
+      errors.card_brand = "カード会社名が長すぎます";
+    }
+  }
+
+  return errors;
 }
 
 export function resolvedDeliveryAddress(caseForm: CaseFormState): string {
@@ -68,10 +106,32 @@ export function resolvedDeliveryAddress(caseForm: CaseFormState): string {
   return caseForm.delivery_address.trim();
 }
 
+export function buildSettlementPayload(settlement: {
+  settlement_type: SettlementType;
+  finance_company: string;
+  approval_number: string;
+  card_brand: string;
+}) {
+  const type = settlement.settlement_type;
+  const isSansha = type === "3社間決済";
+  const isCard = type === "カード";
+  return {
+    settlement_type: type,
+    finance_company: isSansha ? settlement.finance_company.trim() : null,
+    approval_number: isSansha ? settlement.approval_number.trim() : null,
+    card_brand: isCard ? settlement.card_brand.trim() : null,
+  };
+}
+
 export function buildGatewayBody(
   caseForm: CaseFormState,
   lines: LineDraft[],
-  settlementType: SettlementType
+  settlement: {
+    settlement_type: SettlementType;
+    finance_company: string;
+    approval_number: string;
+    card_brand: string;
+  }
 ) {
   return {
     case: {
@@ -89,9 +149,7 @@ export function buildGatewayBody(
       assigned_user: caseForm.assigned_user.trim() || null,
       memo: caseForm.memo.trim() || null,
     },
-    settlement: {
-      settlement_type: settlementType,
-    },
+    settlement: buildSettlementPayload(settlement),
     lines: lines.map((line) => ({
       line_type: line.line_type,
       product_id: line.line_type === "PRODUCT" ? line.product_id : null,
