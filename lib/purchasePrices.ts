@@ -171,7 +171,8 @@ export async function fetchActivePurchaseUnitPrice(
 }
 
 /**
- * 複数商品の有効仕入単価を一括取得。
+ * 複数商品の有効仕入単価を一括取得（PRODUCT のみ）。
+ * PACKAGE 向け価格行を誤って採用しないよう price_target_type を明示する。
  * 同一 product_id が複数行ある場合は start_date 降順で先頭を採用。
  */
 export async function fetchActivePurchaseUnitPrices(
@@ -196,15 +197,37 @@ export async function fetchActivePurchaseUnitPrices(
 
   const asOfDate = params.asOfDate || getTodayDateString();
 
-  const { data, error } = await client
+  const withTargetType = await client
     .from("purchase_prices")
     .select("product_id, purchase_price, start_date")
     .in("product_id", uniqueIds)
     .eq("supplier_id", params.supplierId)
+    .eq("price_target_type", "PRODUCT")
     .eq("is_active", true)
     .lte("start_date", asOfDate)
     .or(`end_date.is.null,end_date.gte.${asOfDate}`)
     .order("start_date", { ascending: false });
+
+  let data = withTargetType.data;
+  let error = withTargetType.error;
+
+  // price_target_type 未適用環境向けフォールバック（単件取得と同様）
+  if (
+    error &&
+    /price_target_type|column .* does not exist/i.test(error.message)
+  ) {
+    const legacy = await client
+      .from("purchase_prices")
+      .select("product_id, purchase_price, start_date")
+      .in("product_id", uniqueIds)
+      .eq("supplier_id", params.supplierId)
+      .eq("is_active", true)
+      .lte("start_date", asOfDate)
+      .or(`end_date.is.null,end_date.gte.${asOfDate}`)
+      .order("start_date", { ascending: false });
+    data = legacy.data;
+    error = legacy.error;
+  }
 
   if (error) {
     return {
