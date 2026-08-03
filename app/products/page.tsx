@@ -3,6 +3,18 @@ import { supabase } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
+function supplierName(
+  suppliers:
+    | { name: string | null }
+    | { name: string | null }[]
+    | null
+    | undefined
+): string {
+  if (!suppliers) return "未設定";
+  const row = Array.isArray(suppliers) ? suppliers[0] : suppliers;
+  return row?.name?.trim() || "未設定";
+}
+
 export default async function ProductsPage() {
   const { data: products, error } = await supabase
     .from("products")
@@ -16,7 +28,8 @@ export default async function ProductsPage() {
       unit,
       is_active,
       manufacturers ( name ),
-      series:series_id ( name )
+      series:series_id ( name ),
+      suppliers:default_supplier_id ( name )
     `
     )
     .order("created_at", { ascending: false });
@@ -52,6 +65,7 @@ export default async function ProductsPage() {
                 <th className="px-5 py-4">型番</th>
                 <th className="px-5 py-4">商品名</th>
                 <th className="px-5 py-4">容量</th>
+                <th className="px-5 py-4">標準仕入先</th>
                 <th className="px-5 py-4">状態</th>
                 <th className="px-5 py-4 text-center">操作</th>
               </tr>
@@ -60,7 +74,7 @@ export default async function ProductsPage() {
             <tbody>
               {error ? (
                 <tr>
-                  <td colSpan={8} className="px-5 py-10 text-center text-red-500">
+                  <td colSpan={9} className="px-5 py-10 text-center text-red-500">
                     データ取得エラー：{error.message}
                   </td>
                 </tr>
@@ -80,6 +94,12 @@ export default async function ProductsPage() {
                   const seriesName = Array.isArray(series)
                     ? series[0]?.name
                     : series?.name;
+                  const defaultSupplier = supplierName(
+                    item.suppliers as
+                      | { name: string | null }
+                      | { name: string | null }[]
+                      | null
+                  );
 
                   return (
                     <tr key={item.id} className="border-t hover:bg-gray-50">
@@ -92,6 +112,13 @@ export default async function ProductsPage() {
                         {item.capacity
                           ? `${item.capacity}${item.unit ? item.unit : ""}`
                           : "-"}
+                      </td>
+                      <td className="px-5 py-4">
+                        {defaultSupplier === "未設定" ? (
+                          <span className="text-gray-500">未設定</span>
+                        ) : (
+                          defaultSupplier
+                        )}
                       </td>
                       <td className="px-5 py-4">
                         {item.is_active ? (
@@ -117,7 +144,7 @@ export default async function ProductsPage() {
                 })
               ) : (
                 <tr>
-                  <td colSpan={8} className="px-5 py-10 text-center text-gray-500">
+                  <td colSpan={9} className="px-5 py-10 text-center text-gray-500">
                     商品が登録されていません。
                   </td>
                 </tr>

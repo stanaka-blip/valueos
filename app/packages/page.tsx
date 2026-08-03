@@ -3,6 +3,18 @@ import { supabase } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
+function supplierName(
+  suppliers:
+    | { name: string | null }
+    | { name: string | null }[]
+    | null
+    | undefined
+): string {
+  if (!suppliers) return "未設定";
+  const row = Array.isArray(suppliers) ? suppliers[0] : suppliers;
+  return row?.name?.trim() || "未設定";
+}
+
 export default async function PackagesPage() {
   const { data: packages, error } = await supabase
     .from("packages")
@@ -17,7 +29,8 @@ export default async function PackagesPage() {
       warranty_years,
       is_active,
       manufacturers ( name ),
-      series:series_id ( name )
+      series:series_id ( name ),
+      suppliers:default_supplier_id ( name )
     `
     )
     .order("name", { ascending: true });
@@ -53,6 +66,7 @@ export default async function PackagesPage() {
                 <th className="px-5 py-4">パッケージ名</th>
                 <th className="px-5 py-4">容量</th>
                 <th className="px-5 py-4">保証</th>
+                <th className="px-5 py-4">標準仕入先</th>
                 <th className="px-5 py-4">状態</th>
                 <th className="px-5 py-4 text-center">操作</th>
               </tr>
@@ -60,7 +74,7 @@ export default async function PackagesPage() {
             <tbody>
               {error ? (
                 <tr>
-                  <td colSpan={7} className="px-5 py-10 text-center text-red-500">
+                  <td colSpan={8} className="px-5 py-10 text-center text-red-500">
                     データ取得エラー：{error.message}
                   </td>
                 </tr>
@@ -80,6 +94,12 @@ export default async function PackagesPage() {
                   const seriesName = Array.isArray(series)
                     ? series[0]?.name
                     : series?.name;
+                  const defaultSupplier = supplierName(
+                    item.suppliers as
+                      | { name: string | null }
+                      | { name: string | null }[]
+                      | null
+                  );
                   return (
                     <tr key={item.id} className="border-t hover:bg-gray-50">
                       <td className="px-5 py-4 font-semibold">{maker || "-"}</td>
@@ -96,6 +116,13 @@ export default async function PackagesPage() {
                         {item.warranty_years != null
                           ? `${item.warranty_years}年`
                           : "-"}
+                      </td>
+                      <td className="px-5 py-4">
+                        {defaultSupplier === "未設定" ? (
+                          <span className="text-gray-500">未設定</span>
+                        ) : (
+                          defaultSupplier
+                        )}
                       </td>
                       <td className="px-5 py-4">
                         {item.is_active ? (
@@ -121,7 +148,7 @@ export default async function PackagesPage() {
                 })
               ) : (
                 <tr>
-                  <td colSpan={7} className="px-5 py-10 text-center text-gray-500">
+                  <td colSpan={8} className="px-5 py-10 text-center text-gray-500">
                     パッケージ商品が登録されていません。
                   </td>
                 </tr>
