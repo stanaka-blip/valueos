@@ -643,6 +643,12 @@ export type Database = {
         };
         Returns: Json;
       };
+      create_purchase_orders: {
+        Args: {
+          payload: Json;
+        };
+        Returns: Json;
+      };
       gateway_rate_limit_hit: {
         Args: {
           p_bucket_key: string;
