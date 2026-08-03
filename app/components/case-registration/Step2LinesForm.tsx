@@ -94,10 +94,6 @@ export default function Step2LinesForm({
         </div>
       ) : null}
 
-      <p className="text-xs text-gray-500">
-        仕入先は商品／パッケージの標準仕入先から自動設定されます。未設定のマスタは次へ進めません。
-      </p>
-
       {/* PC table */}
       <div className="hidden overflow-x-auto md:block">
         <table className="min-w-full border-collapse text-sm">
