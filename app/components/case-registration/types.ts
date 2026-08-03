@@ -54,6 +54,8 @@ export type LineDraft = {
   line_type: LineType;
   product_id: string;
   package_id: string;
+  /** products/packages.default_supplier_id から自動解決（手選択なし） */
+  supplier_id: string;
   quantity: string;
   memo: string;
   display_name: string;
@@ -65,6 +67,7 @@ export type LineErrors = {
   line_type?: string;
   product_id?: string;
   package_id?: string;
+  supplier_id?: string;
   quantity?: string;
 };
 
@@ -74,6 +77,7 @@ export function createEmptyLine(): LineDraft {
     line_type: "PRODUCT",
     product_id: "",
     package_id: "",
+    supplier_id: "",
     quantity: "1",
     memo: "",
     display_name: "",
@@ -126,6 +130,7 @@ export function registrationFingerprint(
       line_type: l.line_type,
       product_id: l.product_id,
       package_id: l.package_id,
+      supplier_id: l.supplier_id,
       quantity: l.quantity,
       memo: l.memo,
       display_name: l.display_name,

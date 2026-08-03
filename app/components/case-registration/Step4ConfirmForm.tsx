@@ -1,8 +1,18 @@
 "use client";
 
-import type { DealerOption, PackageOption, ProductOption } from "./masters";
+import type {
+  DealerOption,
+  PackageOption,
+  ProductOption,
+  SupplierOption,
+} from "./masters";
 import { formatPackageLabel, formatProductLabel } from "./masters";
-import type { CaseFormState, LineDraft, SettlementFormState, SettlementType } from "./types";
+import type {
+  CaseFormState,
+  LineDraft,
+  SettlementFormState,
+  SettlementType,
+} from "./types";
 import { resolvedDeliveryAddress } from "./validation";
 
 type Props = {
@@ -12,6 +22,7 @@ type Props = {
   dealers: DealerOption[];
   products: ProductOption[];
   packages: PackageOption[];
+  suppliers: SupplierOption[];
   submitting: boolean;
   submitError: string | null;
   onBack: () => void;
@@ -25,6 +36,7 @@ export default function Step4ConfirmForm({
   dealers,
   products,
   packages,
+  suppliers,
   submitting,
   submitError,
   onBack,
@@ -110,6 +122,7 @@ export default function Step4ConfirmForm({
                       id: "",
                       name: "—",
                       model_no: null,
+                      default_supplier_id: null,
                     }
                   )
                 : formatPackageLabel(
@@ -117,20 +130,26 @@ export default function Step4ConfirmForm({
                       id: "",
                       name: "—",
                       package_code: null,
+                      default_supplier_id: null,
                     }
                   ));
+            const supplierName =
+              suppliers.find((s) => s.id === line.supplier_id)?.name || "—";
             return (
               <li key={line.local_id} className="rounded border border-gray-100 p-3">
                 <div className="font-medium text-gray-900">
                   [{line.line_type}] {name}
                 </div>
-                <div className="mt-1 text-gray-600">数量: {line.quantity}</div>
+                <div className="mt-1 grid grid-cols-2 gap-1 text-gray-600 sm:grid-cols-3">
+                  <div>数量: {line.quantity}</div>
+                  <div>標準仕入先: {supplierName}</div>
+                </div>
               </li>
             );
           })}
         </ul>
         <p className="mt-3 text-xs text-gray-500">
-          登録時は商品／パッケージと数量のみ保存します。単価の決定は発注工程で行います。
+          仕入先は商品／パッケージの標準仕入先から自動設定されています。単価の決定は発注工程で行います。
         </p>
       </section>
 

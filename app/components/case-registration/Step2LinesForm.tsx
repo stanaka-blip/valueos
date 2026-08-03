@@ -3,6 +3,7 @@
 import {
   formatPackageLabel,
   formatProductLabel,
+  resolveDefaultSupplierId,
   type PackageOption,
   type ProductOption,
 } from "./masters";
@@ -41,6 +42,7 @@ export default function Step2LinesForm({
       line_type: lineType,
       product_id: "",
       package_id: "",
+      supplier_id: "",
       display_name: "",
     });
   }
@@ -50,6 +52,13 @@ export default function Step2LinesForm({
     onChangeLine(localId, {
       product_id: productId,
       package_id: "",
+      supplier_id: resolveDefaultSupplierId(
+        "PRODUCT",
+        productId,
+        "",
+        products,
+        packages
+      ),
       display_name: p ? formatProductLabel(p) : "",
     });
   }
@@ -59,6 +68,13 @@ export default function Step2LinesForm({
     onChangeLine(localId, {
       package_id: packageId,
       product_id: "",
+      supplier_id: resolveDefaultSupplierId(
+        "PACKAGE",
+        "",
+        packageId,
+        products,
+        packages
+      ),
       display_name: p ? formatPackageLabel(p) : "",
     });
   }
@@ -77,6 +93,10 @@ export default function Step2LinesForm({
           {formError}
         </div>
       ) : null}
+
+      <p className="text-xs text-gray-500">
+        仕入先は商品／パッケージの標準仕入先から自動設定されます。未設定のマスタは次へ進めません。
+      </p>
 
       {/* PC table */}
       <div className="hidden overflow-x-auto md:block">
@@ -134,9 +154,9 @@ export default function Step2LinesForm({
                         ))}
                       </select>
                     )}
-                    {err.product_id || err.package_id ? (
+                    {err.product_id || err.package_id || err.supplier_id ? (
                       <p className="mt-1 text-xs text-red-600">
-                        {err.product_id || err.package_id}
+                        {err.product_id || err.package_id || err.supplier_id}
                       </p>
                     ) : null}
                   </td>
@@ -178,7 +198,10 @@ export default function Step2LinesForm({
         {lines.map((line) => {
           const err = lineErrors[line.local_id] || {};
           return (
-            <div key={line.local_id} className="rounded-lg border border-gray-200 bg-white p-4">
+            <div
+              key={line.local_id}
+              className="rounded-lg border border-gray-200 bg-white p-4"
+            >
               <div className="space-y-3">
                 <label className="block text-sm font-medium">
                   種別
@@ -237,9 +260,15 @@ export default function Step2LinesForm({
                     }
                   />
                 </label>
-                {err.product_id || err.package_id || err.quantity ? (
+                {err.product_id ||
+                err.package_id ||
+                err.supplier_id ||
+                err.quantity ? (
                   <p className="text-sm text-red-600">
-                    {err.product_id || err.package_id || err.quantity}
+                    {err.product_id ||
+                      err.package_id ||
+                      err.supplier_id ||
+                      err.quantity}
                   </p>
                 ) : null}
                 <button

@@ -70,34 +70,39 @@ assert("STEP1 phone optional (no required marker on phone)", !/電話番号[\s\S
 assert("STEP1 delivery conditional", step1Src.includes("delivery_same_as_site") && step1Src.includes("納品先住所"));
 assert("STEP2 PRODUCT/PACKAGE", step2Src.includes('value="PRODUCT"') && step2Src.includes('value="PACKAGE"'));
 assert("STEP2 qty only (no price columns)", step2Src.includes("数量") && !step2Src.includes("販売単価") && !step2Src.includes("仕入単価") && !step2Src.includes("粗利") && !step2Src.includes("販売小計"));
-assert("STEP2 no supplier column/display", !step2Src.includes("仕入先") && !step2Src.includes("supplier_id") && !step2Src.includes("SupplierOption"));
+assert("STEP2 no supplier select UI", !step2Src.includes("<option value=\"\">仕入先") && !/name=["']supplier_id["']/.test(step2Src) && !step2Src.includes("SupplierOption"));
+assert("STEP2 resolves default supplier", step2Src.includes("resolveDefaultSupplierId"));
 assert("STEP2 qty input bounds", step2Src.includes("min={1}") && step2Src.includes("max={9999}") && step2Src.includes("step={1}"));
 assert("STEP2 qty validate message", validationSrc.includes("数量は1〜9,999の整数で入力してください"));
 assert("STEP2 no manual price UI", !/手動価格|is_manual_price|isManualPrice/.test(step2Src));
-assert("no resolveDefaultSupplier module", !existsSync(join(uiDir, "resolveDefaultSupplier.ts")));
+assert("resolveDefaultSupplier module exists", existsSync(join(uiDir, "resolveDefaultSupplier.ts")));
 assert("no pricePreview module", !existsSync(join(uiDir, "pricePreview.ts")));
 assert(
-  "masters do not fetch default_supplier_id",
-  !mastersSrc.includes("default_supplier_id") &&
-    mastersSrc.includes('.select("id, name, model_no, is_active")') &&
-    mastersSrc.includes('.select("id, name, package_code, is_active")')
+  "masters fetch default_supplier_id",
+  mastersSrc.includes("default_supplier_id") &&
+    mastersSrc.includes('.select("id, name, model_no, is_active, default_supplier_id")') &&
+    mastersSrc.includes('.select("id, name, package_code, is_active, default_supplier_id")')
 );
-assert("wizard does not fetch suppliers", !wizardSrc.includes("fetchActiveSuppliers") && !wizardSrc.includes("suppliers"));
-assert("no default supplier required error", !validationSrc.includes("標準仕入先が設定されていません"));
+assert("wizard fetches suppliers for STEP4 names", wizardSrc.includes("fetchActiveSuppliers") && wizardSrc.includes("suppliers"));
+assert("default supplier required error", validationSrc.includes("標準仕入先が設定されていません"));
+assert("wizard enforces default supplier on STEP2", wizardSrc.includes("enforceDefaultSupplier: true"));
 assert("no price-missing next blockers", !validationSrc.includes("販売単価が取得できません") && !validationSrc.includes("仕入単価が取得できません"));
-assert("gateway body omits supplier_id", !validationSrc.includes("supplier_id"));
+assert("gateway body includes supplier_id", validationSrc.includes("supplier_id: line.supplier_id"));
 assert("gateway body omits price fields", !/sales_price|purchase_price|sales_price_id|purchase_price_id/.test(validationSrc));
-assert("LineDraft has no supplier/price fields", !typesSrc.includes("supplier_id") && !typesSrc.includes("sales_unit_price") && !typesSrc.includes("purchase_unit_price"));
+assert("LineDraft has supplier_id, no price fields", typesSrc.includes("supplier_id") && !typesSrc.includes("sales_unit_price") && !typesSrc.includes("purchase_unit_price"));
 assert(
-  "STEP4 name+qty only",
+  "STEP4 shows qty + 標準仕入先, no prices",
   step4Src.includes("数量") &&
-    !step4Src.includes("仕入先") &&
+    step4Src.includes("標準仕入先") &&
     !step4Src.includes("販売単価") &&
     !step4Src.includes("仕入単価") &&
     !step4Src.includes("粗利") &&
-    !step4Src.includes("販売合計") &&
-    !step4Src.includes("supplier_id")
+    !step4Src.includes("販売合計")
 );
+assert("resolveDefaultSupplier does not use dealers/purchase_prices", (() => {
+  const src = read("app/components/case-registration/resolveDefaultSupplier.ts");
+  return !src.includes("dealers") && !src.includes("purchase_prices");
+})());
 assert("12 PC table / SP cards", step2Src.includes("hidden") && step2Src.includes("md:block") && step2Src.includes("md:hidden"));
 assert(
   "STEP3 formal settlement options only",

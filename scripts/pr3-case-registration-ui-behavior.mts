@@ -17,6 +17,7 @@ import {
   createIdempotencyKey,
   submitCaseRegistration,
 } from "../app/components/case-registration/submitCaseRegistration.ts";
+import { resolveDefaultSupplierId } from "../app/components/case-registration/resolveDefaultSupplier.ts";
 import { CASE_REGISTRATION_SETTLEMENT_TYPES } from "../lib/caseSettlementTypes.ts";
 
 function assert(name: string, cond: unknown, detail = "") {
@@ -64,6 +65,7 @@ async function main() {
     line_type: "PRODUCT" as const,
     product_id: "prod-1",
     quantity: "2",
+    supplier_id: "sup-product-1",
   };
   assert("2 PRODUCT alone ok", validateStep2([productLine]).ok);
 
@@ -74,6 +76,7 @@ async function main() {
     package_id: "pkg-1",
     product_id: "",
     quantity: "1",
+    supplier_id: "sup-package-1",
   };
   assert("3 PACKAGE alone ok", validateStep2([packageLine]).ok);
 
@@ -92,6 +95,51 @@ async function main() {
 
   // 価格なしでも次へ進める（登録時は価格を扱わない）
   assert("6 no price fields required", validateStep2([productLine]).ok);
+
+  // 標準仕入先未設定でも、enforce しなければ案件詳細追加など他画面は通る
+  const noSupplierLine = { ...productLine, local_id: "l-nosup", supplier_id: "" };
+  assert("default supplier not enforced by default", validateStep2([noSupplierLine]).ok);
+  assert(
+    "default supplier enforced for case registration",
+    !validateStep2([noSupplierLine], { enforceDefaultSupplier: true }).ok &&
+      validateStep2([noSupplierLine], { enforceDefaultSupplier: true }).lineErrors["l-nosup"]
+        ?.supplier_id === "標準仕入先が設定されていません"
+  );
+  assert(
+    "default supplier set passes enforce",
+    validateStep2([productLine], { enforceDefaultSupplier: true }).ok
+  );
+
+  const productsMaster = [
+    { id: "prod-1", default_supplier_id: "sup-product-1" },
+    { id: "prod-2", default_supplier_id: null },
+  ];
+  const packagesMaster = [
+    { id: "pkg-1", default_supplier_id: "sup-package-1" },
+    { id: "pkg-2", default_supplier_id: null },
+  ];
+  assert(
+    "resolve PRODUCT default supplier",
+    resolveDefaultSupplierId("PRODUCT", "prod-1", "", productsMaster, packagesMaster) ===
+      "sup-product-1"
+  );
+  assert(
+    "resolve PACKAGE default supplier",
+    resolveDefaultSupplierId("PACKAGE", "", "pkg-1", productsMaster, packagesMaster) ===
+      "sup-package-1"
+  );
+  assert(
+    "resolve PRODUCT unset returns empty",
+    resolveDefaultSupplierId("PRODUCT", "prod-2", "", productsMaster, packagesMaster) === ""
+  );
+  assert(
+    "resolve PACKAGE unset returns empty",
+    resolveDefaultSupplierId("PACKAGE", "", "pkg-2", productsMaster, packagesMaster) === ""
+  );
+  assert(
+    "resolve ignores empty product id",
+    resolveDefaultSupplierId("PRODUCT", "", "pkg-1", productsMaster, packagesMaster) === ""
+  );
 
   const qtyMsg = "数量は1〜9,999の整数で入力してください";
   function withQty(line: typeof productLine, quantity: string, localId: string) {
@@ -165,8 +213,9 @@ async function main() {
       bodyMaebarai.lines[1].line_type === "PACKAGE"
   );
   assert(
-    "gateway body omits supplier_id",
-    !("supplier_id" in bodyMaebarai.lines[0]) && !("supplier_id" in bodyMaebarai.lines[1])
+    "gateway body includes resolved supplier_id",
+    bodyMaebarai.lines[0].supplier_id === "sup-product-1" &&
+      bodyMaebarai.lines[1].supplier_id === "sup-package-1"
   );
   assert(
     "gateway body omits prices",
@@ -247,9 +296,17 @@ async function main() {
   assert("9 fingerprint stable", registrationFingerprint(ok1, [productLine], settleUri) === fp1);
   assert("9 fingerprint includes settlement detail", fp1 !== fp3 && fp3.includes("オリコ"));
   assert(
-    "9 fingerprint omits supplier/price",
-    !fp1.includes("supplier_id") && !fp1.includes("sales_unit_price")
+    "9 fingerprint includes supplier_id, omits prices",
+    fp1.includes("supplier_id") &&
+      fp1.includes("sup-product-1") &&
+      !fp1.includes("sales_unit_price")
   );
+  const fpSupplier = registrationFingerprint(
+    ok1,
+    [{ ...productLine, supplier_id: "sup-other" }],
+    settleUri
+  );
+  assert("9 fingerprint changes when supplier_id changes", fp1 !== fpSupplier);
 
   const key1 = createIdempotencyKey();
   const key2 = createIdempotencyKey();
