@@ -6,11 +6,9 @@ import {
   fetchActiveDealers,
   fetchActivePackages,
   fetchActiveProducts,
-  fetchActiveSuppliers,
   type DealerOption,
   type PackageOption,
   type ProductOption,
-  type SupplierOption,
 } from "./masters";
 import Step1CaseForm from "./Step1CaseForm";
 import Step2LinesForm from "./Step2LinesForm";
@@ -51,7 +49,6 @@ export default function CaseRegistrationWizard() {
   const [dealers, setDealers] = useState<DealerOption[]>([]);
   const [products, setProducts] = useState<ProductOption[]>([]);
   const [packages, setPackages] = useState<PackageOption[]>([]);
-  const [suppliers, setSuppliers] = useState<SupplierOption[]>([]);
   const [masterError, setMasterError] = useState<string | null>(null);
 
   const [step1Errors, setStep1Errors] = useState<CaseFormErrors>({});
@@ -67,25 +64,18 @@ export default function CaseRegistrationWizard() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const [d, p, pkg, s] = await Promise.all([
+      const [d, p, pkg] = await Promise.all([
         fetchActiveDealers(),
         fetchActiveProducts(),
         fetchActivePackages(),
-        fetchActiveSuppliers(),
       ]);
       if (cancelled) return;
-      if (
-        d.errorMessage ||
-        p.errorMessage ||
-        pkg.errorMessage ||
-        s.errorMessage
-      ) {
+      if (d.errorMessage || p.errorMessage || pkg.errorMessage) {
         setMasterError("マスタの取得に失敗しました");
       }
       setDealers(d.data);
       setProducts(p.data);
       setPackages(pkg.data);
-      setSuppliers(s.data);
     })();
     return () => {
       cancelled = true;
@@ -177,7 +167,7 @@ export default function CaseRegistrationWizard() {
     <div className="mx-auto max-w-5xl px-4 py-6">
       <h1 className="mb-2 text-xl font-bold text-gray-900">案件登録</h1>
       <p className="mb-4 text-sm text-gray-600">
-        社内向け4ステップ登録です。商品／パッケージと数量を指定して登録します。仕入先は標準仕入先から自動設定されます。保存はサーバー経由のみ行います。
+        社内向け4ステップ登録です。商品／パッケージと数量を指定して登録します。保存はサーバー経由のみ行います。
       </p>
       <StepChrome step={step} />
       {masterError ? (
@@ -234,7 +224,6 @@ export default function CaseRegistrationWizard() {
           dealers={dealers}
           products={products}
           packages={packages}
-          suppliers={suppliers}
           submitting={submitting}
           submitError={submitError}
           onBack={() => setStep(3)}
