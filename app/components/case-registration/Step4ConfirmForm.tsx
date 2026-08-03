@@ -4,6 +4,7 @@ import type {
   DealerOption,
   PackageOption,
   ProductOption,
+  SupplierOption,
 } from "./masters";
 import { formatPackageLabel, formatProductLabel } from "./masters";
 import type {
@@ -21,6 +22,7 @@ type Props = {
   dealers: DealerOption[];
   products: ProductOption[];
   packages: PackageOption[];
+  suppliers: SupplierOption[];
   submitting: boolean;
   submitError: string | null;
   onBack: () => void;
@@ -34,6 +36,7 @@ export default function Step4ConfirmForm({
   dealers,
   products,
   packages,
+  suppliers,
   submitting,
   submitError,
   onBack,
@@ -130,12 +133,17 @@ export default function Step4ConfirmForm({
                       default_supplier_id: null,
                     }
                   ));
+            const supplierName =
+              suppliers.find((s) => s.id === line.supplier_id)?.name || "—";
             return (
               <li key={line.local_id} className="rounded border border-gray-100 p-3">
                 <div className="font-medium text-gray-900">
                   [{line.line_type}] {name}
                 </div>
-                <div className="mt-1 text-gray-600">数量: {line.quantity}</div>
+                <div className="mt-1 grid grid-cols-2 gap-1 text-gray-600 sm:grid-cols-3">
+                  <div>数量: {line.quantity}</div>
+                  <div>標準仕入先: {supplierName}</div>
+                </div>
               </li>
             );
           })}

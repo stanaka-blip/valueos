@@ -6,9 +6,11 @@ import {
   fetchActiveDealers,
   fetchActivePackages,
   fetchActiveProducts,
+  fetchActiveSuppliers,
   type DealerOption,
   type PackageOption,
   type ProductOption,
+  type SupplierOption,
 } from "./masters";
 import Step1CaseForm from "./Step1CaseForm";
 import Step2LinesForm from "./Step2LinesForm";
@@ -49,6 +51,7 @@ export default function CaseRegistrationWizard() {
   const [dealers, setDealers] = useState<DealerOption[]>([]);
   const [products, setProducts] = useState<ProductOption[]>([]);
   const [packages, setPackages] = useState<PackageOption[]>([]);
+  const [suppliers, setSuppliers] = useState<SupplierOption[]>([]);
   const [masterError, setMasterError] = useState<string | null>(null);
 
   const [step1Errors, setStep1Errors] = useState<CaseFormErrors>({});
@@ -64,18 +67,25 @@ export default function CaseRegistrationWizard() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const [d, p, pkg] = await Promise.all([
+      const [d, p, pkg, s] = await Promise.all([
         fetchActiveDealers(),
         fetchActiveProducts(),
         fetchActivePackages(),
+        fetchActiveSuppliers(),
       ]);
       if (cancelled) return;
-      if (d.errorMessage || p.errorMessage || pkg.errorMessage) {
+      if (
+        d.errorMessage ||
+        p.errorMessage ||
+        pkg.errorMessage ||
+        s.errorMessage
+      ) {
         setMasterError("マスタの取得に失敗しました");
       }
       setDealers(d.data);
       setProducts(p.data);
       setPackages(pkg.data);
+      setSuppliers(s.data);
     })();
     return () => {
       cancelled = true;
@@ -224,6 +234,7 @@ export default function CaseRegistrationWizard() {
           dealers={dealers}
           products={products}
           packages={packages}
+          suppliers={suppliers}
           submitting={submitting}
           submitError={submitError}
           onBack={() => setStep(3)}
