@@ -85,10 +85,10 @@ assert(
     mastersSrc.includes('.select("id, name, package_code, is_active, default_supplier_id")')
 );
 assert(
-  "wizard fetches suppliers for STEP4 names",
-  wizardSrc.includes("fetchActiveSuppliers") && wizardSrc.includes("suppliers=")
+  "wizard does not fetch suppliers for display",
+  !wizardSrc.includes("fetchActiveSuppliers") && !wizardSrc.includes("suppliers=")
 );
-assert("wizard hides supplier select copy", !wizardSrc.includes("仕入先は標準仕入先"));
+assert("wizard hides supplier display copy", !wizardSrc.includes("仕入先は標準仕入先"));
 assert("default supplier required error", validationSrc.includes("標準仕入先が設定されていません"));
 assert("wizard enforces default supplier on STEP2", wizardSrc.includes("enforceDefaultSupplier: true"));
 assert("no price-missing next blockers", !validationSrc.includes("販売単価が取得できません") && !validationSrc.includes("仕入単価が取得できません"));
@@ -96,13 +96,25 @@ assert("gateway body includes supplier_id", validationSrc.includes("supplier_id:
 assert("gateway body omits price fields", !/sales_price|purchase_price|sales_price_id|purchase_price_id/.test(validationSrc));
 assert("LineDraft has supplier_id, no price fields", typesSrc.includes("supplier_id") && !typesSrc.includes("sales_unit_price") && !typesSrc.includes("purchase_unit_price"));
 assert(
-  "STEP4 shows qty + 標準仕入先, no prices",
+  "STEP4 shows qty, hides supplier/price/profit",
   step4Src.includes("数量") &&
-    step4Src.includes("標準仕入先") &&
+    !step4Src.includes("標準仕入先") &&
+    !step4Src.includes("suppliers") &&
     !step4Src.includes("販売単価") &&
     !step4Src.includes("仕入単価") &&
     !step4Src.includes("粗利") &&
     !step4Src.includes("販売合計")
+);
+assert(
+  "case registration UI hides supplier/purchase/profit labels",
+  !wizardSrc.includes("仕入単価") &&
+    !wizardSrc.includes("粗利") &&
+    !step2Src.includes("仕入単価") &&
+    !step2Src.includes("粗利") &&
+    !step1Src.includes("仕入先") &&
+    !step3Src.includes("仕入先") &&
+    !step3Src.includes("仕入単価") &&
+    !step3Src.includes("粗利")
 );
 assert("resolveDefaultSupplier does not use dealers/purchase_prices", (() => {
   const src = read("app/components/case-registration/resolveDefaultSupplier.ts");
