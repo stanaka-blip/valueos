@@ -26,7 +26,10 @@ export function validateStep1(caseForm: CaseFormState): CaseFormErrors {
   return errors;
 }
 
-export function validateStep2(lines: LineDraft[]): {
+export function validateStep2(
+  lines: LineDraft[],
+  options?: { enforceDefaultSupplier?: boolean }
+): {
   ok: boolean;
   formError: string | null;
   lineErrors: Record<string, LineErrors>;
@@ -36,6 +39,7 @@ export function validateStep2(lines: LineDraft[]): {
     return { ok: false, formError: "明細を1件以上追加してください", lineErrors };
   }
 
+  const enforceDefaultSupplier = options?.enforceDefaultSupplier === true;
   let ok = true;
   for (const line of lines) {
     const e: LineErrors = {};
@@ -44,6 +48,9 @@ export function validateStep2(lines: LineDraft[]): {
     }
     if (line.line_type === "PACKAGE" && !line.package_id) {
       e.package_id = "パッケージを選択してください";
+    }
+    if (enforceDefaultSupplier && !line.supplier_id) {
+      e.supplier_id = "標準仕入先が設定されていません";
     }
     const qtyRaw = String(line.quantity ?? "").trim();
     const qty = /^\d+$/.test(qtyRaw) ? Number(qtyRaw) : NaN;
@@ -154,6 +161,7 @@ export function buildGatewayBody(
       line_type: line.line_type,
       product_id: line.line_type === "PRODUCT" ? line.product_id : null,
       package_id: line.line_type === "PACKAGE" ? line.package_id : null,
+      supplier_id: line.supplier_id || null,
       quantity: Number(line.quantity),
       memo: line.memo.trim() || null,
       display_name: line.display_name.trim() || null,
