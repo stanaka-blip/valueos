@@ -13,7 +13,6 @@ import {
 import { useParams, useRouter } from "next/navigation";
 
 import { fetchActivePurchaseUnitPrices } from "@/lib/purchasePrices";
-import { insertOrderItems } from "@/lib/repositories/orderItems";
 import { supabase } from "@/lib/supabase";
 import { loadCaseWorkflow } from "@/lib/workflow/loadCaseWorkflow";
 import type { WorkflowResult } from "@/lib/workflow";
@@ -27,46 +26,46 @@ import {
   calcLineAmount,
   formatDate,
   formatYen,
-  generateOrderNumber,
   getTodayString,
   isUuid,
 } from "@/app/orders/orderUtils";
 import {
-  applyMasterUnitPrices,
-  buildInitialOrderLines,
-  clearNonSnapshotUnitPrices,
   isUnitPriceRealZero,
   isUnitPriceUnset,
   parseOrderQuantity,
   parseUnitPriceInput,
-  type CasePackageSource,
-  type CaseProductSource,
-  type OrderLineDraft,
 } from "../../buildOrderLines";
+import {
+  applySupplierMasterUnitPrices,
+  buildOrderTargets,
+  clearNonSnapshotPricesForSupplierChange,
+  flattenOrderTargets,
+  generateUniqueOrderNumbers,
+  groupLinesBySupplier,
+  sumOrderAmount,
+  validateOrderTargetsForSave,
+  type OrderTarget,
+  type PackageOrderTarget,
+  type ProductOrderTarget,
+} from "../orderTargets";
+import {
+  createIdempotencyKey,
+  submitPurchaseOrders,
+} from "./submitPurchaseOrders";
 
 type Supplier = {
   id: string;
   name: string | null;
 };
 
-type DealerRelationItem = {
-  default_supplier_id: string | null;
-};
-
 type CaseRelation = {
   id: string;
   case_no: string | null;
   customer_name: string | null;
-  order_type: string | null;
   desired_delivery_date: string | null;
-  dealers: DealerRelationItem | DealerRelationItem[] | null;
 };
 
-type LineDraft = OrderLineDraft;
-
 type OrderForm = {
-  supplier_id: string;
-  order_no: string;
   order_date: string;
   expected_delivery_date: string;
   status: string;
@@ -89,52 +88,53 @@ export default function NewOrderPage() {
 
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [caseData, setCaseData] = useState<CaseRelation | null>(null);
-  const [lines, setLines] = useState<LineDraft[]>([]);
+  const [targets, setTargets] = useState<OrderTarget[]>([]);
   const [initialLoading, setInitialLoading] = useState(!caseIdError);
   const [submitting, setSubmitting] = useState(false);
   const [priceLoading, setPriceLoading] = useState(false);
   const [loadError, setLoadError] = useState(caseIdError);
   const [submitError, setSubmitError] = useState("");
-  /** 仕入先選択後、価格マスタに無かった商品名 */
   const [missingPriceNames, setMissingPriceNames] = useState<string[]>([]);
   const [workflow, setWorkflow] = useState<WorkflowResult | null>(null);
   const [form, setForm] = useState<OrderForm>({
-    supplier_id: "",
-    order_no: "",
     order_date: getTodayString(),
     expected_delivery_date: "",
     status: "発注済",
     memo: "",
   });
 
-  /** 最新の lines を async 価格取得から参照するため */
-  const linesRef = useRef<LineDraft[]>([]);
-  /** 仕入先の連続変更で古い取得結果を捨てる */
+  const targetsRef = useRef<OrderTarget[]>([]);
+  const formRef = useRef<OrderForm>(form);
   const priceRequestIdRef = useRef(0);
 
   useEffect(() => {
-    linesRef.current = lines;
-  }, [lines]);
+    targetsRef.current = targets;
+  }, [targets]);
 
-  const orderAmount = useMemo(
-    () =>
-      lines.reduce((sum, line) => {
-        const qty = parseOrderQuantity(line.quantity) ?? 0;
-        const unit = parseUnitPriceInput(line.unit_price);
-        if (unit == null || unit < 0) return sum;
-        return sum + calcLineAmount(qty, unit);
-      }, 0),
-    [lines]
+  useEffect(() => {
+    formRef.current = form;
+  }, [form]);
+
+  const flatLines = useMemo(() => flattenOrderTargets(targets), [targets]);
+  const orderAmount = useMemo(() => sumOrderAmount(flatLines), [flatLines]);
+  const supplierBuckets = useMemo(
+    () => groupLinesBySupplier(flatLines),
+    [flatLines]
   );
 
   const unsetPriceLines = useMemo(
-    () => lines.filter((line) => isUnitPriceUnset(line.unit_price)),
-    [lines]
+    () => flatLines.filter((line) => isUnitPriceUnset(line.unit_price)),
+    [flatLines]
   );
 
   const zeroPriceLines = useMemo(
-    () => lines.filter((line) => isUnitPriceRealZero(line.unit_price)),
-    [lines]
+    () => flatLines.filter((line) => isUnitPriceRealZero(line.unit_price)),
+    [flatLines]
+  );
+
+  const missingSupplierTargets = useMemo(
+    () => targets.filter((t) => !t.supplier_id.trim()),
+    [targets]
   );
 
   useEffect(() => {
@@ -166,11 +166,7 @@ export default function NewOrderPage() {
             id,
             case_no,
             customer_name,
-            order_type,
-            desired_delivery_date,
-            dealers (
-              default_supplier_id
-            )
+            desired_delivery_date
           `
           )
           .eq("id", caseId)
@@ -187,7 +183,8 @@ export default function NewOrderPage() {
             memo,
             products (
               name,
-              model_no
+              model_no,
+              default_supplier_id
             )
           `
           )
@@ -198,7 +195,13 @@ export default function NewOrderPage() {
           .select(
             `
             id,
+            package_id,
             quantity,
+            package_name_snapshot,
+            packages (
+              name,
+              default_supplier_id
+            ),
             case_package_items (
               id,
               product_id,
@@ -260,27 +263,16 @@ export default function NewOrderPage() {
       }
 
       const normalizedCase = rawCaseData as unknown as CaseRelation;
-      const dealerRelation = normalizedCase.dealers;
-      const dealer = Array.isArray(dealerRelation)
-        ? dealerRelation[0] || null
-        : dealerRelation;
-
-      // default_supplier_id は初期選択値のみ。未設定でも案件・発注画面は開ける。
-      const initialSupplierId = dealer?.default_supplier_id || "";
-      let nextLines = buildInitialOrderLines(
-        (rawCaseProducts || []) as CaseProductSource[],
-        (rawCasePackages || []) as CasePackageSource[]
+      let nextTargets = buildOrderTargets(
+        (rawCaseProducts || []) as Parameters<typeof buildOrderTargets>[0],
+        (rawCasePackages || []) as Parameters<typeof buildOrderTargets>[1]
       );
-      let missingNames: string[] = [];
 
-      if (initialSupplierId) {
-        const priced = await applyPurchasePriceFallback(
-          nextLines,
-          initialSupplierId
-        );
-        nextLines = priced.lines;
-        missingNames = priced.missingProductNames;
-      }
+      const priced = await refreshPricesForTargets(
+        nextTargets,
+        formRef.current.order_date
+      );
+      nextTargets = priced.targets;
 
       if (cancelled) {
         return;
@@ -293,14 +285,11 @@ export default function NewOrderPage() {
 
       setSuppliers((supplierData || []) as Supplier[]);
       setCaseData(normalizedCase);
-      setLines(nextLines);
-      setMissingPriceNames(missingNames);
+      setTargets(nextTargets);
+      setMissingPriceNames(priced.missingProductNames);
       setWorkflow(workflowLoad.result);
       setForm((current) => ({
         ...current,
-        supplier_id: current.supplier_id || initialSupplierId,
-        order_no:
-          current.order_no || generateOrderNumber(normalizedCase.case_no),
         expected_delivery_date:
           current.expected_delivery_date ||
           normalizedCase.desired_delivery_date ||
@@ -316,24 +305,78 @@ export default function NewOrderPage() {
     };
   }, [caseId, caseIdError]);
 
-  async function refreshPurchasePricesForSupplier(supplierId: string) {
+  async function refreshPricesForTargets(
+    currentTargets: OrderTarget[],
+    orderDate: string
+  ): Promise<{ targets: OrderTarget[]; missingProductNames: string[] }> {
+    const bySupplier = new Map<string, string[]>();
+
+    for (const target of currentTargets) {
+      const supplierId = target.supplier_id.trim();
+      if (!supplierId) continue;
+      const list = bySupplier.get(supplierId) || [];
+      if (target.kind === "PRODUCT") {
+        if (!target.has_case_snapshot && target.product_id) {
+          list.push(target.product_id);
+        }
+      } else {
+        for (const item of target.items) {
+          if (!item.has_case_snapshot && item.product_id) {
+            list.push(item.product_id);
+          }
+        }
+      }
+      bySupplier.set(supplierId, list);
+    }
+
+    const unitPriceBySupplierProduct = new Map<string, Map<string, number>>();
+
+    await Promise.all(
+      Array.from(bySupplier.entries()).map(async ([supplierId, productIds]) => {
+        const unique = Array.from(new Set(productIds));
+        if (unique.length === 0) {
+          unitPriceBySupplierProduct.set(supplierId, new Map());
+          return;
+        }
+        const priceResult = await fetchActivePurchaseUnitPrices(supabase, {
+          productIds: unique,
+          supplierId,
+          asOfDate: orderDate || getTodayString(),
+        });
+        if (priceResult.error) {
+          console.warn(
+            "[orders/new] 価格マスタ取得エラー:",
+            priceResult.error
+          );
+        }
+        unitPriceBySupplierProduct.set(
+          supplierId,
+          priceResult.unitPriceByProductId
+        );
+      })
+    );
+
+    return applySupplierMasterUnitPrices(
+      currentTargets,
+      unitPriceBySupplierProduct
+    );
+  }
+
+  async function runPriceRefresh(
+    nextTargets: OrderTarget[],
+    orderDate: string
+  ) {
     const requestId = ++priceRequestIdRef.current;
     setPriceLoading(true);
     setSubmitError("");
     setMissingPriceNames([]);
 
     try {
-      const priced = await applyPurchasePriceFallback(
-        linesRef.current,
-        supplierId
-      );
-
-      // より新しい仕入先変更が走っている場合は結果を捨てる
+      const priced = await refreshPricesForTargets(nextTargets, orderDate);
       if (requestId !== priceRequestIdRef.current) {
         return;
       }
-
-      setLines(priced.lines);
+      setTargets(priced.targets);
       setMissingPriceNames(priced.missingProductNames);
     } finally {
       if (requestId === priceRequestIdRef.current) {
@@ -342,7 +385,7 @@ export default function NewOrderPage() {
     }
   }
 
-  async function handleChange(
+  async function handleFormChange(
     event: ChangeEvent<
       HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
     >
@@ -350,21 +393,80 @@ export default function NewOrderPage() {
     const { name, value } = event.target;
     setForm((current) => ({ ...current, [name]: value }));
 
-    // 仕入先選択・変更時: スナップショットがない明細のみ価格マスタを再取得
-    if (name === "supplier_id") {
-      await refreshPurchasePricesForSupplier(value);
+    if (name === "order_date") {
+      const cleared = clearNonSnapshotPricesForSupplierChange(
+        targetsRef.current,
+        { clearAllNonSnapshot: true }
+      );
+      setTargets(cleared);
+      await runPriceRefresh(cleared, value);
     }
   }
 
-  function handleLineChange(
+  async function handleProductSupplierChange(
+    localId: string,
+    supplierId: string
+  ) {
+    const next = targetsRef.current.map((target) =>
+      target.kind === "PRODUCT" && target.local_id === localId
+        ? { ...target, supplier_id: supplierId }
+        : target
+    );
+    const cleared = clearNonSnapshotPricesForSupplierChange(next, {
+      productLocalId: localId,
+    });
+    setTargets(cleared);
+    await runPriceRefresh(cleared, formRef.current.order_date);
+  }
+
+  async function handlePackageSupplierChange(
+    localId: string,
+    supplierId: string
+  ) {
+    const next = targetsRef.current.map((target) =>
+      target.kind === "PACKAGE" && target.local_id === localId
+        ? { ...target, supplier_id: supplierId }
+        : target
+    );
+    const cleared = clearNonSnapshotPricesForSupplierChange(next, {
+      packageLocalId: localId,
+    });
+    setTargets(cleared);
+    await runPriceRefresh(cleared, formRef.current.order_date);
+  }
+
+  function handleProductFieldChange(
     localId: string,
     field: "quantity" | "unit_price" | "memo",
     value: string
   ) {
-    setLines((current) =>
-      current.map((line) =>
-        line.local_id === localId ? { ...line, [field]: value } : line
+    setTargets((current) =>
+      current.map((target) =>
+        target.kind === "PRODUCT" && target.local_id === localId
+          ? { ...target, [field]: value }
+          : target
       )
+    );
+  }
+
+  function handlePackageItemFieldChange(
+    packageLocalId: string,
+    itemLocalId: string,
+    field: "quantity" | "unit_price" | "memo",
+    value: string
+  ) {
+    setTargets((current) =>
+      current.map((target) => {
+        if (target.kind !== "PACKAGE" || target.local_id !== packageLocalId) {
+          return target;
+        }
+        return {
+          ...target,
+          items: target.items.map((item) =>
+            item.local_id === itemLocalId ? { ...item, [field]: value } : item
+          ),
+        };
+      })
     );
   }
 
@@ -387,16 +489,6 @@ export default function NewOrderPage() {
       return;
     }
 
-    if (!form.supplier_id) {
-      setSubmitError("仕入先を選択してください。");
-      return;
-    }
-
-    if (!form.order_no.trim()) {
-      setSubmitError("発注番号を入力してください。");
-      return;
-    }
-
     if (!form.order_date) {
       setSubmitError("発注日を入力してください。");
       return;
@@ -410,35 +502,10 @@ export default function NewOrderPage() {
       return;
     }
 
-    if (lines.length === 0) {
-      setSubmitError("発注明細がありません。案件に商品を追加してください。");
+    const validated = validateOrderTargetsForSave(targets);
+    if (!validated.ok) {
+      setSubmitError(validated.error_message);
       return;
-    }
-
-    for (const line of lines) {
-      if (!line.product_id) {
-        setSubmitError("商品が紐づいていない明細があります。");
-        return;
-      }
-      if (parseOrderQuantity(line.quantity) == null) {
-        setSubmitError(
-          `「${line.product_name || "名称未設定"}」の数量は1以上の整数で入力してください。`
-        );
-        return;
-      }
-      if (isUnitPriceUnset(line.unit_price)) {
-        setSubmitError(
-          `「${line.product_name || "名称未設定"}」の仕入単価が未設定です。単価を入力してください。`
-        );
-        return;
-      }
-      const unit = parseUnitPriceInput(line.unit_price);
-      if (unit == null || unit < 0) {
-        setSubmitError(
-          `「${line.product_name || "名称未設定"}」の仕入単価は0以上で入力してください。`
-        );
-        return;
-      }
     }
 
     if (unsetPriceLines.length > 0) {
@@ -463,9 +530,19 @@ export default function NewOrderPage() {
       }
     }
 
-    if (orderAmount <= 0) {
-      setSubmitError("発注金額は1円以上になるよう明細を入力してください。");
+    const buckets = groupLinesBySupplier(flattenOrderTargets(targets));
+    if (buckets.length === 0) {
+      setSubmitError("仕入先を選択してください。");
       return;
+    }
+
+    if (buckets.length > 1) {
+      const ok = window.confirm(
+        `仕入先が${buckets.length}社に分かれています。発注を${buckets.length}件作成します。よろしいですか？`
+      );
+      if (!ok) {
+        return;
+      }
     }
 
     if (submitting) {
@@ -474,97 +551,58 @@ export default function NewOrderPage() {
 
     setSubmitting(true);
 
-    const { data: duplicateOrder, error: duplicateError } = await supabase
-      .from("orders")
-      .select("id")
-      .eq("order_no", form.order_no.trim())
-      .maybeSingle();
-
-    if (duplicateError) {
-      setSubmitError(`発注番号の確認に失敗しました：${duplicateError.message}`);
-      setSubmitting(false);
-      return;
-    }
-
-    if (duplicateOrder) {
-      setSubmitError(
-        "同じ発注番号がすでに登録されています。別の発注番号を入力してください。"
-      );
-      setSubmitting(false);
-      return;
-    }
-
     const today = getTodayString();
     const deliveredDate = resolveDeliveredDate(form.status, null, today);
+    const nextCaseStatus = getCaseStatusFromOrderStatus(form.status);
+    const orderNos = generateUniqueOrderNumbers(
+      caseData.case_no,
+      buckets.length
+    );
 
-    const { data: insertedOrder, error: orderError } = await supabase
-      .from("orders")
-      .insert({
-        case_id: caseData.id,
-        supplier_id: form.supplier_id,
-        order_no: form.order_no.trim(),
+    const result = await submitPurchaseOrders({
+      caseId: caseData.id,
+      idempotencyKey: createIdempotencyKey(),
+      body: {
         order_date: form.order_date,
         expected_delivery_date: form.expected_delivery_date || null,
         delivered_date: deliveredDate,
-        order_amount: orderAmount,
         status: form.status,
         memo: form.memo.trim() || null,
-      })
-      .select("id")
-      .single();
-
-    if (orderError || !insertedOrder) {
-      setSubmitError(
-        `発注登録に失敗しました：${
-          orderError?.message || "登録結果を取得できませんでした"
-        }`
-      );
-      setSubmitting(false);
-      return;
-    }
-
-    const orderId = insertedOrder.id as string;
-    const itemPayload = lines.map((line, index) => {
-      const quantity = parseOrderQuantity(line.quantity) as number;
-      const unitPrice = Math.round(
-        parseUnitPriceInput(line.unit_price) as number
-      );
-      return {
-        order_id: orderId,
-        product_id: line.product_id,
-        case_product_id: line.case_product_id,
-        quantity,
-        unit_price: unitPrice,
-        amount: calcLineAmount(quantity, unitPrice),
-        memo: line.memo.trim() || null,
-        sort_order: index,
-      };
+        case_status: nextCaseStatus,
+        orders: buckets.map((bucket, index) => ({
+          supplier_id: bucket.supplier_id,
+          order_no: orderNos[index],
+          items: bucket.lines.map((line, sortOrder) => {
+            const quantity = parseOrderQuantity(line.quantity) as number;
+            const unitPrice = Math.round(
+              parseUnitPriceInput(line.unit_price) as number
+            );
+            return {
+              product_id: line.product_id,
+              case_product_id: line.case_product_id,
+              quantity,
+              unit_price: unitPrice,
+              memo: line.memo.trim() || null,
+              sort_order: sortOrder,
+            };
+          }),
+        })),
+      },
     });
 
-    const itemsResult = await insertOrderItems(itemPayload);
-    if (itemsResult.error) {
-      await supabase.from("orders").delete().eq("id", orderId);
-      setSubmitError(`発注明細の保存に失敗しました：${itemsResult.error}`);
+    if (!result.ok) {
+      setSubmitError(result.error_message);
       setSubmitting(false);
       return;
-    }
-
-    const nextCaseStatus = getCaseStatusFromOrderStatus(form.status);
-    if (nextCaseStatus) {
-      const { error: caseStatusError } = await supabase
-        .from("cases")
-        .update({ status: nextCaseStatus })
-        .eq("id", caseData.id);
-
-      if (caseStatusError) {
-        window.alert(
-          `発注は登録されましたが、案件ステータスの更新に失敗しました。\n${caseStatusError.message}`
-        );
-      }
     }
 
     setSubmitting(false);
-    router.push(`/orders/${orderId}`);
+    const firstOrderId = result.orders[0]?.id;
+    if (firstOrderId) {
+      router.push(`/orders/${firstOrderId}`);
+    } else {
+      router.push(`/cases/${caseData.id}`);
+    }
     router.refresh();
   }
 
@@ -627,10 +665,9 @@ export default function NewOrderPage() {
 
         <section className="rounded-xl bg-white p-5 shadow-sm md:p-6">
           <h2 className="mb-5 text-lg font-bold text-gray-900">発注対象案件</h2>
-          <div className="grid gap-5 md:grid-cols-4">
+          <div className="grid gap-5 md:grid-cols-3">
             <Info label="案件番号" value={caseData.case_no} />
             <Info label="顧客名" value={caseData.customer_name} />
-            <Info label="発注区分" value={caseData.order_type} />
             <Info
               label="案件希望納期"
               value={formatDate(caseData.desired_delivery_date)}
@@ -666,13 +703,13 @@ export default function NewOrderPage() {
             </div>
           ) : null}
 
-          {!form.supplier_id ? (
+          {missingSupplierTargets.length > 0 ? (
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-              仕入先を選択してください。選択後、未設定の明細に価格マスタ（PRODUCT）の単価を反映します。
+              仕入先未選択の商品／パッケージがあります。各行で仕入先を選択してください。
             </div>
           ) : null}
 
-          {form.supplier_id &&
+          {missingSupplierTargets.length === 0 &&
           (missingPriceNames.length > 0 || unsetPriceLines.length > 0) ? (
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
               <p className="font-semibold">
@@ -695,52 +732,23 @@ export default function NewOrderPage() {
             </div>
           ) : null}
 
+          {supplierBuckets.length > 1 ? (
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+              仕入先が{supplierBuckets.length}
+              社に分かれています。保存すると発注が
+              {supplierBuckets.length}件作成されます。
+            </div>
+          ) : null}
+
           <div className="grid gap-6 md:grid-cols-2">
-            <Field
-              label="仕入先"
-              required
-              description="発注時に必須です。販売店の初期仕入先がある場合のみ自動選択されます。"
-            >
-              <select
-                name="supplier_id"
-                value={form.supplier_id}
-                onChange={handleChange}
-                required
-                disabled={submitting || priceLoading}
-                className={inputClassName}
-              >
-                <option value="">仕入先を選択</option>
-                {suppliers.map((supplier) => (
-                  <option key={supplier.id} value={supplier.id}>
-                    {supplier.name || "名称未設定"}
-                  </option>
-                ))}
-              </select>
-            </Field>
-
-            <Field
-              label="発注番号"
-              required
-              description="自動採番されています。必要に応じて変更できます。"
-            >
-              <input
-                type="text"
-                name="order_no"
-                value={form.order_no}
-                onChange={handleChange}
-                disabled={submitting}
-                className={inputClassName}
-              />
-            </Field>
-
             <Field label="発注日" required>
               <input
                 type="date"
                 name="order_date"
                 value={form.order_date}
-                onChange={handleChange}
+                onChange={handleFormChange}
                 required
-                disabled={submitting}
+                disabled={submitting || priceLoading}
                 className={inputClassName}
               />
             </Field>
@@ -750,7 +758,7 @@ export default function NewOrderPage() {
                 type="date"
                 name="expected_delivery_date"
                 value={form.expected_delivery_date}
-                onChange={handleChange}
+                onChange={handleFormChange}
                 disabled={submitting}
                 className={inputClassName}
               />
@@ -760,7 +768,7 @@ export default function NewOrderPage() {
               <select
                 name="status"
                 value={form.status}
-                onChange={handleChange}
+                onChange={handleFormChange}
                 disabled={submitting}
                 className={inputClassName}
               >
@@ -782,201 +790,38 @@ export default function NewOrderPage() {
           <div>
             <h3 className="mb-3 text-base font-bold text-gray-900">発注明細</h3>
             <p className="mb-3 text-xs text-gray-500">
-              PRODUCTは案件商品から、PACKAGEは構成品のみ展開します（パッケージヘッダは含みません）。
-              単価優先: 案件スナップショット → 仕入先の価格マスタ（PRODUCT） → 手入力。未設定単価は保存できません。
+              PRODUCTは商品行ごと、PACKAGEはパッケージ単位で仕入先を選択します（構成品に仕入先選択はありません）。
+              初期値は各マスタの標準仕入先です。単価優先: 案件スナップショット →
+              選択仕入先の価格マスタ → 手入力。
             </p>
-            {lines.length === 0 ? (
+            {targets.length === 0 ? (
               <div className="rounded-lg border border-dashed border-gray-200 bg-[#f7f7f5] px-4 py-8 text-center text-sm text-gray-500">
                 案件に商品／パッケージ構成がありません。商品タブで追加してください。
               </div>
             ) : (
-              <>
-                {/* SP: カード */}
-                <div className="space-y-3 md:hidden">
-                  {lines.map((line) => {
-                    const qty = parseOrderQuantity(line.quantity) ?? 0;
-                    const unit = parseUnitPriceInput(line.unit_price);
-                    const amount =
-                      unit == null || unit < 0
-                        ? 0
-                        : calcLineAmount(qty, unit);
-                    return (
-                      <div
-                        key={line.local_id}
-                        className="rounded-lg border border-gray-200 p-3"
-                      >
-                        <p className="text-sm font-semibold text-gray-900">
-                          {line.product_name || "-"}
-                        </p>
-                        <p className="mt-0.5 text-xs text-gray-500">
-                          {line.model_no || "-"}
-                          {line.source === "PACKAGE_ITEM"
-                            ? " · パッケージ構成"
-                            : ""}
-                          {line.has_case_snapshot ? " · 既存単価" : ""}
-                        </p>
-                        <div className="mt-3 grid grid-cols-2 gap-3">
-                          <label className="block">
-                            <span className="text-xs font-bold text-gray-600">
-                              数量
-                            </span>
-                            <input
-                              type="text"
-                              inputMode="numeric"
-                              value={line.quantity}
-                              onChange={(e) =>
-                                handleLineChange(
-                                  line.local_id,
-                                  "quantity",
-                                  e.target.value
-                                )
-                              }
-                              disabled={submitting}
-                              className={`${inputClassName} mt-1`}
-                            />
-                          </label>
-                          <label className="block">
-                            <span className="text-xs font-bold text-gray-600">
-                              仕入単価
-                            </span>
-                            <input
-                              type="text"
-                              inputMode="numeric"
-                              value={line.unit_price}
-                              placeholder="未設定"
-                              onChange={(e) =>
-                                handleLineChange(
-                                  line.local_id,
-                                  "unit_price",
-                                  e.target.value
-                                )
-                              }
-                              disabled={submitting}
-                              className={`${inputClassName} mt-1 text-right`}
-                            />
-                          </label>
-                        </div>
-                        <p className="mt-2 text-right text-sm font-semibold text-gray-900">
-                          {isUnitPriceUnset(line.unit_price)
-                            ? "—"
-                            : formatYen(amount)}
-                        </p>
-                        <input
-                          type="text"
-                          value={line.memo}
-                          placeholder="備考"
-                          onChange={(e) =>
-                            handleLineChange(
-                              line.local_id,
-                              "memo",
-                              e.target.value
-                            )
-                          }
-                          disabled={submitting}
-                          className={`${inputClassName} mt-2`}
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* PC: 表 */}
-                <div className="hidden overflow-x-auto rounded-lg border border-gray-200 md:block">
-                  <table className="w-full min-w-[720px] text-left text-sm">
-                    <thead className="border-b bg-[#f7f7f5] text-gray-500">
-                      <tr>
-                        <th className="px-3 py-3 font-medium">商品</th>
-                        <th className="px-3 py-3 font-medium">型番</th>
-                        <th className="px-3 py-3 font-medium">数量</th>
-                        <th className="px-3 py-3 font-medium">仕入単価</th>
-                        <th className="px-3 py-3 font-medium">金額</th>
-                        <th className="px-3 py-3 font-medium">備考</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {lines.map((line) => {
-                        const qty = parseOrderQuantity(line.quantity) ?? 0;
-                        const unit = parseUnitPriceInput(line.unit_price);
-                        const amount =
-                          unit == null || unit < 0
-                            ? 0
-                            : calcLineAmount(qty, unit);
-                        return (
-                          <tr
-                            key={line.local_id}
-                            className="border-b last:border-b-0"
-                          >
-                            <td className="px-3 py-3 text-gray-900">
-                              {line.product_name || "-"}
-                              {line.source === "PACKAGE_ITEM" ? (
-                                <span className="mt-0.5 block text-xs text-gray-500">
-                                  パッケージ構成
-                                </span>
-                              ) : null}
-                            </td>
-                            <td className="px-3 py-3 text-gray-700">
-                              {line.model_no || "-"}
-                            </td>
-                            <td className="px-3 py-3">
-                              <input
-                                type="text"
-                                inputMode="numeric"
-                                value={line.quantity}
-                                onChange={(e) =>
-                                  handleLineChange(
-                                    line.local_id,
-                                    "quantity",
-                                    e.target.value
-                                  )
-                                }
-                                disabled={submitting}
-                                className={`${inputClassName} w-24`}
-                              />
-                            </td>
-                            <td className="px-3 py-3">
-                              <input
-                                type="text"
-                                inputMode="numeric"
-                                value={line.unit_price}
-                                placeholder="未設定"
-                                onChange={(e) =>
-                                  handleLineChange(
-                                    line.local_id,
-                                    "unit_price",
-                                    e.target.value
-                                  )
-                                }
-                                disabled={submitting}
-                                className={`${inputClassName} w-32 text-right`}
-                              />
-                            </td>
-                            <td className="px-3 py-3 text-right text-gray-900">
-                              {isUnitPriceUnset(line.unit_price)
-                                ? "—"
-                                : formatYen(amount)}
-                            </td>
-                            <td className="px-3 py-3">
-                              <input
-                                type="text"
-                                value={line.memo}
-                                onChange={(e) =>
-                                  handleLineChange(
-                                    line.local_id,
-                                    "memo",
-                                    e.target.value
-                                  )
-                                }
-                                disabled={submitting}
-                                className={inputClassName}
-                              />
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </>
+              <div className="space-y-4">
+                {targets.map((target) =>
+                  target.kind === "PRODUCT" ? (
+                    <ProductTargetCard
+                      key={target.local_id}
+                      target={target}
+                      suppliers={suppliers}
+                      disabled={submitting || priceLoading}
+                      onSupplierChange={handleProductSupplierChange}
+                      onFieldChange={handleProductFieldChange}
+                    />
+                  ) : (
+                    <PackageTargetCard
+                      key={target.local_id}
+                      target={target}
+                      suppliers={suppliers}
+                      disabled={submitting || priceLoading}
+                      onSupplierChange={handlePackageSupplierChange}
+                      onItemFieldChange={handlePackageItemFieldChange}
+                    />
+                  )
+                )}
+              </div>
             )}
           </div>
 
@@ -984,7 +829,7 @@ export default function NewOrderPage() {
             <textarea
               name="memo"
               value={form.memo}
-              onChange={handleChange}
+              onChange={handleFormChange}
               rows={4}
               disabled={submitting}
               className={inputClassName}
@@ -1003,12 +848,16 @@ export default function NewOrderPage() {
               disabled={
                 submitting ||
                 priceLoading ||
-                lines.length === 0 ||
-                !form.supplier_id
+                targets.length === 0 ||
+                missingSupplierTargets.length > 0
               }
               className="inline-flex items-center justify-center rounded-lg bg-gray-900 px-6 py-3 text-sm font-bold text-white hover:bg-gray-700 disabled:cursor-not-allowed disabled:bg-gray-400"
             >
-              {submitting ? "登録しています..." : "発注を登録する"}
+              {submitting
+                ? "登録しています..."
+                : supplierBuckets.length > 1
+                  ? `発注を${supplierBuckets.length}件登録する`
+                  : "発注を登録する"}
             </button>
           </div>
         </form>
@@ -1017,62 +866,261 @@ export default function NewOrderPage() {
   );
 }
 
-type PurchasePriceApplyResult = {
-  lines: LineDraft[];
-  missingProductNames: string[];
-};
+function ProductTargetCard({
+  target,
+  suppliers,
+  disabled,
+  onSupplierChange,
+  onFieldChange,
+}: {
+  target: ProductOrderTarget;
+  suppliers: Supplier[];
+  disabled: boolean;
+  onSupplierChange: (localId: string, supplierId: string) => void;
+  onFieldChange: (
+    localId: string,
+    field: "quantity" | "unit_price" | "memo",
+    value: string
+  ) => void;
+}) {
+  const qty = parseOrderQuantity(target.quantity) ?? 0;
+  const unit = parseUnitPriceInput(target.unit_price);
+  const amount =
+    unit == null || unit < 0 ? 0 : calcLineAmount(qty, unit);
 
-/**
- * スナップショットがない明細のみ purchase_prices（PRODUCT）で補完。
- * 優先: 1.有効な案件スナップショット 2.価格マスタ 3.未設定（手入力）
- *
- * supplierId 未選択時は価格取得せず、スナップショットなし明細は未設定のまま。
- * 既存スナップショット（0円含む）は上書きしない。
- */
-async function applyPurchasePriceFallback(
-  lines: LineDraft[],
-  supplierId: string
-): Promise<PurchasePriceApplyResult> {
-  const targets = lines.filter(
-    (line) => !line.has_case_snapshot && Boolean(line.product_id)
+  return (
+    <div className="rounded-lg border border-gray-200 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <p className="text-sm font-semibold text-gray-900">
+            {target.product_name || "-"}
+          </p>
+          <p className="mt-0.5 text-xs text-gray-500">
+            {target.model_no || "-"}
+            {target.has_case_snapshot ? " · 既存単価" : ""}
+            {" · 単体商品"}
+          </p>
+        </div>
+        <label className="block min-w-[220px] flex-1">
+          <span className="text-xs font-bold text-gray-600">
+            仕入先<span className="ml-1 text-red-600">*</span>
+          </span>
+          <select
+            value={target.supplier_id}
+            onChange={(e) =>
+              void onSupplierChange(target.local_id, e.target.value)
+            }
+            disabled={disabled}
+            className={`${inputClassName} mt-1`}
+          >
+            <option value="">仕入先を選択</option>
+            {suppliers.map((supplier) => (
+              <option key={supplier.id} value={supplier.id}>
+                {supplier.name || "名称未設定"}
+                {target.default_supplier_id === supplier.id
+                  ? "（標準）"
+                  : ""}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
+        <label className="block">
+          <span className="text-xs font-bold text-gray-600">数量</span>
+          <input
+            type="text"
+            inputMode="numeric"
+            value={target.quantity}
+            onChange={(e) =>
+              onFieldChange(target.local_id, "quantity", e.target.value)
+            }
+            disabled={disabled}
+            className={`${inputClassName} mt-1`}
+          />
+        </label>
+        <label className="block">
+          <span className="text-xs font-bold text-gray-600">仕入単価</span>
+          <input
+            type="text"
+            inputMode="numeric"
+            value={target.unit_price}
+            placeholder="未設定"
+            onChange={(e) =>
+              onFieldChange(target.local_id, "unit_price", e.target.value)
+            }
+            disabled={disabled}
+            className={`${inputClassName} mt-1 text-right`}
+          />
+        </label>
+        <div>
+          <p className="text-xs font-bold text-gray-600">金額</p>
+          <p className="mt-3 text-sm font-semibold text-gray-900">
+            {isUnitPriceUnset(target.unit_price) ? "—" : formatYen(amount)}
+          </p>
+        </div>
+        <label className="block">
+          <span className="text-xs font-bold text-gray-600">備考</span>
+          <input
+            type="text"
+            value={target.memo}
+            onChange={(e) =>
+              onFieldChange(target.local_id, "memo", e.target.value)
+            }
+            disabled={disabled}
+            className={`${inputClassName} mt-1`}
+          />
+        </label>
+      </div>
+    </div>
   );
+}
 
-  if (targets.length === 0) {
-    return { lines, missingProductNames: [] };
-  }
+function PackageTargetCard({
+  target,
+  suppliers,
+  disabled,
+  onSupplierChange,
+  onItemFieldChange,
+}: {
+  target: PackageOrderTarget;
+  suppliers: Supplier[];
+  disabled: boolean;
+  onSupplierChange: (localId: string, supplierId: string) => void;
+  onItemFieldChange: (
+    packageLocalId: string,
+    itemLocalId: string,
+    field: "quantity" | "unit_price" | "memo",
+    value: string
+  ) => void;
+}) {
+  return (
+    <div className="rounded-lg border border-gray-200 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-2 border-b border-gray-100 pb-3">
+        <div>
+          <p className="text-sm font-semibold text-gray-900">
+            {target.package_name || "パッケージ"}
+          </p>
+          <p className="mt-0.5 text-xs text-gray-500">
+            パッケージ単位で仕入先を選択（構成品は引き継ぎ）
+          </p>
+        </div>
+        <label className="block min-w-[220px] flex-1">
+          <span className="text-xs font-bold text-gray-600">
+            仕入先<span className="ml-1 text-red-600">*</span>
+          </span>
+          <select
+            value={target.supplier_id}
+            onChange={(e) =>
+              void onSupplierChange(target.local_id, e.target.value)
+            }
+            disabled={disabled}
+            className={`${inputClassName} mt-1`}
+          >
+            <option value="">仕入先を選択</option>
+            {suppliers.map((supplier) => (
+              <option key={supplier.id} value={supplier.id}>
+                {supplier.name || "名称未設定"}
+                {target.default_supplier_id === supplier.id
+                  ? "（標準）"
+                  : ""}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
 
-  if (!supplierId) {
-    return {
-      lines: clearNonSnapshotUnitPrices(lines),
-      missingProductNames: [],
-    };
-  }
-
-  const priceResult = await fetchActivePurchaseUnitPrices(supabase, {
-    productIds: targets.map((line) => line.product_id),
-    supplierId,
-  });
-
-  if (priceResult.error) {
-    console.warn(
-      "[orders/new] 価格マスタフォールバック取得エラー:",
-      priceResult.error
-    );
-  }
-
-  const applied = applyMasterUnitPrices(
-    lines,
-    priceResult.unitPriceByProductId
+      <div className="mt-3 space-y-3">
+        {target.items.map((item) => {
+          const qty = parseOrderQuantity(item.quantity) ?? 0;
+          const unit = parseUnitPriceInput(item.unit_price);
+          const amount =
+            unit == null || unit < 0 ? 0 : calcLineAmount(qty, unit);
+          return (
+            <div
+              key={item.local_id}
+              className="rounded-md bg-[#f7f7f5] p-3"
+            >
+              <p className="text-sm font-medium text-gray-900">
+                {item.product_name || "-"}
+              </p>
+              <p className="mt-0.5 text-xs text-gray-500">
+                {item.model_no || "-"} · パッケージ構成
+                {item.has_case_snapshot ? " · 既存単価" : ""}
+                {" · 仕入先はパッケージに準拠"}
+              </p>
+              <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
+                <label className="block">
+                  <span className="text-xs font-bold text-gray-600">数量</span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={item.quantity}
+                    onChange={(e) =>
+                      onItemFieldChange(
+                        target.local_id,
+                        item.local_id,
+                        "quantity",
+                        e.target.value
+                      )
+                    }
+                    disabled={disabled}
+                    className={`${inputClassName} mt-1`}
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-xs font-bold text-gray-600">
+                    仕入単価
+                  </span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={item.unit_price}
+                    placeholder="未設定"
+                    onChange={(e) =>
+                      onItemFieldChange(
+                        target.local_id,
+                        item.local_id,
+                        "unit_price",
+                        e.target.value
+                      )
+                    }
+                    disabled={disabled}
+                    className={`${inputClassName} mt-1 text-right`}
+                  />
+                </label>
+                <div>
+                  <p className="text-xs font-bold text-gray-600">金額</p>
+                  <p className="mt-3 text-sm font-semibold text-gray-900">
+                    {isUnitPriceUnset(item.unit_price)
+                      ? "—"
+                      : formatYen(amount)}
+                  </p>
+                </div>
+                <label className="block">
+                  <span className="text-xs font-bold text-gray-600">備考</span>
+                  <input
+                    type="text"
+                    value={item.memo}
+                    onChange={(e) =>
+                      onItemFieldChange(
+                        target.local_id,
+                        item.local_id,
+                        "memo",
+                        e.target.value
+                      )
+                    }
+                    disabled={disabled}
+                    className={`${inputClassName} mt-1`}
+                  />
+                </label>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
-
-  if (applied.missingProductNames.length > 0) {
-    console.warn(
-      "[orders/new] 価格マスタ未取得（手入力待ち）:",
-      applied.missingProductNames
-    );
-  }
-
-  return applied;
 }
 
 function PageHeader({
