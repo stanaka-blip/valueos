@@ -263,6 +263,38 @@ export function groupLinesBySupplier(
   }));
 }
 
+/** UI表示用: OrderTarget を仕入先単位でグループ化（PACKAGE構造を維持）。空仕入先は含めない */
+export type SupplierTargetGroup = {
+  supplier_id: string;
+  targets: OrderTarget[];
+};
+
+export function groupOrderTargetsBySupplier(
+  targets: OrderTarget[]
+): SupplierTargetGroup[] {
+  const map = new Map<string, OrderTarget[]>();
+  for (const target of targets) {
+    const key = target.supplier_id.trim();
+    if (!key) continue;
+    const list = map.get(key) || [];
+    list.push(target);
+    map.set(key, list);
+  }
+  return Array.from(map.entries()).map(([supplier_id, groupTargets]) => ({
+    supplier_id,
+    targets: groupTargets,
+  }));
+}
+
+/** 発注書①…⑳（21件目以降は数字） */
+export function formatPurchaseOrderSheetLabel(indexOneBased: number): string {
+  const circled = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳";
+  if (indexOneBased >= 1 && indexOneBased <= 20) {
+    return `発注書${circled[indexOneBased - 1]}`;
+  }
+  return `発注書${indexOneBased}`;
+}
+
 /** 同一秒でも衝突しにくいよう、2件目以降に連番サフィックスを付与 */
 export function generateUniqueOrderNumbers(
   caseNo: string | null,

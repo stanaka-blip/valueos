@@ -241,7 +241,9 @@ export default function CaseDetailView({
             >
               商品追加
             </Link>
-            {workflow.canOrder ? (
+            {workflow.canOrder ||
+            (workflow.ruleKey === null &&
+              workflow.warnings.includes("決済区分が未設定です")) ? (
               <Link
                 href={`/cases/${caseData.id}/orders/new`}
                 className="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 transition hover:bg-gray-50"

@@ -69,10 +69,23 @@ assert(
   page.includes("asOfDate") && page.includes("runPriceRefresh")
 );
 assert(
-  "keeps settlement canOrder; no dealer",
+  "settlement unset warns but does not hard-block save",
   page.includes("loadCaseWorkflow") &&
-    page.includes("canOrder") &&
+    page.includes("isSettlementTypeUnset") &&
+    page.includes(
+      "決済区分が未設定です。発注はできますが、請求処理までに設定してください。"
+    ) &&
+    page.includes("orderBlockedBySettlementRule") &&
     !page.includes("/dealer/")
+);
+assert(
+  "groups order lines by supplier for display",
+  page.includes("groupOrderTargetsBySupplier") &&
+    page.includes("formatPurchaseOrderSheetLabel") &&
+    page.includes("発注番号:") &&
+    page.includes("発注金額合計:") &&
+    page.includes("明細件数:") &&
+    targets.includes("groupOrderTargetsBySupplier")
 );
 assert(
   "Japanese validation messages",
