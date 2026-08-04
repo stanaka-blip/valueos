@@ -174,6 +174,18 @@ export function deriveCaseLineAppendRequestId(
   );
 }
 
+/** 仕入発注一括作成用。他 gateway の request_id 名前空間と分離。 */
+export function derivePurchaseOrderCreateRequestId(
+  sessionId: string,
+  idempotencyKey: string
+): string {
+  return deriveNamespacedRequestId(
+    "purchase-order-create:v1",
+    sessionId,
+    idempotencyKey
+  );
+}
+
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 

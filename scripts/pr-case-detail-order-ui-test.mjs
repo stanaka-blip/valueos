@@ -24,10 +24,12 @@ function read(rel) {
 const pageSrc = read("app/cases/[id]/orders/new/page.tsx");
 const buildSrc = read("app/cases/[id]/buildOrderLines.ts");
 const pricesSrc = read("lib/purchasePrices.ts");
+const targetsSrc = read("app/cases/[id]/orders/orderTargets.ts");
 
 assert(
-  "page uses buildInitialOrderLines",
-  pageSrc.includes("buildInitialOrderLines")
+  "page uses buildOrderTargets (per-line/package supplier model)",
+  pageSrc.includes("buildOrderTargets") &&
+    targetsSrc.includes("buildOrderTargets")
 );
 assert(
   "page loads line_type and case_packages.quantity",
@@ -39,7 +41,8 @@ assert(
 assert(
   "page blocks unset unit price",
   pageSrc.includes("isUnitPriceUnset") &&
-    pageSrc.includes("仕入単価が未設定")
+    (pageSrc.includes("仕入単価が未設定") ||
+      targetsSrc.includes("仕入単価が未設定"))
 );
 assert(
   "page confirms real zero separately",
@@ -47,8 +50,10 @@ assert(
     pageSrc.includes("0円の明細があります")
 );
 assert(
-  "page requires supplier",
-  pageSrc.includes("仕入先を選択してください")
+  "page requires supplier (per target, not header)",
+  !pageSrc.includes('name="supplier_id"') &&
+    (pageSrc.includes("仕入先を選択してください") ||
+      targetsSrc.includes("仕入先を選択してください"))
 );
 assert(
   "build skips PACKAGE header",
