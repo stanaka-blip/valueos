@@ -3,7 +3,7 @@
  * Run: node --test scripts/pr-create-purchase-orders-rpc-static-test.mjs
  */
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 
@@ -18,12 +18,29 @@ const ROLLBACK = join(
 );
 const TYPES = join(ROOT, "lib/database.types.ts");
 const ORDER_NEW = join(ROOT, "app/cases/[id]/orders/new/page.tsx");
+const ORDER_TARGETS = join(ROOT, "app/cases/[id]/orders/orderTargets.ts");
+const SUBMIT_PO = join(
+  ROOT,
+  "app/cases/[id]/orders/new/submitPurchaseOrders.ts"
+);
+const PURCHASE_ORDERS_API = join(
+  ROOT,
+  "app/api/cases/[id]/purchase-orders/route.ts"
+);
+const CREATE_PO_CORE = join(
+  ROOT,
+  "lib/purchaseOrders/createPurchaseOrdersCore.ts"
+);
 const DEALER_DIR_MARKER = "app/dealer/";
 
 const sql = readFileSync(MIG, "utf8");
 const rollback = readFileSync(ROLLBACK, "utf8");
 const types = readFileSync(TYPES, "utf8");
 const orderNew = readFileSync(ORDER_NEW, "utf8");
+const orderTargets = readFileSync(ORDER_TARGETS, "utf8");
+const submitPo = readFileSync(SUBMIT_PO, "utf8");
+const purchaseOrdersApi = readFileSync(PURCHASE_ORDERS_API, "utf8");
+const createPoCore = readFileSync(CREATE_PO_CORE, "utf8");
 
 describe("create_purchase_orders migration contract", () => {
   it("defines ledger table and RPC", () => {
@@ -70,7 +87,7 @@ describe("create_purchase_orders migration contract", () => {
   });
 });
 
-describe("rollback / types / no UI in this PR", () => {
+describe("rollback / types / admin order UI+API path (PR #62)", () => {
   it("rollback drops function and ledger only", () => {
     assert.match(rollback, /DROP FUNCTION IF EXISTS public\.create_purchase_orders\(jsonb\)/);
     assert.match(rollback, /DROP TABLE IF EXISTS public\.purchase_order_create_requests/);
@@ -80,11 +97,25 @@ describe("rollback / types / no UI in this PR", () => {
     assert.match(types, /create_purchase_orders:\s*\{/);
   });
 
-  it("does not change admin order UI in this PR", () => {
-    // 旧UIの共通仕入先がまだ残っている = UI PR未着手の証
-    assert.match(orderNew, /name="supplier_id"/);
-    assert.match(orderNew, /dealers \(\s*default_supplier_id/);
-    assert.match(orderNew, /発注区分/);
+  it("admin order UI uses per-target supplier split and purchase-orders API", () => {
+    // 旧ヘッダー共通仕入先 / ディーラー既定 / 発注区分は廃止
+    assert.doesNotMatch(orderNew, /name="supplier_id"/);
+    assert.doesNotMatch(orderNew, /dealers \(\s*default_supplier_id/);
+    assert.doesNotMatch(orderNew, /発注区分/);
+
+    // 新UI: 行/パッケージ単位ターゲット + API 経由保存
+    assert.match(orderNew, /buildOrderTargets/);
+    assert.match(orderNew, /submitPurchaseOrders/);
+    assert.match(orderTargets, /groupLinesBySupplier|groupTargetsBySupplier/);
+    assert.match(orderTargets, /default_supplier_id/);
+    assert.match(submitPo, /\/api\/cases\/\$\{options\.caseId\}\/purchase-orders/);
+    assert.match(submitPo, /Idempotency-Key/);
+
+    // UI → API → RPC 経路ファイルが存在し、RPC を呼ぶ
+    assert.ok(existsSync(PURCHASE_ORDERS_API), "purchase-orders API route");
+    assert.ok(existsSync(CREATE_PO_CORE), "createPurchaseOrdersCore");
+    assert.match(purchaseOrdersApi, /createPurchaseOrdersByCaseId/);
+    assert.match(createPoCore, /\.rpc\(\s*"create_purchase_orders"/);
   });
 
   it("does not touch dealer paths in changed surface (static marker)", () => {
