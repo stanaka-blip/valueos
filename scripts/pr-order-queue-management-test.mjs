@@ -34,9 +34,20 @@ assert(
     page.includes("案件番号") &&
     page.includes("顧客名") &&
     page.includes("販売店") &&
-    page.includes("決済条件") &&
     page.includes("発注可否") &&
-    page.includes("発注登録")
+    page.includes("発注登録") &&
+    !page.includes(">決済条件<") &&
+    !page.includes("決済条件</th>")
+);
+assert(
+  "settlement_type loaded explicitly from case_settlements",
+  loader.includes("settlement_type") &&
+    loader.includes("case_settlements") &&
+    logic.includes("resolveOrderQueueSettlementLabel")
+);
+assert(
+  "construction overdue label",
+  page.includes("期限超過") && logic.includes("isConstructionDateOverdue")
 );
 assert(
   "queue uses construction_desired_date",
