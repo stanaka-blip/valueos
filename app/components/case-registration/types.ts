@@ -45,6 +45,7 @@ export type CaseFormState = {
   delivery_same_as_site: boolean;
   delivery_address: string;
   delivery_phone: string;
+  receiver_name: string;
 };
 
 export type LineDraft = {
@@ -96,6 +97,7 @@ export function createInitialCaseForm(): CaseFormState {
     delivery_same_as_site: true,
     delivery_address: "",
     delivery_phone: "",
+    receiver_name: "",
   };
 }
 

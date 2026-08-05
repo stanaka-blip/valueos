@@ -180,6 +180,15 @@ export default function Step1CaseForm({
             onChange={(e) => set("delivery_phone", e.target.value)}
           />
         </label>
+
+        <label className="block text-sm font-medium text-gray-700 md:col-span-2">
+          荷受け担当者
+          <input
+            className={inputClass}
+            value={caseForm.receiver_name}
+            onChange={(e) => set("receiver_name", e.target.value)}
+          />
+        </label>
       </div>
 
       <div className="flex justify-end">

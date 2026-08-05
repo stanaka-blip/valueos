@@ -236,6 +236,13 @@ export default async function OrderDetailPage({
             >
               発注書PDF
             </Link>
+            <Link
+              href={`/orders/${order.id}/delivery-print`}
+              target="_blank"
+              className="rounded-lg border border-gray-900 bg-white px-4 py-2 text-sm font-bold text-gray-900 hover:bg-gray-50"
+            >
+              納品書PDF
+            </Link>
           </div>
         </div>
       </header>
