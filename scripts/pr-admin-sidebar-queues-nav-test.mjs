@@ -79,11 +79,14 @@ const placeholder = read("app/queues/QueuePlaceholder.tsx");
 assert(
   "placeholders say 準備中 for unfinished queues",
   placeholder.includes("準備中") &&
-    deliveriesQ.includes("納品管理") &&
     collectionsQ.includes("回収管理") &&
-    // 発注管理は PR #66 で実装済みのため準備中プレースホルダーではない
+    collectionsQ.includes("QueuePlaceholder") &&
+    // 発注管理・納品管理は実装済みのため準備中プレースホルダーではない
     !ordersQ.includes("準備中") &&
-    ordersQ.includes("発注管理")
+    ordersQ.includes("発注管理") &&
+    !deliveriesQ.includes("準備中") &&
+    deliveriesQ.includes("納品管理") &&
+    !deliveriesQ.includes("QueuePlaceholder")
 );
 
 assert(
