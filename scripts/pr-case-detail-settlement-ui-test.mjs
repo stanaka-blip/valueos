@@ -94,7 +94,9 @@ assert(
   workflowSrc.includes("resolveWorkflowPanelFieldVisibility") &&
     workflowSrc.includes("buildWorkflowPanelSaveBody") &&
     workflowSrc.includes("visibility.showLoanStatus") &&
-    workflowSrc.includes("visibility.showCardStatus")
+    workflowSrc.includes("visibility.showCardStatus") &&
+    workflowSrc.includes("resolveLatestConfirmedPaymentDate") &&
+    workflowSrc.includes("resolveLatestOrderDeliveryDate")
 );
 
 // dealer / registration / migration untouched

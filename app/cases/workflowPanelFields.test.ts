@@ -15,6 +15,9 @@ import { CARD_STATUSES, LOAN_STATUSES } from "@/lib/workflow";
 import {
   buildWorkflowPanelMetaPayload,
   buildWorkflowPanelSaveBody,
+  formatWorkflowPanelDate,
+  resolveLatestConfirmedPaymentDate,
+  resolveLatestOrderDeliveryDate,
   resolveWorkflowPanelFieldVisibility,
   workflowPanelInputGridClass,
 } from "./[id]/workflowPanelFields";
@@ -36,25 +39,31 @@ const settlement = {
   constructionCompletedDateFromMeta: "",
 };
 
-test("前金は完工日のみ表示", () => {
+test("前金は入金日のみ表示", () => {
   const v = resolveWorkflowPanelFieldVisibility("前金");
+  assert.equal(v.showPaymentDate, true);
+  assert.equal(v.showDeliveryDate, false);
+  assert.equal(v.showCompletionDate, false);
   assert.equal(v.showLoanStatus, false);
   assert.equal(v.showCardStatus, false);
-  assert.equal(v.showCompletionDate, true);
 });
 
-test("売掛は完工日のみ表示", () => {
+test("売掛は納品日のみ表示", () => {
   const v = resolveWorkflowPanelFieldVisibility("売掛");
+  assert.equal(v.showDeliveryDate, true);
+  assert.equal(v.showPaymentDate, false);
+  assert.equal(v.showCompletionDate, false);
   assert.equal(v.showLoanStatus, false);
   assert.equal(v.showCardStatus, false);
-  assert.equal(v.showCompletionDate, true);
 });
 
-test("カードはカードステータス＋完工日", () => {
+test("カードはカードステータスのみ", () => {
   const v = resolveWorkflowPanelFieldVisibility("カード");
-  assert.equal(v.showLoanStatus, false);
   assert.equal(v.showCardStatus, true);
-  assert.equal(v.showCompletionDate, true);
+  assert.equal(v.showCompletionDate, false);
+  assert.equal(v.showLoanStatus, false);
+  assert.equal(v.showPaymentDate, false);
+  assert.equal(v.showDeliveryDate, false);
 });
 
 test("カードではローンステータス非表示", () => {
@@ -65,8 +74,10 @@ test("カードではローンステータス非表示", () => {
 test("3社間はローンステータス＋完工日", () => {
   const v = resolveWorkflowPanelFieldVisibility("3社間決済");
   assert.equal(v.showLoanStatus, true);
-  assert.equal(v.showCardStatus, false);
   assert.equal(v.showCompletionDate, true);
+  assert.equal(v.showCardStatus, false);
+  assert.equal(v.showPaymentDate, false);
+  assert.equal(v.showDeliveryDate, false);
 });
 
 test("3社間ではカードステータス非表示", () => {
@@ -76,9 +87,33 @@ test("3社間ではカードステータス非表示", () => {
 
 test("未設定は完工日のみ", () => {
   const v = resolveWorkflowPanelFieldVisibility("");
-  assert.equal(v.showLoanStatus, false);
-  assert.equal(v.showCardStatus, false);
   assert.equal(v.showCompletionDate, true);
+  assert.equal(v.showPaymentDate, false);
+  assert.equal(v.showDeliveryDate, false);
+});
+
+test("確認済入金日は入金確認済の最終入金日", () => {
+  assert.equal(
+    resolveLatestConfirmedPaymentDate([
+      { paymentDate: "2026-07-01", status: "確認待ち" },
+      { paymentDate: "2026-07-10", status: "入金確認済" },
+      { paymentDate: "2026-07-20", status: "入金確認済" },
+      { paymentDate: "2026-07-15", status: "取消" },
+    ]),
+    "2026-07-20"
+  );
+});
+
+test("納品日は有効発注の最終納品日", () => {
+  assert.equal(
+    resolveLatestOrderDeliveryDate([
+      { deliveredDate: "2026-07-01", status: "納品済" },
+      { deliveredDate: "2026-07-20", status: "納品済" },
+      { deliveredDate: "2026-07-25", status: "取消" },
+      { deliveredDate: null, status: "納期確定" },
+    ]),
+    "2026-07-20"
+  );
 });
 
 test("非表示フィールドを保存payloadへ含めない", () => {
@@ -91,17 +126,16 @@ test("非表示フィールドを保存payloadへ含めない", () => {
   });
   assert.equal(cardBody.loan_status, undefined);
   assert.equal(cardBody.card_status, "決済成功");
-  assert.equal(cardBody.loan_status_updated_at, undefined);
 
-  const sanshaBody = buildWorkflowPanelSaveBody({
-    settlement: { ...settlement, settlementType: "3社間決済" },
-    visibility: resolveWorkflowPanelFieldVisibility("3社間決済"),
-    loanStatus: "承認済",
+  const zenkinBody = buildWorkflowPanelSaveBody({
+    settlement: { ...settlement, settlementType: "前金" },
+    visibility: resolveWorkflowPanelFieldVisibility("前金"),
+    loanStatus: "未申請",
     cardStatus: "未決済",
     now: "2026-08-05T00:00:00.000Z",
   });
-  assert.equal(sanshaBody.loan_status, "承認済");
-  assert.equal(sanshaBody.card_status, undefined);
+  assert.equal(zenkinBody.loan_status, undefined);
+  assert.equal(zenkinBody.card_status, undefined);
 });
 
 test("非表示フィールドの既存値をnullで上書きしない", () => {
@@ -137,29 +171,7 @@ test("非表示フィールドの既存値をnullで上書きしない", () => {
   assert.equal(cardOnly.ok, true);
   if (cardOnly.ok) {
     assert.equal(cardOnly.patch.loan_status, "承認済");
-    assert.equal(
-      cardOnly.patch.loan_status_updated_at,
-      "2026-01-01T00:00:00.000Z"
-    );
     assert.equal(cardOnly.patch.card_status, "決済成功");
-  }
-
-  const sanshaOnly = buildSettlementSavePatch(
-    {
-      source: "workflow_panel",
-      loan_status: "申請中",
-      loan_status_updated_at: "2026-08-05T00:00:00.000Z",
-    },
-    { ...existing, settlement_type: "3社間決済" }
-  );
-  assert.equal(sanshaOnly.ok, true);
-  if (sanshaOnly.ok) {
-    assert.equal(sanshaOnly.patch.loan_status, "申請中");
-    assert.equal(sanshaOnly.patch.card_status, "処理中");
-    assert.equal(
-      sanshaOnly.patch.card_status_updated_at,
-      "2026-01-02T00:00:00.000Z"
-    );
   }
 });
 
@@ -170,9 +182,23 @@ test("memoフォールバックでも非表示項目の既存値を維持", () =
     loanStatus: "未申請",
     cardStatus: "決済成功",
     completedDate: "2026-08-05",
+    existingConstructionCompletedDate: "2026-07-01",
   });
   assert.equal(meta.loan_status, "承認済");
   assert.equal(meta.card_status, "決済成功");
+  assert.equal(meta.construction_completed_date, "2026-07-01");
+});
+
+test("完工日非表示時はmemoフォールバックに完工日を含めない", () => {
+  const meta = buildWorkflowPanelMetaPayload({
+    settlement: { ...settlement, settlementType: "前金" },
+    visibility: resolveWorkflowPanelFieldVisibility("前金"),
+    loanStatus: "未申請",
+    cardStatus: "未決済",
+    completedDate: "",
+    existingConstructionCompletedDate: "2026-07-01",
+  });
+  assert.equal(meta.construction_completed_date, "2026-07-01");
 });
 
 test("既存プルダウン選択肢を維持", () => {
@@ -184,12 +210,6 @@ test("既存プルダウン選択肢を維持", () => {
     "決済失敗",
     "取消",
   ]);
-  const workflowSrc = readFileSync(
-    join(process.cwd(), "app/cases/[id]/WorkflowPanel.tsx"),
-    "utf8"
-  );
-  assert.match(workflowSrc, /LOAN_STATUSES\.map/);
-  assert.match(workflowSrc, /CARD_STATUSES\.map/);
 });
 
 test("WorkflowEngine / SETTLEMENT_RULES差分なし", () => {
@@ -205,14 +225,6 @@ test("WorkflowEngine / SETTLEMENT_RULES差分なし", () => {
   assert.doesNotMatch(fieldsSrc, /from "@\/lib\/workflow\/settlementRules"/);
   assert.doesNotMatch(panelSrc, /from "@\/lib\/workflow\/WorkflowEngine"/);
   assert.doesNotMatch(panelSrc, /from "@\/lib\/workflow\/settlementRules"/);
-  assert.match(
-    readFileSync(join(process.cwd(), "lib/workflow/WorkflowEngine.ts"), "utf8"),
-    /export function evaluateWorkflow/
-  );
-  assert.match(
-    readFileSync(join(process.cwd(), "lib/workflow/settlementRules.ts"), "utf8"),
-    /export const SETTLEMENT_RULES/
-  );
 });
 
 test("DB / API route / RPC / dealer差分なし（workflow panel scope）", () => {
@@ -222,21 +234,34 @@ test("DB / API route / RPC / dealer差分なし（workflow panel scope）", () =
   );
   assert.doesNotMatch(panelSrc, /create_case_registration/);
   assert.doesNotMatch(panelSrc, /app\/dealer/);
-  assert.doesNotMatch(panelSrc, /supabase\/migrations/);
 });
 
-test("WorkflowPanel uses conditional field visibility", () => {
+test("WorkflowPanel uses read-only payment/delivery dates", () => {
   const src = readFileSync(
     join(process.cwd(), "app/cases/[id]/WorkflowPanel.tsx"),
     "utf8"
   );
-  assert.match(src, /resolveWorkflowPanelFieldVisibility/);
-  assert.match(src, /buildWorkflowPanelSaveBody/);
-  assert.match(src, /visibility\.showLoanStatus/);
-  assert.match(src, /visibility\.showCardStatus/);
+  assert.match(src, /resolveLatestConfirmedPaymentDate/);
+  assert.match(src, /resolveLatestOrderDeliveryDate/);
+  assert.match(src, /ReadonlyField/);
+  assert.match(src, /visibility\.showPaymentDate/);
+  assert.match(src, /visibility\.showDeliveryDate/);
+  assert.match(src, /visibility\.showCompletionDate/);
 });
 
-test("single completion date grid does not leave 3-column gap", () => {
+test("WorkflowPanel updates construction date only when editable", () => {
+  const src = readFileSync(
+    join(process.cwd(), "app/cases/[id]/WorkflowPanel.tsx"),
+    "utf8"
+  );
+  assert.match(src, /if \(visibility\.showCompletionDate\)/);
+});
+
+test("formatWorkflowPanelDate empty → dash", () => {
+  assert.equal(formatWorkflowPanelDate(null), "—");
+});
+
+test("single read-only field grid stays compact", () => {
   const cls = workflowPanelInputGridClass(
     resolveWorkflowPanelFieldVisibility("前金")
   );

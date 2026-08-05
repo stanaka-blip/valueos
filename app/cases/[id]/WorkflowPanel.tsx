@@ -13,8 +13,13 @@ import type { SettlementViewData } from "./settlementView";
 import {
   buildWorkflowPanelMetaPayload,
   buildWorkflowPanelSaveBody,
+  formatWorkflowPanelDate,
+  resolveLatestConfirmedPaymentDate,
+  resolveLatestOrderDeliveryDate,
   resolveWorkflowPanelFieldVisibility,
   workflowPanelInputGridClass,
+  type WorkflowPanelOrderInput,
+  type WorkflowPanelPaymentInput,
 } from "./workflowPanelFields";
 
 type Props = {
@@ -22,6 +27,8 @@ type Props = {
   workflow: WorkflowResult;
   settlement: SettlementViewData | null;
   constructionCompletedDate: string | null;
+  payments: WorkflowPanelPaymentInput[];
+  orders: WorkflowPanelOrderInput[];
 };
 
 export default function WorkflowPanel({
@@ -29,6 +36,8 @@ export default function WorkflowPanel({
   workflow,
   settlement,
   constructionCompletedDate,
+  payments,
+  orders,
 }: Props) {
   const router = useRouter();
   const [loanStatus, setLoanStatus] = useState(settlement?.loanStatus || "未申請");
@@ -43,6 +52,8 @@ export default function WorkflowPanel({
   const visibility = resolveWorkflowPanelFieldVisibility(
     settlement?.settlementType
   );
+  const confirmedPaymentDate = resolveLatestConfirmedPaymentDate(payments);
+  const latestDeliveryDate = resolveLatestOrderDeliveryDate(orders);
 
   async function saveWorkflowFields() {
     if (!settlement?.settlementType) {
@@ -68,6 +79,7 @@ export default function WorkflowPanel({
       loanStatus,
       cardStatus,
       completedDate,
+      existingConstructionCompletedDate: constructionCompletedDate,
     });
 
     // 1) 正式カラムへ保存を試行（詳細列はサーバーが既存値維持）
@@ -102,41 +114,45 @@ export default function WorkflowPanel({
       return;
     }
 
-    const { error: caseError } = await supabase
-      .from("cases")
-      .update({
-        construction_completed_date: completedDate || null,
-      })
-      .eq("id", caseId);
+    if (visibility.showCompletionDate) {
+      const { error: caseError } = await supabase
+        .from("cases")
+        .update({
+          construction_completed_date: completedDate || null,
+        })
+        .eq("id", caseId);
 
-    if (
-      caseError &&
-      /construction_completed_date|schema cache/i.test(caseError.message)
-    ) {
-      // 完工日だけ memo へ退避
-      const memoWithMeta = writeWorkflowMeta(settlement.memo, metaPayload);
-      const memoResult = await submitCaseSettlement({
-        caseId,
-        body: {
-          ...saveBody,
-          memo: memoWithMeta,
-        },
-      });
-      setSaving(false);
-      if (!memoResult.ok) {
-        setError(memoResult.error_message);
+      if (
+        caseError &&
+        /construction_completed_date|schema cache/i.test(caseError.message)
+      ) {
+        // 完工日だけ memo へ退避
+        const memoWithMeta = writeWorkflowMeta(settlement.memo, metaPayload);
+        const memoResult = await submitCaseSettlement({
+          caseId,
+          body: {
+            ...saveBody,
+            memo: memoWithMeta,
+          },
+        });
+        setSaving(false);
+        if (!memoResult.ok) {
+          setError(memoResult.error_message);
+          return;
+        }
+        setMessage("ワークフロー状態を更新しました（完工日はmemoフォールバック）");
+        router.refresh();
         return;
       }
-      setMessage("ワークフロー状態を更新しました（完工日はmemoフォールバック）");
-      router.refresh();
-      return;
-    }
 
-    setSaving(false);
+      setSaving(false);
 
-    if (caseError) {
-      setError(caseError.message);
-      return;
+      if (caseError) {
+        setError(caseError.message);
+        return;
+      }
+    } else {
+      setSaving(false);
     }
 
     setMessage("ワークフロー状態を更新しました");
@@ -230,6 +246,20 @@ export default function WorkflowPanel({
           </label>
         ) : null}
 
+        {visibility.showPaymentDate ? (
+          <ReadonlyField
+            label="入金日"
+            value={formatWorkflowPanelDate(confirmedPaymentDate)}
+          />
+        ) : null}
+
+        {visibility.showDeliveryDate ? (
+          <ReadonlyField
+            label="納品日"
+            value={formatWorkflowPanelDate(latestDeliveryDate)}
+          />
+        ) : null}
+
         {visibility.showCompletionDate ? (
           <label className="block text-sm">
             <span className="text-xs font-medium text-gray-400">完工日</span>
@@ -265,6 +295,17 @@ export default function WorkflowPanel({
         </button>
       </div>
     </section>
+  );
+}
+
+function ReadonlyField({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="block text-sm">
+      <span className="text-xs font-medium text-gray-400">{label}</span>
+      <div className="mt-1 w-full rounded-lg border border-gray-200 bg-[#f7f7f5] px-3 py-2 text-sm text-gray-900">
+        {value}
+      </div>
+    </div>
   );
 }
 

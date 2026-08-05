@@ -293,6 +293,8 @@ export default function CaseDetailView({
           workflow={workflow}
           settlement={settlement}
           constructionCompletedDate={caseData.constructionCompletedDate}
+          payments={payments}
+          orders={orders}
         />
       </div>
 
