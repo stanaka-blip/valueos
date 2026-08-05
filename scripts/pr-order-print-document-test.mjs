@@ -66,9 +66,12 @@ assert(
 );
 
 assert(
-  "fetches product model_no",
+  "fetches product name, model_no and manufacturer",
   page.includes("model_no") &&
-    /products[\s\S]*select\("id, name, model_no"\)/.test(page)
+    page.includes("manufacturers") &&
+    /products[\s\S]*select\("id, name, model_no, manufacturers\(name\)"\)/.test(
+      page
+    )
 );
 
 assert(
@@ -85,13 +88,15 @@ assert(
 );
 
 assert(
-  "line columns present",
-  page.includes(">商品名<") &&
+  "line columns present (print keeps 商品名)",
+  page.includes(">メーカー<") &&
     page.includes(">型番<") &&
+    page.includes(">商品名<") &&
     page.includes(">数量<") &&
     page.includes(">単価<") &&
     page.includes(">金額<") &&
-    page.includes(">備考<")
+    page.includes(">備考<") &&
+    !page.includes("メーカー型番")
 );
 
 assert(

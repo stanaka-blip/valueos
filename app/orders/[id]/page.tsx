@@ -3,6 +3,10 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { listOrderItemsByOrderId } from "@/lib/repositories/orderItems";
 import { formatDate, formatYen, getTodayString, toNumber } from "@/app/orders/orderUtils";
+import {
+  displayIdentityValue,
+  resolveProductIdentity,
+} from "@/app/orders/productIdentity";
 
 export const dynamic = "force-dynamic";
 
@@ -51,7 +55,7 @@ type OrderDetail = {
 };
 
 type ProductInfo = {
-  name: string | null;
+  manufacturer_name: string;
   model_no: string | null;
   unit: string | null;
 };
@@ -157,13 +161,22 @@ export default async function OrderDetailPage({
   if (productIds.length > 0) {
     const { data: products } = await supabase
       .from("products")
-      .select("id, name, model_no, unit")
+      .select("id, model_no, unit, manufacturers(name)")
       .in("id", productIds);
 
     for (const product of products || []) {
+      const identity = resolveProductIdentity(
+        product as {
+          model_no?: string | null;
+          manufacturers?:
+            | { name?: string | null }
+            | { name?: string | null }[]
+            | null;
+        }
+      );
       productMap.set(product.id as string, {
-        name: (product.name as string | null) || null,
-        model_no: (product.model_no as string | null) || null,
+        manufacturer_name: identity.manufacturerName,
+        model_no: identity.modelNo || null,
         unit: (product.unit as string | null) || null,
       });
     }
@@ -330,10 +343,10 @@ export default async function OrderDetailPage({
                 <thead className="border-b bg-gray-50 text-gray-500">
                   <tr>
                     <th className="px-4 py-3">No.</th>
-                    <th className="px-4 py-3">商品名</th>
+                    <th className="px-4 py-3">メーカー</th>
                     <th className="px-4 py-3">型番</th>
                     <th className="px-4 py-3 text-right">数量</th>
-                    <th className="px-4 py-3 text-right">単価</th>
+                    <th className="px-4 py-3 text-right">仕入単価</th>
                     <th className="px-4 py-3 text-right">金額</th>
                     <th className="px-4 py-3">備考</th>
                   </tr>
@@ -347,9 +360,11 @@ export default async function OrderDetailPage({
                       <tr key={item.id} className="border-b last:border-b-0">
                         <td className="px-4 py-3">{index + 1}</td>
                         <td className="px-4 py-3 font-semibold text-gray-900">
-                          {product?.name || "-"}
+                          {displayIdentityValue(product?.manufacturer_name)}
                         </td>
-                        <td className="px-4 py-3">{product?.model_no || "-"}</td>
+                        <td className="px-4 py-3">
+                          {displayIdentityValue(product?.model_no)}
+                        </td>
                         <td className="px-4 py-3 text-right">
                           {toNumber(item.quantity).toLocaleString("ja-JP")}
                           {product?.unit ? ` ${product.unit}` : ""}

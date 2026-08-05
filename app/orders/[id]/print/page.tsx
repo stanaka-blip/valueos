@@ -8,6 +8,10 @@ import { supabase } from "@/lib/supabase";
 import { listOrderItemsByOrderId } from "@/lib/repositories/orderItems";
 import type { OrderItemRow } from "@/lib/database.types";
 import { formatDate, formatYen, toNumber } from "../../orderUtils";
+import {
+  displayIdentityValue,
+  resolveProductIdentity,
+} from "../../productIdentity";
 
 import PrintButton from "./PrintButton";
 
@@ -32,8 +36,9 @@ type CaseRow = {
 };
 
 type PrintLine = OrderItemRow & {
-  product_name: string;
+  manufacturer_name: string;
   model_no: string;
+  product_name: string;
 };
 
 function supplierNameOf(order: OrderRow | null): string {
@@ -107,17 +112,27 @@ export default function OrderPrintPage() {
 
         const productMap = new Map<
           string,
-          { name: string; model_no: string }
+          { manufacturer_name: string; model_no: string; product_name: string }
         >();
         if (productIds.length > 0) {
           const { data: products } = await supabase
             .from("products")
-            .select("id, name, model_no")
+            .select("id, name, model_no, manufacturers(name)")
             .in("id", productIds);
           for (const product of products || []) {
+            const identity = resolveProductIdentity(
+              product as {
+                model_no?: string | null;
+                manufacturers?:
+                  | { name?: string | null }
+                  | { name?: string | null }[]
+                  | null;
+              }
+            );
             productMap.set(product.id as string, {
-              name: (product.name as string | null) || "（商品名なし）",
-              model_no: (product.model_no as string | null) || "",
+              manufacturer_name: identity.manufacturerName,
+              model_no: identity.modelNo,
+              product_name: (product.name as string | null) || "",
             });
           }
         }
@@ -131,8 +146,9 @@ export default function OrderPrintPage() {
                 : undefined;
               return {
                 ...item,
-                product_name: product?.name || "（商品名なし）",
+                manufacturer_name: product?.manufacturer_name || "",
                 model_no: product?.model_no || "",
+                product_name: product?.product_name || "",
               };
             })
           );
@@ -241,8 +257,9 @@ export default function OrderPrintPage() {
           <table className="order-print-table w-full border-collapse text-sm">
             <thead>
               <tr className="border-b-2 border-gray-900 text-left">
-                <th className="py-2 pr-2 font-semibold">商品名</th>
+                <th className="py-2 pr-2 font-semibold">メーカー</th>
                 <th className="py-2 pr-2 font-semibold">型番</th>
+                <th className="py-2 pr-2 font-semibold">商品名</th>
                 <th className="py-2 pr-2 text-right font-semibold">数量</th>
                 <th className="py-2 pr-2 text-right font-semibold">単価</th>
                 <th className="py-2 pr-2 text-right font-semibold">金額</th>
@@ -253,7 +270,7 @@ export default function OrderPrintPage() {
               {items.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={6}
+                    colSpan={7}
                     className="py-4 text-center text-gray-500"
                   >
                     明細なし
@@ -266,10 +283,13 @@ export default function OrderPrintPage() {
                     className="order-print-row border-b border-gray-300"
                   >
                     <td className="py-2 pr-2 align-top">
-                      {item.product_name}
+                      {displayIdentityValue(item.manufacturer_name)}
                     </td>
                     <td className="py-2 pr-2 align-top">
-                      {displayText(item.model_no)}
+                      {displayIdentityValue(item.model_no)}
+                    </td>
+                    <td className="py-2 pr-2 align-top">
+                      {displayText(item.product_name)}
                     </td>
                     <td className="py-2 pr-2 text-right align-top tabular-nums">
                       {item.quantity}

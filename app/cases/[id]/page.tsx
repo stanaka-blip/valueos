@@ -1,11 +1,13 @@
 import Link from "next/link";
 
 import { supabase } from "@/lib/supabase";
+import { resolveProductIdentity } from "@/app/orders/productIdentity";
 
 import CaseDetailView, {
   type CaseDetailViewData,
   type CaseProductRow,
   type InvoiceRow,
+  type OrderLineRow,
   type OrderRow,
   type PaymentRow,
   type TaskRow,
@@ -288,7 +290,7 @@ export default async function CaseDetailPage({
     });
   });
 
-  const orders: OrderRow[] = (ordersData || []).map((row) => {
+  const ordersBase = (ordersData || []).map((row) => {
     const supplier = getSingleRelation(
       row.suppliers as SupplierRelation | SupplierRelation[] | null
     );
@@ -305,6 +307,60 @@ export default async function CaseDetailPage({
       memo: (row.memo as string) || "",
     };
   });
+
+  const orderIds = ordersBase.map((o) => o.id);
+  const linesByOrder = new Map<string, OrderLineRow[]>();
+  if (orderIds.length > 0) {
+    const { data: orderItemsData, error: orderItemsError } = await supabase
+      .from("order_items")
+      .select(
+        `
+        id,
+        order_id,
+        quantity,
+        unit_price,
+        amount,
+        sort_order,
+        products (
+          model_no,
+          manufacturers (
+            name
+          )
+        )
+      `
+      )
+      .in("order_id", orderIds)
+      .order("sort_order", { ascending: true });
+
+    if (orderItemsError) {
+      // 明細が取れなくても発注ヘッダは表示する（仕入/納品は空明細）
+      console.error("order_items load failed:", orderItemsError.message);
+    } else {
+      for (const item of orderItemsData || []) {
+        const orderId = String(item.order_id || "");
+        if (!orderId) continue;
+        const product = getSingleRelation(
+          item.products as ProductRelation | ProductRelation[] | null
+        );
+        const identity = resolveProductIdentity(product);
+        const list = linesByOrder.get(orderId) || [];
+        list.push({
+          id: item.id as string,
+          manufacturerName: identity.manufacturerName,
+          modelNo: identity.modelNo,
+          quantity: toNumber(item.quantity as number | string | null),
+          unitPrice: toNumber(item.unit_price as number | string | null),
+          amount: toNumber(item.amount as number | string | null),
+        });
+        linesByOrder.set(orderId, list);
+      }
+    }
+  }
+
+  const orders: OrderRow[] = ordersBase.map((order) => ({
+    ...order,
+    lines: linesByOrder.get(order.id) || [],
+  }));
 
   const invoices: InvoiceRow[] = (invoicesData || []).map((row) => ({
     id: row.id as string,

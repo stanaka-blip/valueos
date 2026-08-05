@@ -28,13 +28,17 @@ import {
   isUuid,
   toNumber,
 } from "@/app/orders/orderUtils";
+import {
+  displayIdentityValue,
+  resolveProductIdentity,
+} from "@/app/orders/productIdentity";
 
 type LineDraft = {
   id: string | null;
   local_id: string;
   product_id: string;
   case_product_id: string | null;
-  product_name: string;
+  manufacturer_name: string;
   model_no: string;
   quantity: string;
   unit_price: string;
@@ -140,19 +144,28 @@ export default function EditOrderPage() {
 
       const productMap = new Map<
         string,
-        { name: string | null; model_no: string | null }
+        { manufacturer_name: string; model_no: string }
       >();
 
       if (productIds.length > 0) {
         const { data: products } = await supabase
           .from("products")
-          .select("id, name, model_no")
+          .select("id, model_no, manufacturers(name)")
           .in("id", productIds);
 
         for (const product of products || []) {
+          const identity = resolveProductIdentity(
+            product as {
+              model_no?: string | null;
+              manufacturers?:
+                | { name?: string | null }
+                | { name?: string | null }[]
+                | null;
+            }
+          );
           productMap.set(product.id as string, {
-            name: (product.name as string | null) || null,
-            model_no: (product.model_no as string | null) || null,
+            manufacturer_name: identity.manufacturerName,
+            model_no: identity.modelNo,
           });
         }
       }
@@ -180,7 +193,7 @@ export default function EditOrderPage() {
             local_id: item.id,
             product_id: item.product_id || "",
             case_product_id: item.case_product_id,
-            product_name: product?.name || "名称未設定",
+            manufacturer_name: product?.manufacturer_name || "",
             model_no: product?.model_no || "",
             quantity: String(toNumber(item.quantity) || 1),
             unit_price: String(toNumber(item.unit_price)),
@@ -420,10 +433,10 @@ export default function EditOrderPage() {
               <table className="w-full min-w-[720px] text-left text-sm">
                 <thead className="border-b bg-[#f7f7f5] text-gray-500">
                   <tr>
-                    <th className="px-3 py-3 font-medium">商品</th>
+                    <th className="px-3 py-3 font-medium">メーカー</th>
                     <th className="px-3 py-3 font-medium">型番</th>
                     <th className="px-3 py-3 font-medium">数量</th>
-                    <th className="px-3 py-3 font-medium">単価</th>
+                    <th className="px-3 py-3 font-medium">仕入単価</th>
                     <th className="px-3 py-3 font-medium">金額</th>
                     <th className="px-3 py-3 font-medium">備考</th>
                   </tr>
@@ -431,8 +444,12 @@ export default function EditOrderPage() {
                 <tbody>
                   {lines.map((line) => (
                     <tr key={line.local_id} className="border-b last:border-b-0">
-                      <td className="px-3 py-3">{line.product_name}</td>
-                      <td className="px-3 py-3">{line.model_no || "-"}</td>
+                      <td className="px-3 py-3">
+                        {displayIdentityValue(line.manufacturer_name)}
+                      </td>
+                      <td className="px-3 py-3">
+                        {displayIdentityValue(line.model_no)}
+                      </td>
                       <td className="px-3 py-3">
                         <input
                           type="number"
