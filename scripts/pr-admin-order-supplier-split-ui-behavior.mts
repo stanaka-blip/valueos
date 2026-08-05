@@ -8,8 +8,10 @@ import {
   applySupplierMasterUnitPrices,
   buildOrderTargets,
   flattenOrderTargets,
+  formatPurchaseOrderSheetLabel,
   generateUniqueOrderNumbers,
   groupLinesBySupplier,
+  groupOrderTargetsBySupplier,
   validateOrderTargetsForSave,
 } from "../app/cases/[id]/orders/orderTargets.ts";
 import {
@@ -209,6 +211,37 @@ check("発注番号重複なし", () => {
   assert.equal(nos.length, 3);
   assert.equal(new Set(nos).size, 3);
   assert.ok(nos[1].endsWith("-02"));
+});
+
+check("UIグループ: 仕入先単位でPACKAGE構造を維持", () => {
+  const targets = buildOrderTargets(
+    products as never,
+    packages as never
+  ).map((t) => {
+    if (t.kind === "PRODUCT") {
+      return {
+        ...t,
+        unit_price: t.product_id === P1 ? "100" : "200",
+        supplier_id: t.default_supplier_id || "",
+      };
+    }
+    return {
+      ...t,
+      supplier_id: t.default_supplier_id || "",
+      items: t.items.map((item) => ({ ...item, unit_price: "50" })),
+    };
+  });
+  const groups = groupOrderTargetsBySupplier(targets);
+  assert.equal(groups.length, 2);
+  const groupA = groups.find((g) => g.supplier_id === SUP_A);
+  assert.ok(groupA);
+  assert.equal(groupA!.targets.length, 2);
+  assert.ok(groupA!.targets.some((t) => t.kind === "PRODUCT"));
+  assert.ok(groupA!.targets.some((t) => t.kind === "PACKAGE"));
+  const pkg = groupA!.targets.find((t) => t.kind === "PACKAGE");
+  assert.ok(pkg && pkg.kind === "PACKAGE" && pkg.items.length === 1);
+  assert.equal(formatPurchaseOrderSheetLabel(1), "発注書①");
+  assert.equal(formatPurchaseOrderSheetLabel(2), "発注書②");
 });
 
 check("API logic: 複数仕入先 payload / 仕入先未選択拒否", () => {

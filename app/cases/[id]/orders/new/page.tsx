@@ -40,8 +40,10 @@ import {
   buildOrderTargets,
   clearNonSnapshotPricesForSupplierChange,
   flattenOrderTargets,
+  formatPurchaseOrderSheetLabel,
   generateUniqueOrderNumbers,
   groupLinesBySupplier,
+  groupOrderTargetsBySupplier,
   sumOrderAmount,
   validateOrderTargetsForSave,
   type OrderTarget,
@@ -52,6 +54,15 @@ import {
   createIdempotencyKey,
   submitPurchaseOrders,
 } from "./submitPurchaseOrders";
+
+/** 決済区分未設定（WorkflowEngine の固定文言と一致） */
+function isSettlementTypeUnset(workflow: WorkflowResult | null): boolean {
+  if (!workflow) return false;
+  return (
+    workflow.ruleKey === null &&
+    workflow.warnings.includes("決済区分が未設定です")
+  );
+}
 
 type Supplier = {
   id: string;
@@ -121,6 +132,10 @@ export default function NewOrderPage() {
     () => groupLinesBySupplier(flatLines),
     [flatLines]
   );
+  const supplierTargetGroups = useMemo(
+    () => groupOrderTargetsBySupplier(targets),
+    [targets]
+  );
 
   const unsetPriceLines = useMemo(
     () => flatLines.filter((line) => isUnitPriceUnset(line.unit_price)),
@@ -135,6 +150,24 @@ export default function NewOrderPage() {
   const missingSupplierTargets = useMemo(
     () => targets.filter((t) => !t.supplier_id.trim()),
     [targets]
+  );
+
+  const settlementUnset = isSettlementTypeUnset(workflow);
+  const orderBlockedBySettlementRule = Boolean(
+    workflow && !workflow.canOrder && !settlementUnset
+  );
+
+  /** 画面表示と保存で同じ発注番号を使う（仕入先集合が変わったときだけ再採番） */
+  const supplierBucketKey = supplierBuckets
+    .map((bucket) => bucket.supplier_id)
+    .join("|");
+  const previewOrderNumbers = useMemo(
+    () =>
+      generateUniqueOrderNumbers(
+        caseData?.case_no ?? null,
+        supplierBuckets.length
+      ),
+    [caseData?.case_no, supplierBucketKey, supplierBuckets.length]
   );
 
   useEffect(() => {
@@ -481,11 +514,12 @@ export default function NewOrderPage() {
 
     const latestWorkflow = await loadCaseWorkflow(caseData.id);
     setWorkflow(latestWorkflow.result);
-    if (!latestWorkflow.result.canOrder) {
-      setSubmitError(
-        latestWorkflow.result.warnings[0] ||
-          "現在の決済区分ルールでは発注できません。"
-      );
+    // 決済区分未設定は警告のみ（保存可）。それ以外の canOrder=false はブロック。
+    if (
+      !latestWorkflow.result.canOrder &&
+      !isSettlementTypeUnset(latestWorkflow.result)
+    ) {
+      // 画面上部の警告と二重表示しない（赤バナーは付けない）
       return;
     }
 
@@ -554,10 +588,10 @@ export default function NewOrderPage() {
     const today = getTodayString();
     const deliveredDate = resolveDeliveredDate(form.status, null, today);
     const nextCaseStatus = getCaseStatusFromOrderStatus(form.status);
-    const orderNos = generateUniqueOrderNumbers(
-      caseData.case_no,
-      buckets.length
-    );
+    const orderNos =
+      previewOrderNumbers.length === buckets.length
+        ? previewOrderNumbers
+        : generateUniqueOrderNumbers(caseData.case_no, buckets.length);
 
     const result = await submitPurchaseOrders({
       caseId: caseData.id,
@@ -681,13 +715,20 @@ export default function NewOrderPage() {
         >
           <h2 className="text-lg font-bold text-gray-900">発注情報</h2>
 
-          {workflow && !workflow.canOrder ? (
+          {settlementUnset ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              決済区分が未設定です。発注はできますが、請求処理までに設定してください。
+            </div>
+          ) : null}
+
+          {orderBlockedBySettlementRule ? (
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
               <p className="font-semibold">発注できません</p>
               <p className="mt-1">
-                担当: {workflow.assignee} / 次のアクション: {workflow.nextAction}
+                担当: {workflow?.assignee} / 次のアクション:{" "}
+                {workflow?.nextAction}
               </p>
-              {workflow.warnings.length > 0 ? (
+              {workflow && workflow.warnings.length > 0 ? (
                 <ul className="mt-2 list-disc space-y-1 pl-5">
                   {workflow.warnings.map((w) => (
                     <li key={w}>{w}</li>
@@ -729,14 +770,6 @@ export default function NewOrderPage() {
           {priceLoading ? (
             <div className="rounded-lg border border-gray-200 bg-[#f7f7f5] p-3 text-sm text-gray-600">
               価格マスタを取得しています…
-            </div>
-          ) : null}
-
-          {supplierBuckets.length > 1 ? (
-            <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
-              仕入先が{supplierBuckets.length}
-              社に分かれています。保存すると発注が
-              {supplierBuckets.length}件作成されます。
             </div>
           ) : null}
 
@@ -790,7 +823,7 @@ export default function NewOrderPage() {
           <div>
             <h3 className="mb-3 text-base font-bold text-gray-900">発注明細</h3>
             <p className="mb-3 text-xs text-gray-500">
-              PRODUCTは商品行ごと、PACKAGEはパッケージ単位で仕入先を選択します（構成品に仕入先選択はありません）。
+              仕入先ごとに発注書が分かれます。PRODUCTは商品行ごと、PACKAGEはパッケージ単位で仕入先を選択します（構成品に仕入先選択はありません）。
               初期値は各マスタの標準仕入先です。単価優先: 案件スナップショット →
               選択仕入先の価格マスタ → 手入力。
             </p>
@@ -799,28 +832,111 @@ export default function NewOrderPage() {
                 案件に商品／パッケージ構成がありません。商品タブで追加してください。
               </div>
             ) : (
-              <div className="space-y-4">
-                {targets.map((target) =>
-                  target.kind === "PRODUCT" ? (
-                    <ProductTargetCard
-                      key={target.local_id}
-                      target={target}
-                      suppliers={suppliers}
-                      disabled={submitting || priceLoading}
-                      onSupplierChange={handleProductSupplierChange}
-                      onFieldChange={handleProductFieldChange}
-                    />
-                  ) : (
-                    <PackageTargetCard
-                      key={target.local_id}
-                      target={target}
-                      suppliers={suppliers}
-                      disabled={submitting || priceLoading}
-                      onSupplierChange={handlePackageSupplierChange}
-                      onItemFieldChange={handlePackageItemFieldChange}
-                    />
-                  )
-                )}
+              <div className="space-y-6">
+                {supplierTargetGroups.map((group, groupIndex) => {
+                  const supplierName =
+                    suppliers.find((s) => s.id === group.supplier_id)?.name ||
+                    "名称未設定";
+                  const groupLines = flattenOrderTargets(group.targets);
+                  const groupAmount = sumOrderAmount(groupLines);
+                  const orderNo =
+                    previewOrderNumbers[groupIndex] || "（保存時に採番）";
+                  return (
+                    <section
+                      key={group.supplier_id}
+                      className="rounded-lg border border-gray-300 bg-white"
+                    >
+                      <header className="border-b border-gray-200 bg-[#f7f7f5] px-4 py-3">
+                        <p className="text-sm font-bold text-gray-900">
+                          {formatPurchaseOrderSheetLabel(groupIndex + 1)}
+                          <span className="mx-2 font-normal text-gray-400">
+                            /
+                          </span>
+                          {supplierName}
+                        </p>
+                        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-600">
+                          <span>
+                            発注番号:{" "}
+                            <span className="font-medium text-gray-900">
+                              {orderNo}
+                            </span>
+                          </span>
+                          <span>
+                            発注金額合計:{" "}
+                            <span className="font-medium text-gray-900">
+                              {formatYen(groupAmount)}
+                            </span>
+                          </span>
+                          <span>
+                            明細件数:{" "}
+                            <span className="font-medium text-gray-900">
+                              {groupLines.length}件
+                            </span>
+                          </span>
+                        </div>
+                      </header>
+                      <div className="space-y-4 p-4">
+                        {group.targets.map((target) =>
+                          target.kind === "PRODUCT" ? (
+                            <ProductTargetCard
+                              key={target.local_id}
+                              target={target}
+                              suppliers={suppliers}
+                              disabled={submitting || priceLoading}
+                              onSupplierChange={handleProductSupplierChange}
+                              onFieldChange={handleProductFieldChange}
+                            />
+                          ) : (
+                            <PackageTargetCard
+                              key={target.local_id}
+                              target={target}
+                              suppliers={suppliers}
+                              disabled={submitting || priceLoading}
+                              onSupplierChange={handlePackageSupplierChange}
+                              onItemFieldChange={handlePackageItemFieldChange}
+                            />
+                          )
+                        )}
+                      </div>
+                    </section>
+                  );
+                })}
+
+                {missingSupplierTargets.length > 0 ? (
+                  <section className="rounded-lg border border-dashed border-amber-300 bg-amber-50/40">
+                    <header className="border-b border-amber-200 px-4 py-3">
+                      <p className="text-sm font-bold text-amber-900">
+                        仕入先未選択
+                      </p>
+                      <p className="mt-1 text-xs text-amber-800">
+                        仕入先を選択すると、対応する発注書グループに移動します。
+                      </p>
+                    </header>
+                    <div className="space-y-4 p-4">
+                      {missingSupplierTargets.map((target) =>
+                        target.kind === "PRODUCT" ? (
+                          <ProductTargetCard
+                            key={target.local_id}
+                            target={target}
+                            suppliers={suppliers}
+                            disabled={submitting || priceLoading}
+                            onSupplierChange={handleProductSupplierChange}
+                            onFieldChange={handleProductFieldChange}
+                          />
+                        ) : (
+                          <PackageTargetCard
+                            key={target.local_id}
+                            target={target}
+                            suppliers={suppliers}
+                            disabled={submitting || priceLoading}
+                            onSupplierChange={handlePackageSupplierChange}
+                            onItemFieldChange={handlePackageItemFieldChange}
+                          />
+                        )
+                      )}
+                    </div>
+                  </section>
+                ) : null}
               </div>
             )}
           </div>
@@ -849,7 +965,8 @@ export default function NewOrderPage() {
                 submitting ||
                 priceLoading ||
                 targets.length === 0 ||
-                missingSupplierTargets.length > 0
+                missingSupplierTargets.length > 0 ||
+                orderBlockedBySettlementRule
               }
               className="inline-flex items-center justify-center rounded-lg bg-gray-900 px-6 py-3 text-sm font-bold text-white hover:bg-gray-700 disabled:cursor-not-allowed disabled:bg-gray-400"
             >
