@@ -48,7 +48,8 @@ assert(
     step1Src.includes("販売店担当者") &&
     step1Src.includes("納品先は設置先住所と同じ") &&
     step1Src.includes("納品先住所") &&
-    step1Src.includes("納品先電話番号")
+    step1Src.includes("納品先電話番号") &&
+    step1Src.includes("荷受け担当者")
 );
 
 assert(
@@ -68,9 +69,10 @@ assert(
 assert(
   "labeled memo/construction_detail serialization",
   extrasSrc.includes("【荷受け電話番号】") &&
+    extrasSrc.includes("【荷受け担当者】") &&
     extrasSrc.includes("【施工店名】") &&
-    validationSrc.includes("buildCaseRegistrationMemo") &&
-    validationSrc.includes("buildCaseRegistrationConstructionDetail")
+    extrasSrc.includes("upsertLabeledMemoFields") &&
+    validationSrc.includes("buildCaseRegistrationMemo")
 );
 
 assert(

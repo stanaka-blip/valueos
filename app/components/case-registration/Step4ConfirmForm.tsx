@@ -96,6 +96,10 @@ export default function Step4ConfirmForm({
             <dt className="text-gray-500">納品先電話番号</dt>
             <dd>{caseForm.delivery_phone || "—"}</dd>
           </div>
+          <div>
+            <dt className="text-gray-500">荷受け担当者</dt>
+            <dd>{caseForm.receiver_name || "—"}</dd>
+          </div>
         </dl>
       </section>
 
