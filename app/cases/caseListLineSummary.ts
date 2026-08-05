@@ -1,10 +1,7 @@
 /**
  * 全案件一覧の商品明細集計（表示専用）。
  */
-import {
-  normalizeLineType,
-  resolveDisplayName,
-} from "@/app/cases/[id]/productDisplay";
+import { normalizeLineType } from "@/app/cases/[id]/productDisplay";
 import { formatFirstAndOthers } from "@/app/cases/formatFirstAndOthers";
 
 export type CaseListLineInput = {
@@ -12,6 +9,7 @@ export type CaseListLineInput = {
   products?:
     | {
         name?: string | null;
+        model_no?: string | null;
         manufacturers?:
           | { name?: string | null }
           | { name?: string | null }[]
@@ -19,6 +17,7 @@ export type CaseListLineInput = {
       }
     | {
         name?: string | null;
+        model_no?: string | null;
         manufacturers?:
           | { name?: string | null }
           | { name?: string | null }[]
@@ -63,11 +62,21 @@ function manufacturerNameFromLine(line: CaseListLineInput): string {
   return (mfr?.name || "").trim();
 }
 
-function productLabelFromLine(line: CaseListLineInput): string {
+/**
+ * 型番列: products.model_no を優先。
+ * PACKAGE で model_no が無い場合のみ商品名（packages.name / products.name）へフォールバック。
+ */
+function modelNoLabelFromLine(line: CaseListLineInput): string {
   const lineType = normalizeLineType(line.line_type);
   const product = getSingleRelation(line.products);
   const pkg = getSingleRelation(line.packages);
-  return resolveDisplayName(lineType, product?.name, pkg?.name);
+  const modelNo = (product?.model_no || "").trim();
+  if (modelNo) return modelNo;
+
+  if (lineType === "PACKAGE") {
+    return (pkg?.name || product?.name || "").trim();
+  }
+  return (product?.name || "").trim();
 }
 
 /** 発注メーカー列テキスト（先頭 + 他N件） */
@@ -77,9 +86,9 @@ export function summarizeCaseManufacturers(
   return formatFirstAndOthers(lines.map(manufacturerNameFromLine));
 }
 
-/** 商材列テキスト（先頭 + 他N件） */
-export function summarizeCaseProducts(
+/** 型番列テキスト（先頭 + 他N件） */
+export function summarizeCaseModelNumbers(
   lines: ReadonlyArray<CaseListLineInput>
 ): string {
-  return formatFirstAndOthers(lines.map(productLabelFromLine));
+  return formatFirstAndOthers(lines.map(modelNoLabelFromLine));
 }

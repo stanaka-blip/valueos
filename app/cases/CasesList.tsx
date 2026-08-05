@@ -19,7 +19,7 @@ export type CasesListItem = {
   settlementType: string;
   desiredDeliveryDate: string | null;
   manufacturerSummary: string;
-  productSummary: string;
+  modelNoSummary: string;
   status: string | null;
   department: string;
   assignedUser: string;
@@ -68,7 +68,7 @@ export default function CasesList({
         item.customerName,
         item.settlementType,
         item.manufacturerSummary,
-        item.productSummary,
+        item.modelNoSummary,
         item.assignedUser,
         item.department,
         item.orderType,
@@ -94,7 +94,7 @@ export default function CasesList({
           item.customerName,
           item.settlementType,
           item.manufacturerSummary,
-          item.productSummary,
+          item.modelNoSummary,
           item.assignedUser,
           item.department,
           item.orderType,
@@ -133,7 +133,7 @@ export default function CasesList({
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="案件番号・販売店・顧客・決済・メーカー・商材・担当"
+              placeholder="案件番号・販売店・顧客・決済・メーカー・型番・担当"
               className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
             />
           </label>
@@ -183,7 +183,7 @@ export default function CasesList({
                 <th className="px-4 py-3 font-medium">決済条件</th>
                 <th className="px-4 py-3 font-medium">希望納期</th>
                 <th className="px-4 py-3 font-medium">発注メーカー</th>
-                <th className="px-4 py-3 font-medium">商材</th>
+                <th className="px-4 py-3 font-medium">型番</th>
                 <th className="px-4 py-3 font-medium">ステータス</th>
                 <th className="px-4 py-3 font-medium">受注日</th>
                 <th className="px-4 py-3 font-medium">担当</th>
@@ -225,7 +225,7 @@ export default function CasesList({
                     <MultilineCell value={item.manufacturerSummary} />
                   </td>
                   <td className="px-4 py-3">
-                    <MultilineCell value={item.productSummary} />
+                    <MultilineCell value={item.modelNoSummary} />
                   </td>
                   <td className="px-4 py-3">
                     <StatusSelect
