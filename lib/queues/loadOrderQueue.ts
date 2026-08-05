@@ -43,7 +43,6 @@ type SettlementRow = {
   loan_status?: string | null;
   card_status?: string | null;
   memo?: string | null;
-  [key: string]: unknown;
 };
 
 export async function loadOrderQueue(): Promise<OrderQueueLoadResult> {
@@ -118,7 +117,11 @@ async function assembleQueue(cases: CaseRow[]): Promise<OrderQueueLoadResult> {
     supabase
       .from("payments")
       .select("id, case_id, invoice_id, status, payment_amount"),
-    supabase.from("case_settlements").select("*"),
+    supabase
+      .from("case_settlements")
+      .select(
+        "case_id, settlement_type, deposit_amount, loan_status, card_status, memo"
+      ),
   ]);
 
   const error =
@@ -136,7 +139,8 @@ async function assembleQueue(cases: CaseRow[]): Promise<OrderQueueLoadResult> {
   const paymentsByCase = groupBy(payments || [], "case_id");
   const settlementByCase = new Map<string, SettlementRow>();
   for (const s of (settlements || []) as SettlementRow[]) {
-    settlementByCase.set(s.case_id, s);
+    if (!s.case_id) continue;
+    settlementByCase.set(String(s.case_id), s);
   }
 
   const rows: OrderQueueRow[] = [];
@@ -149,7 +153,7 @@ async function assembleQueue(cases: CaseRow[]): Promise<OrderQueueLoadResult> {
       casePackages: c.case_packages || [],
     });
 
-    const settlement = settlementByCase.get(c.id) || null;
+    const settlement = settlementByCase.get(String(c.id)) || null;
     const gate = evaluateOrderQueueGate({
       settlement,
       constructionCompletedDate: c.construction_completed_date ?? null,
@@ -159,6 +163,10 @@ async function assembleQueue(cases: CaseRow[]): Promise<OrderQueueLoadResult> {
     });
 
     const dealer = getSingle(c.dealers);
+    const settlementType =
+      settlement?.settlement_type != null
+        ? String(settlement.settlement_type)
+        : null;
     const row = buildOrderQueueRow(
       {
         id: c.id,
@@ -168,7 +176,7 @@ async function assembleQueue(cases: CaseRow[]): Promise<OrderQueueLoadResult> {
         order_received_date: c.order_received_date,
         construction_desired_date: c.construction_desired_date,
         dealer_name: dealer?.name || null,
-        settlement_type: settlement?.settlement_type ?? null,
+        settlement_type: settlementType,
         has_orderable_targets: hasTargets,
         active_order_count: activeOrderCount,
       },

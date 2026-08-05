@@ -8,6 +8,7 @@ import {
   isActiveOrderStatus,
 } from "@/lib/status/activeRecords";
 import { buildWorkflowContext } from "@/lib/workflow/buildContext";
+import { resolveSettlementRule } from "@/lib/workflow/normalize";
 import { evaluateWorkflow } from "@/lib/workflow/WorkflowEngine";
 import type { WorkflowResult } from "@/lib/workflow/types";
 
@@ -30,7 +31,9 @@ export type OrderQueueRow = {
   customerName: string;
   dealerName: string;
   constructionDate: string | null;
+  constructionOverdue: boolean;
   orderReceivedDate: string | null;
+  /** 内部・判定用。一覧UIでは決済条件列は出さない */
   settlementType: string;
   canOrder: boolean;
   blockReason: string | null;
@@ -109,6 +112,19 @@ export function resolveOrderQueueBlockReason(
   }
 }
 
+/**
+ * case_settlements.settlement_type を表示・判定用ラベルへ。
+ * 空/空白のみを「未設定」。別名は正式ラベルへ正規化。
+ */
+export function resolveOrderQueueSettlementLabel(
+  settlementType: string | null | undefined
+): string {
+  const raw = (settlementType || "").trim();
+  if (!raw) return "未設定";
+  const rule = resolveSettlementRule(raw);
+  return rule?.label ?? raw;
+}
+
 export function evaluateOrderQueueGate(input: {
   settlement: Parameters<typeof buildWorkflowContext>[0]["settlement"];
   constructionCompletedDate?: string | null;
@@ -116,6 +132,10 @@ export function evaluateOrderQueueGate(input: {
   invoices?: Parameters<typeof buildWorkflowContext>[0]["invoices"];
   payments?: Parameters<typeof buildWorkflowContext>[0]["payments"];
 }): { canOrder: boolean; blockReason: string | null; settlementType: string } {
+  const settlementTypeFromRow =
+    input.settlement?.settlement_type ??
+    input.settlement?.settlementType ??
+    null;
   const ctx = buildWorkflowContext({
     settlement: input.settlement,
     constructionCompletedDate: input.constructionCompletedDate ?? null,
@@ -124,11 +144,34 @@ export function evaluateOrderQueueGate(input: {
     payments: input.payments || [],
   });
   const workflow = evaluateWorkflow(ctx);
+  // ctx と行の settlement_type の両方を見る（どちらかに正式値があればそれを使う）
+  const settlementType = resolveOrderQueueSettlementLabel(
+    ctx.settlementType || settlementTypeFromRow
+  );
   return {
     canOrder: workflow.canOrder,
     blockReason: resolveOrderQueueBlockReason(workflow),
-    settlementType: ctx.settlementType?.trim() || "未設定",
+    settlementType,
   };
+}
+
+function todayDateOnly(today?: string): string {
+  if (today) return today;
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/** 工事日が今日より前なら期限超過（当日は超過にしない） */
+export function isConstructionDateOverdue(
+  constructionDate: string | null | undefined,
+  today?: string
+): boolean {
+  const v = (constructionDate || "").trim();
+  if (!v) return false;
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(v);
+  if (!m) return false;
+  const dateOnly = `${m[1]}-${m[2]}-${m[3]}`;
+  return dateOnly < todayDateOnly(today);
 }
 
 function dateSortKey(value: string | null | undefined): number {
@@ -158,7 +201,8 @@ export function sortOrderQueueRows<
 
 export function buildOrderQueueRow(
   input: OrderQueueCaseInput,
-  gate: { canOrder: boolean; blockReason: string | null; settlementType: string }
+  gate: { canOrder: boolean; blockReason: string | null; settlementType: string },
+  options?: { today?: string }
 ): OrderQueueRow | null {
   if (
     !isOrderQueueCandidate({
@@ -170,14 +214,24 @@ export function buildOrderQueueRow(
     return null;
   }
 
+  // 「未設定」は truthy なので || 連鎖しない。行の settlement_type を優先して再解決する。
+  const settlementType = resolveOrderQueueSettlementLabel(
+    input.settlement_type ||
+      (gate.settlementType !== "未設定" ? gate.settlementType : null)
+  );
+
   return {
     id: input.id,
     caseNo: input.case_no || "—",
     customerName: input.customer_name || "—",
     dealerName: input.dealer_name || "—",
     constructionDate: input.construction_desired_date,
+    constructionOverdue: isConstructionDateOverdue(
+      input.construction_desired_date,
+      options?.today
+    ),
     orderReceivedDate: input.order_received_date,
-    settlementType: gate.settlementType || input.settlement_type || "未設定",
+    settlementType,
     canOrder: gate.canOrder,
     blockReason: gate.canOrder ? null : gate.blockReason,
     detailHref: `/cases/${input.id}`,

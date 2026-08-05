@@ -9,8 +9,10 @@ import {
   caseHasOrderableTargets,
   countActiveOrders,
   evaluateOrderQueueGate,
+  isConstructionDateOverdue,
   isOrderQueueCandidate,
   resolveOrderQueueBlockReason,
+  resolveOrderQueueSettlementLabel,
   sortOrderQueueRows,
 } from "../lib/queues/orderQueue.ts";
 import { evaluateWorkflow } from "../lib/workflow/WorkflowEngine.ts";
@@ -166,6 +168,69 @@ check("売掛は発注可能", () => {
   });
   assert.equal(gate.canOrder, true);
   assert.equal(gate.blockReason, null);
+  assert.equal(gate.settlementType, "売掛");
+});
+
+check("決済条件ラベルは settlement_type を正しく反映", () => {
+  assert.equal(resolveOrderQueueSettlementLabel("前金"), "前金");
+  assert.equal(resolveOrderQueueSettlementLabel("掛売"), "売掛");
+  assert.equal(resolveOrderQueueSettlementLabel("カード"), "カード");
+  assert.equal(resolveOrderQueueSettlementLabel("3社間決済"), "3社間決済");
+  assert.equal(resolveOrderQueueSettlementLabel(null), "未設定");
+  assert.equal(resolveOrderQueueSettlementLabel("  "), "未設定");
+
+  const gate = evaluateOrderQueueGate({
+    settlement: { settlement_type: "売掛" },
+    orders: [],
+  });
+  const row = buildOrderQueueRow(
+    {
+      id: "c1",
+      case_no: "VE-1",
+      status: "受付済",
+      customer_name: "顧客",
+      order_received_date: "2026-08-01",
+      construction_desired_date: "2026-08-10",
+      dealer_name: "販売店",
+      settlement_type: "売掛",
+      has_orderable_targets: true,
+      active_order_count: 0,
+    },
+    // 旧バグ再現: gate が「未設定」でも行の settlement_type を優先
+    { ...gate, settlementType: "未設定" }
+  );
+  assert.ok(row);
+  assert.equal(row!.settlementType, "売掛");
+});
+
+check("工事日が今日より前なら期限超過", () => {
+  assert.equal(isConstructionDateOverdue("2026-08-04", "2026-08-05"), true);
+  assert.equal(isConstructionDateOverdue("2026-08-05", "2026-08-05"), false);
+  assert.equal(isConstructionDateOverdue("2026-08-06", "2026-08-05"), false);
+  assert.equal(isConstructionDateOverdue(null, "2026-08-05"), false);
+
+  const gate = evaluateOrderQueueGate({
+    settlement: { settlement_type: "売掛" },
+    orders: [],
+  });
+  const row = buildOrderQueueRow(
+    {
+      id: "c1",
+      case_no: "VE-1",
+      status: "受付済",
+      customer_name: "顧客",
+      order_received_date: "2026-07-01",
+      construction_desired_date: "2026-08-01",
+      dealer_name: "販売店",
+      settlement_type: "売掛",
+      has_orderable_targets: true,
+      active_order_count: 0,
+    },
+    gate,
+    { today: "2026-08-05" }
+  );
+  assert.ok(row);
+  assert.equal(row!.constructionOverdue, true);
 });
 
 check("カード未完了は発注不可", () => {

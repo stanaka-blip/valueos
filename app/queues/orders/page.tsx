@@ -48,7 +48,6 @@ export default async function OrdersQueuePage() {
                   <th className="px-4 py-3 whitespace-nowrap">案件番号</th>
                   <th className="px-4 py-3 whitespace-nowrap">顧客名</th>
                   <th className="px-4 py-3 whitespace-nowrap">販売店</th>
-                  <th className="px-4 py-3 whitespace-nowrap">決済条件</th>
                   <th className="px-4 py-3 whitespace-nowrap">発注可否</th>
                   <th className="px-4 py-3 whitespace-nowrap">理由</th>
                   <th className="px-4 py-3 whitespace-nowrap">操作</th>
@@ -70,8 +69,19 @@ export default async function OrdersQueuePage() {
 function OrderQueueTableRow({ row }: { row: OrderQueueRow }) {
   return (
     <tr className="border-b border-gray-100 last:border-0">
-      <td className="px-4 py-3 whitespace-nowrap text-gray-900">
-        {formatDate(row.constructionDate)}
+      <td
+        className={`px-4 py-3 whitespace-nowrap ${
+          row.constructionOverdue ? "text-red-600" : "text-gray-900"
+        }`}
+      >
+        <div className="flex flex-col gap-0.5">
+          <span>{formatDate(row.constructionDate)}</span>
+          {row.constructionOverdue ? (
+            <span className="text-xs font-medium text-red-600">
+              ⚠ 期限超過
+            </span>
+          ) : null}
+        </div>
       </td>
       <td className="px-4 py-3 whitespace-nowrap">
         <Link
@@ -83,9 +93,6 @@ function OrderQueueTableRow({ row }: { row: OrderQueueRow }) {
       </td>
       <td className="px-4 py-3 text-gray-900">{row.customerName}</td>
       <td className="px-4 py-3 text-gray-700">{row.dealerName}</td>
-      <td className="px-4 py-3 whitespace-nowrap text-gray-700">
-        {row.settlementType}
-      </td>
       <td className="px-4 py-3 whitespace-nowrap text-gray-700">
         {row.canOrder ? "発注可能" : "発注不可"}
       </td>
