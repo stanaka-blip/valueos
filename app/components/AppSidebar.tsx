@@ -245,11 +245,14 @@ const navGroups: NavGroup[] = [
   {
     label: "業務",
     entries: [
-      { name: "案件管理", href: "/cases", icon: <IconBriefcase /> },
-      { name: "受注管理", href: "/admin/orders", icon: <IconOrders /> },
-      { name: "請求管理", href: "/invoices", icon: <IconInvoice /> },
-      { name: "入金管理", href: "/payments", icon: <IconPayment /> },
-      { name: "タスク管理", href: "/tasks", icon: <IconTask /> },
+      { name: "全案件", href: "/cases", icon: <IconBriefcase /> },
+      { name: "発注管理", href: "/queues/orders", icon: <IconOrders /> },
+      { name: "納品管理", href: "/queues/deliveries", icon: <IconTruck /> },
+      {
+        name: "回収管理",
+        href: "/queues/collections",
+        icon: <IconPayment />,
+      },
     ],
   },
   {

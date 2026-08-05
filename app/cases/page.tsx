@@ -94,7 +94,7 @@ export default async function CasesPage({
     return (
       <div className="min-h-full bg-[#f7f7f5]">
         <header className="border-b border-gray-200/80 bg-white px-6 py-5 md:px-8">
-          <h1 className="text-xl font-semibold text-gray-900">案件管理</h1>
+          <h1 className="text-xl font-semibold text-gray-900">全案件</h1>
         </header>
         <div className="p-6 md:p-8">
           <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-sm text-red-700">
@@ -170,10 +170,10 @@ export default async function CasesPage({
     <div className="min-h-full bg-[#f7f7f5]">
       <header className="border-b border-gray-200/80 bg-white px-6 py-5 md:px-8">
         <h1 className="text-xl font-semibold tracking-tight text-gray-900">
-          案件管理
+          全案件
         </h1>
         <p className="mt-1 text-sm text-gray-500">
-          卸案件の進捗・利益を管理します（全{items.length}件）
+          すべての案件を表示します（全{items.length}件）
           {filterLabel ? ` / ${filterLabel}` : ""}
         </p>
       </header>

@@ -141,7 +141,7 @@ try {
     assert("login accessible", r.status === 200 && html.includes("社内ログイン"));
     assert(
       "login no sidebar",
-      !html.includes("案件管理") && !html.includes("ログアウト"),
+      !html.includes("全案件") && !html.includes("ログアウト"),
       "sidebar leaked on login"
     );
   }
