@@ -1,12 +1,28 @@
 import type { SettlementSaveBody } from "@/lib/caseSettlements/settlementSaveLogic";
+import {
+  CANCELLED_PAYMENT_STATUSES,
+  CONFIRMED_PAYMENT_STATUSES,
+} from "@/lib/payments/constants";
 import type { WorkflowMeta } from "@/lib/workflow/workflowMeta";
 
 import type { SettlementViewData } from "./settlementView";
+
+export type WorkflowPanelPaymentInput = {
+  paymentDate: string | null;
+  status: string | null;
+};
+
+export type WorkflowPanelOrderInput = {
+  deliveredDate: string | null;
+  status: string;
+};
 
 export type WorkflowPanelFieldVisibility = {
   showLoanStatus: boolean;
   showCardStatus: boolean;
   showCompletionDate: boolean;
+  showPaymentDate: boolean;
+  showDeliveryDate: boolean;
 };
 
 /**
@@ -22,6 +38,8 @@ export function resolveWorkflowPanelFieldVisibility(
       showLoanStatus: true,
       showCardStatus: false,
       showCompletionDate: true,
+      showPaymentDate: false,
+      showDeliveryDate: false,
     };
   }
 
@@ -29,16 +47,74 @@ export function resolveWorkflowPanelFieldVisibility(
     return {
       showLoanStatus: false,
       showCardStatus: true,
-      showCompletionDate: true,
+      showCompletionDate: false,
+      showPaymentDate: false,
+      showDeliveryDate: false,
     };
   }
 
-  // 前金 / 売掛 / その他 / 未設定
+  if (type === "前金") {
+    return {
+      showLoanStatus: false,
+      showCardStatus: false,
+      showCompletionDate: false,
+      showPaymentDate: true,
+      showDeliveryDate: false,
+    };
+  }
+
+  if (type === "売掛") {
+    return {
+      showLoanStatus: false,
+      showCardStatus: false,
+      showCompletionDate: false,
+      showPaymentDate: false,
+      showDeliveryDate: true,
+    };
+  }
+
+  // その他 / 未設定
   return {
     showLoanStatus: false,
     showCardStatus: false,
     showCompletionDate: true,
+    showPaymentDate: false,
+    showDeliveryDate: false,
   };
+}
+
+/** 入金タブと同じ確認済入金の最終入金日 */
+export function resolveLatestConfirmedPaymentDate(
+  payments: ReadonlyArray<WorkflowPanelPaymentInput>
+): string | null {
+  let latest: string | null = null;
+
+  for (const payment of payments) {
+    const status = (payment.status || "").trim();
+    if (!CONFIRMED_PAYMENT_STATUSES.has(status)) continue;
+    if (CANCELLED_PAYMENT_STATUSES.has(status)) continue;
+    const date = (payment.paymentDate || "").trim();
+    if (!date) continue;
+    if (!latest || date > latest) latest = date;
+  }
+
+  return latest;
+}
+
+/** 有効発注の最終納品日（orders.delivered_date の最大値） */
+export function resolveLatestOrderDeliveryDate(
+  orders: ReadonlyArray<WorkflowPanelOrderInput>
+): string | null {
+  let latest: string | null = null;
+
+  for (const order of orders) {
+    if (order.status === "キャンセル" || order.status === "取消") continue;
+    const date = (order.deliveredDate || "").trim();
+    if (!date) continue;
+    if (!latest || date > latest) latest = date;
+  }
+
+  return latest;
 }
 
 export function workflowPanelInputGridClass(
@@ -47,11 +123,22 @@ export function workflowPanelInputGridClass(
   const count =
     Number(visibility.showLoanStatus) +
     Number(visibility.showCardStatus) +
-    Number(visibility.showCompletionDate);
+    Number(visibility.showCompletionDate) +
+    Number(visibility.showPaymentDate) +
+    Number(visibility.showDeliveryDate);
 
   if (count <= 1) return "sm:grid-cols-1";
   if (count === 2) return "sm:grid-cols-2";
   return "sm:grid-cols-3";
+}
+
+export function formatWorkflowPanelDate(
+  value: string | null | undefined
+): string {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString("ja-JP");
 }
 
 /** 表示中の項目だけ workflow_panel 保存 payload に含める */
@@ -87,10 +174,16 @@ export function buildWorkflowPanelMetaPayload(options: {
   loanStatus: string;
   cardStatus: string;
   completedDate: string;
+  existingConstructionCompletedDate: string | null;
 }): WorkflowMeta {
-  const meta: WorkflowMeta = {
-    construction_completed_date: options.completedDate || null,
-  };
+  const meta: WorkflowMeta = {};
+
+  if (options.visibility.showCompletionDate) {
+    meta.construction_completed_date = options.completedDate || null;
+  } else if (options.existingConstructionCompletedDate) {
+    meta.construction_completed_date =
+      options.existingConstructionCompletedDate;
+  }
 
   if (options.visibility.showLoanStatus) {
     meta.loan_status = options.loanStatus || null;
