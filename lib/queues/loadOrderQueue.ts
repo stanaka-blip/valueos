@@ -1,3 +1,5 @@
+import "server-only";
+
 import {
   buildOrderQueueRow,
   caseHasOrderableTargets,
@@ -6,6 +8,7 @@ import {
   sortOrderQueueRows,
   type OrderQueueRow,
 } from "@/lib/queues/orderQueue";
+import { loadAllCaseSettlementsAdmin } from "@/lib/queues/loadCaseSettlementsAdmin";
 import { supabase } from "@/lib/supabase";
 
 export type OrderQueueLoadResult = {
@@ -34,15 +37,6 @@ type CaseRow = {
       }[]
     | null;
   case_packages: { id: string }[] | null;
-};
-
-type SettlementRow = {
-  case_id: string;
-  settlement_type?: string | null;
-  deposit_amount?: number | null;
-  loan_status?: string | null;
-  card_status?: string | null;
-  memo?: string | null;
 };
 
 export async function loadOrderQueue(): Promise<OrderQueueLoadResult> {
@@ -110,25 +104,24 @@ async function assembleQueue(cases: CaseRow[]): Promise<OrderQueueLoadResult> {
     { data: orders, error: ordersError },
     { data: invoices, error: invoicesError },
     { data: payments, error: paymentsError },
-    { data: settlements, error: settlementsError },
+    settlementsResult,
   ] = await Promise.all([
     supabase.from("orders").select("id, case_id, status, delivered_date"),
     supabase.from("invoices").select("id, case_id, status, invoice_amount"),
     supabase
       .from("payments")
       .select("id, case_id, invoice_id, status, payment_amount"),
-    supabase
-      .from("case_settlements")
-      .select(
-        "case_id, settlement_type, deposit_amount, loan_status, card_status, memo"
-      ),
+    loadAllCaseSettlementsAdmin(),
   ]);
+
+  if (!settlementsResult.ok) {
+    return { rows: [], error: settlementsResult.error };
+  }
 
   const error =
     ordersError?.message ||
     invoicesError?.message ||
     paymentsError?.message ||
-    settlementsError?.message ||
     null;
   if (error) {
     return { rows: [], error };
@@ -137,8 +130,11 @@ async function assembleQueue(cases: CaseRow[]): Promise<OrderQueueLoadResult> {
   const ordersByCase = groupBy(orders || [], "case_id");
   const invoicesByCase = groupBy(invoices || [], "case_id");
   const paymentsByCase = groupBy(payments || [], "case_id");
-  const settlementByCase = new Map<string, SettlementRow>();
-  for (const s of (settlements || []) as SettlementRow[]) {
+  const settlementByCase = new Map<
+    string,
+    (typeof settlementsResult.data)[number]
+  >();
+  for (const s of settlementsResult.data) {
     if (!s.case_id) continue;
     settlementByCase.set(String(s.case_id), s);
   }

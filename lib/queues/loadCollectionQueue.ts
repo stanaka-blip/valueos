@@ -1,8 +1,14 @@
+import "server-only";
+
 import {
   buildCollectionQueueRow,
   sortCollectionQueueRows,
   type CollectionQueueRow,
 } from "@/lib/queues/collectionQueue";
+import {
+  loadAllCaseSettlementsAdmin,
+  type QueueSettlementRow,
+} from "@/lib/queues/loadCaseSettlementsAdmin";
 import { supabase } from "@/lib/supabase";
 
 export type CollectionQueueLoadResult = {
@@ -23,16 +29,6 @@ type CaseRow = {
   order_received_date: string | null;
   construction_completed_date?: string | null;
   dealers: { name: string | null } | { name: string | null }[] | null;
-};
-
-type SettlementRow = {
-  case_id: string;
-  settlement_type?: string | null;
-  deposit_amount?: number | null;
-  loan_status?: string | null;
-  card_status?: string | null;
-  approval_number?: string | null;
-  memo?: string | null;
 };
 
 type OrderRow = {
@@ -61,7 +57,7 @@ type PaymentRow = {
 export async function loadCollectionQueue(): Promise<CollectionQueueLoadResult> {
   const [
     { data: casesData, error: casesError },
-    { data: settlements, error: settlementsError },
+    settlementsResult,
     { data: orders, error: ordersError },
     { data: invoices, error: invoicesError },
     { data: payments, error: paymentsError },
@@ -79,11 +75,7 @@ export async function loadCollectionQueue(): Promise<CollectionQueueLoadResult> 
       )
     `
     ),
-    supabase
-      .from("case_settlements")
-      .select(
-        "case_id, settlement_type, deposit_amount, loan_status, card_status, approval_number, memo"
-      ),
+    loadAllCaseSettlementsAdmin({ includeApprovalNumber: true }),
     supabase.from("orders").select("id, case_id, status, delivered_date"),
     supabase
       .from("invoices")
@@ -93,8 +85,15 @@ export async function loadCollectionQueue(): Promise<CollectionQueueLoadResult> 
       .select("id, case_id, invoice_id, status, payment_amount"),
   ]);
 
+  if (!settlementsResult.ok) {
+    return { rows: [], error: settlementsResult.error };
+  }
+
   // construction_completed_date 未適用環境向けフォールバック
-  if (casesError && /construction_completed_date|schema cache/i.test(casesError.message)) {
+  if (
+    casesError &&
+    /construction_completed_date|schema cache/i.test(casesError.message)
+  ) {
     const fallback = await supabase.from("cases").select(
       `
       id,
@@ -112,12 +111,11 @@ export async function loadCollectionQueue(): Promise<CollectionQueueLoadResult> 
     }
     return assemble(
       (fallback.data || []) as unknown as CaseRow[],
-      (settlements || []) as SettlementRow[],
+      settlementsResult.data,
       (orders || []) as OrderRow[],
       (invoices || []) as InvoiceRow[],
       (payments || []) as PaymentRow[],
-      settlementsError?.message ||
-        ordersError?.message ||
+      ordersError?.message ||
         invoicesError?.message ||
         paymentsError?.message ||
         null
@@ -126,7 +124,6 @@ export async function loadCollectionQueue(): Promise<CollectionQueueLoadResult> 
 
   const error =
     casesError?.message ||
-    settlementsError?.message ||
     ordersError?.message ||
     invoicesError?.message ||
     paymentsError?.message ||
@@ -137,7 +134,7 @@ export async function loadCollectionQueue(): Promise<CollectionQueueLoadResult> 
 
   return assemble(
     (casesData || []) as unknown as CaseRow[],
-    (settlements || []) as SettlementRow[],
+    settlementsResult.data,
     (orders || []) as OrderRow[],
     (invoices || []) as InvoiceRow[],
     (payments || []) as PaymentRow[],
@@ -147,7 +144,7 @@ export async function loadCollectionQueue(): Promise<CollectionQueueLoadResult> 
 
 function assemble(
   cases: CaseRow[],
-  settlements: SettlementRow[],
+  settlements: QueueSettlementRow[],
   orders: OrderRow[],
   invoices: InvoiceRow[],
   payments: PaymentRow[],
@@ -157,9 +154,10 @@ function assemble(
     return { rows: [], error };
   }
 
-  const settlementByCase = new Map<string, SettlementRow>();
+  const settlementByCase = new Map<string, QueueSettlementRow>();
   for (const s of settlements) {
-    settlementByCase.set(s.case_id, s);
+    if (!s.case_id) continue;
+    settlementByCase.set(String(s.case_id), s);
   }
 
   const ordersByCase = groupBy(orders, "case_id");
@@ -168,7 +166,7 @@ function assemble(
 
   const rows: CollectionQueueRow[] = [];
   for (const c of cases) {
-    const settlement = settlementByCase.get(c.id) || null;
+    const settlement = settlementByCase.get(String(c.id)) || null;
     const dealer = getSingle(c.dealers);
     const row = buildCollectionQueueRow({
       id: c.id,
