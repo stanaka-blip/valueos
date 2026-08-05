@@ -7,6 +7,7 @@ import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { listOrderItemsByOrderId } from "@/lib/repositories/orderItems";
 import type { OrderItemRow } from "@/lib/database.types";
+import { parseCaseExtras } from "@/app/admin/orders/parseCaseExtras";
 import { formatDate, formatYen, toNumber } from "../../orderUtils";
 import {
   displayIdentityValue,
@@ -31,8 +32,12 @@ type CaseRow = {
   id: string;
   case_no: string | null;
   customer_name: string | null;
+  customer_phone: string | null;
   site_address: string | null;
   delivery_address: string | null;
+  desired_delivery_date: string | null;
+  memo: string | null;
+  construction_detail: string | null;
 };
 
 type PrintLine = OrderItemRow & {
@@ -93,7 +98,7 @@ export default function OrderPrintPage() {
           const { data: caseData, error: caseError } = await supabase
             .from("cases")
             .select(
-              "id, case_no, customer_name, site_address, delivery_address"
+              "id, case_no, customer_name, customer_phone, site_address, delivery_address, desired_delivery_date, memo, construction_detail"
             )
             .eq("id", typedOrder.case_id)
             .maybeSingle();
@@ -193,6 +198,11 @@ export default function OrderPrintPage() {
     (caseRow?.site_address || "").trim() ||
     "";
 
+  const caseExtras = parseCaseExtras({
+    memo: caseRow?.memo,
+    constructionDetail: caseRow?.construction_detail,
+  });
+
   return (
     <>
       <div className="mx-auto flex max-w-[210mm] items-center justify-between gap-4 px-4 py-5 print:hidden">
@@ -245,11 +255,22 @@ export default function OrderPrintPage() {
           <div className="space-y-2 text-sm">
             <Info label="案件番号" value={caseRow?.case_no} />
             <Info label="顧客名" value={caseRow?.customer_name} />
+            <Info label="お客様電話番号" value={caseRow?.customer_phone} />
             <Info label="現場住所" value={caseRow?.site_address} />
             <Info
               label="納品先住所"
               value={deliveryAddress || null}
             />
+            <Info
+              label="納品希望日"
+              value={
+                caseRow?.desired_delivery_date
+                  ? formatDate(caseRow.desired_delivery_date)
+                  : null
+              }
+            />
+            <Info label="施工店名" value={caseExtras.contractorName} />
+            <Info label="納品先電話番号" value={caseExtras.receiverPhone} />
           </div>
         </section>
 

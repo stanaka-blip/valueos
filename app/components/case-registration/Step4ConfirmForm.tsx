@@ -61,12 +61,28 @@ export default function Step4ConfirmForm({
             <dd>{caseForm.customer_name}</dd>
           </div>
           <div>
-            <dt className="text-gray-500">電話</dt>
+            <dt className="text-gray-500">お客様電話番号</dt>
             <dd>{caseForm.customer_phone || "—"}</dd>
+          </div>
+          <div>
+            <dt className="text-gray-500">施工店名</dt>
+            <dd>{caseForm.contractor_name || "—"}</dd>
           </div>
           <div>
             <dt className="text-gray-500">受注日</dt>
             <dd>{caseForm.order_received_date}</dd>
+          </div>
+          <div>
+            <dt className="text-gray-500">希望納品日</dt>
+            <dd>{caseForm.desired_delivery_date || "—"}</dd>
+          </div>
+          <div>
+            <dt className="text-gray-500">工事希望日</dt>
+            <dd>{caseForm.construction_desired_date || "—"}</dd>
+          </div>
+          <div>
+            <dt className="text-gray-500">販売店担当者</dt>
+            <dd>{caseForm.assigned_user || "—"}</dd>
           </div>
           <div className="sm:col-span-2">
             <dt className="text-gray-500">設置先</dt>
@@ -75,6 +91,10 @@ export default function Step4ConfirmForm({
           <div className="sm:col-span-2">
             <dt className="text-gray-500">納品先</dt>
             <dd>{resolvedDeliveryAddress(caseForm) || "—"}</dd>
+          </div>
+          <div>
+            <dt className="text-gray-500">納品先電話番号</dt>
+            <dd>{caseForm.delivery_phone || "—"}</dd>
           </div>
         </dl>
       </section>

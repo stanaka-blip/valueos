@@ -50,7 +50,9 @@ export default function Step1CaseForm({
               </option>
             ))}
           </select>
-          {errors.dealer_id ? <p className="mt-1 text-sm text-red-600">{errors.dealer_id}</p> : null}
+          {errors.dealer_id ? (
+            <p className="mt-1 text-sm text-red-600">{errors.dealer_id}</p>
+          ) : null}
         </label>
 
         <label className="block text-sm font-medium text-gray-700">
@@ -67,7 +69,7 @@ export default function Step1CaseForm({
         </label>
 
         <label className="block text-sm font-medium text-gray-700">
-          電話番号
+          お客様電話番号
           <input
             className={inputClass}
             value={caseForm.customer_phone}
@@ -88,6 +90,15 @@ export default function Step1CaseForm({
           ) : null}
         </label>
 
+        <label className="block text-sm font-medium text-gray-700 md:col-span-2">
+          施工店名
+          <input
+            className={inputClass}
+            value={caseForm.contractor_name}
+            onChange={(e) => set("contractor_name", e.target.value)}
+          />
+        </label>
+
         <label className="block text-sm font-medium text-gray-700">
           受注日 <span className="text-red-600">*</span>
           <input
@@ -98,7 +109,9 @@ export default function Step1CaseForm({
             required
           />
           {errors.order_received_date ? (
-            <p className="mt-1 text-sm text-red-600">{errors.order_received_date}</p>
+            <p className="mt-1 text-sm text-red-600">
+              {errors.order_received_date}
+            </p>
           ) : null}
         </label>
 
@@ -123,11 +136,11 @@ export default function Step1CaseForm({
         </label>
 
         <label className="block text-sm font-medium text-gray-700">
-          受注区分
+          販売店担当者
           <input
             className={inputClass}
-            value={caseForm.order_type}
-            onChange={(e) => set("order_type", e.target.value)}
+            value={caseForm.assigned_user}
+            onChange={(e) => set("assigned_user", e.target.value)}
           />
         </label>
 
@@ -135,7 +148,9 @@ export default function Step1CaseForm({
           <input
             type="checkbox"
             checked={caseForm.delivery_same_as_site}
-            onChange={(e) => set("delivery_same_as_site", e.target.checked)}
+            onChange={(e) =>
+              set("delivery_same_as_site", e.target.checked)
+            }
           />
           納品先は設置先住所と同じ
         </label>
@@ -150,46 +165,19 @@ export default function Step1CaseForm({
               required
             />
             {errors.delivery_address ? (
-              <p className="mt-1 text-sm text-red-600">{errors.delivery_address}</p>
+              <p className="mt-1 text-sm text-red-600">
+                {errors.delivery_address}
+              </p>
             ) : null}
           </label>
         ) : null}
 
-        <label className="block text-sm font-medium text-gray-700">
-          販売店担当者
+        <label className="block text-sm font-medium text-gray-700 md:col-span-2">
+          納品先電話番号
           <input
             className={inputClass}
-            value={caseForm.assigned_user}
-            onChange={(e) => set("assigned_user", e.target.value)}
-          />
-        </label>
-
-        <label className="block text-sm font-medium text-gray-700">
-          案件番号（空なら自動採番）
-          <input
-            className={inputClass}
-            value={caseForm.case_no}
-            onChange={(e) => set("case_no", e.target.value)}
-          />
-        </label>
-
-        <label className="block text-sm font-medium text-gray-700 md:col-span-2">
-          工事内容
-          <textarea
-            className={inputClass}
-            rows={2}
-            value={caseForm.construction_detail}
-            onChange={(e) => set("construction_detail", e.target.value)}
-          />
-        </label>
-
-        <label className="block text-sm font-medium text-gray-700 md:col-span-2">
-          メモ
-          <textarea
-            className={inputClass}
-            rows={2}
-            value={caseForm.memo}
-            onChange={(e) => set("memo", e.target.value)}
+            value={caseForm.delivery_phone}
+            onChange={(e) => set("delivery_phone", e.target.value)}
           />
         </label>
       </div>
