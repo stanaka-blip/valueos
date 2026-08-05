@@ -93,18 +93,18 @@ export function resolveOrderQueueBlockReason(
 
   if (workflow.ruleKey === null) {
     if (workflow.warnings.includes("決済区分が未設定です")) {
-      return "決済区分未設定";
+      return "決済方法を選択してください";
     }
     return workflow.warnings[0] || "決済条件を確認してください";
   }
 
   switch (workflow.ruleKey) {
     case "前金":
-      return "前金未入金";
+      return "前金の入金確認待ち";
     case "カード":
-      return "カード決済待ち";
+      return "カード決済確認待ち";
     case "3社間決済":
-      return "審査承認待ち";
+      return "3社間審査承認待ち";
     case "売掛":
       return workflow.warnings[0] || "発注できません";
     default:

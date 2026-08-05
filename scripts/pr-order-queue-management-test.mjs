@@ -67,10 +67,10 @@ assert(
 );
 assert(
   "settlement gate reasons",
-  logic.includes("前金未入金") &&
-    logic.includes("カード決済待ち") &&
-    logic.includes("審査承認待ち") &&
-    logic.includes("決済区分未設定")
+  logic.includes("前金の入金確認待ち") &&
+    logic.includes("カード決済確認待ち") &&
+    logic.includes("3社間審査承認待ち") &&
+    logic.includes("決済方法を選択してください")
 );
 assert(
   "order date today initial and editable",
