@@ -75,6 +75,22 @@ assert(
 );
 
 assert(
+  "header layout with title and meta",
+  page.includes('className="order-print-title"') &&
+    page.includes(">発注書<") &&
+    page.includes("order-print-meta") &&
+    page.includes("order-print-header-rule")
+);
+
+assert(
+  "two-column top section",
+  page.includes("order-print-top") &&
+    page.includes("order-print-top-left") &&
+    page.includes("order-print-top-right") &&
+    page.includes("納品先情報")
+);
+
+assert(
   "case purchase-order fields present",
   page.includes("納品希望日") &&
     page.includes("お客様電話番号") &&
@@ -88,7 +104,6 @@ assert(
   "header fields present",
   page.includes("発注番号") &&
     page.includes("発注日") &&
-    page.includes("納品予定日") &&
     page.includes("御中") &&
     page.includes("案件番号") &&
     page.includes("顧客名") &&
@@ -111,9 +126,11 @@ assert(
 
 assert(
   "total and footer present",
-  page.includes("発注合計") &&
-    page.includes("発注備考") &&
-    page.includes("本発注書はValueOSより出力されました")
+  page.includes("order-print-total") &&
+    page.includes("発注合計") &&
+    page.includes("【備考】") &&
+    page.includes("order.memo") &&
+    page.includes("本発注書は ValueOS より出力されました")
 );
 
 assert(

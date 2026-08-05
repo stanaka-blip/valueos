@@ -216,112 +216,107 @@ export default function OrderPrintPage() {
       </div>
 
       <main className="order-print-page mx-auto bg-white text-gray-900">
-        <header className="order-print-header border-b-2 border-gray-900 pb-5">
-          <h1 className="text-3xl font-bold tracking-[0.3em]">発 注 書</h1>
-          <div className="mt-5 grid gap-2 text-sm md:grid-cols-2">
-            <p>
-              発注番号：
-              <span className="ml-1 font-medium">
-                {displayText(order.order_no)}
-              </span>
-            </p>
-            <p>
-              発注日：
-              <span className="ml-1 font-medium">
-                {formatDate(order.order_date)}
-              </span>
-            </p>
-            <p>
-              納品予定日：
-              <span className="ml-1 font-medium">
-                {formatDate(order.expected_delivery_date)}
-              </span>
-            </p>
-            <p>
-              発注ステータス：
-              <span className="ml-1 font-medium">
-                {displayText(order.status)}
-              </span>
-            </p>
+        <header className="order-print-header">
+          <div className="order-print-header-row">
+            <h1 className="order-print-title">発注書</h1>
+            <dl className="order-print-meta">
+              <div className="order-print-meta-item">
+                <dt>発注番号</dt>
+                <dd>{displayText(order.order_no)}</dd>
+              </div>
+              <div className="order-print-meta-item">
+                <dt>発注日</dt>
+                <dd>{formatDate(order.order_date)}</dd>
+              </div>
+              <div className="order-print-meta-item">
+                <dt>納品希望日</dt>
+                <dd>
+                  {caseRow?.desired_delivery_date
+                    ? formatDate(caseRow.desired_delivery_date)
+                    : "—"}
+                </dd>
+              </div>
+              <div className="order-print-meta-item">
+                <dt>発注ステータス</dt>
+                <dd>{displayText(order.status)}</dd>
+              </div>
+            </dl>
           </div>
+          <div className="order-print-header-rule" aria-hidden="true" />
         </header>
 
-        <section className="mt-8 grid gap-8 md:grid-cols-2">
-          <div>
-            <p className="border-b border-gray-700 pb-2 text-xl font-bold">
-              {supplierNameOf(order)} 御中
+        <section className="order-print-top">
+          <div className="order-print-top-left">
+            <p className="order-print-supplier">
+              {supplierNameOf(order)}
+              <span className="order-print-supplier-honorific"> 御中</span>
             </p>
+            <div className="order-print-fields">
+              <FieldRow label="案件番号" value={caseRow?.case_no} />
+              <FieldRow label="顧客名" value={caseRow?.customer_name} />
+              <FieldRow
+                label="お客様電話番号"
+                value={caseRow?.customer_phone}
+              />
+              <FieldRow label="現場住所" value={caseRow?.site_address} />
+              <FieldRow
+                label="施工店名"
+                value={caseExtras.contractorName}
+              />
+            </div>
           </div>
-          <div className="space-y-2 text-sm">
-            <Info label="案件番号" value={caseRow?.case_no} />
-            <Info label="顧客名" value={caseRow?.customer_name} />
-            <Info label="お客様電話番号" value={caseRow?.customer_phone} />
-            <Info label="現場住所" value={caseRow?.site_address} />
-            <Info
-              label="納品先住所"
-              value={deliveryAddress || null}
-            />
-            <Info
-              label="納品希望日"
-              value={
-                caseRow?.desired_delivery_date
-                  ? formatDate(caseRow.desired_delivery_date)
-                  : null
-              }
-            />
-            <Info label="施工店名" value={caseExtras.contractorName} />
-            <Info label="納品先電話番号" value={caseExtras.receiverPhone} />
+
+          <div className="order-print-top-right">
+            <h2 className="order-print-section-title">納品先情報</h2>
+            <div className="order-print-fields">
+              <FieldRow
+                label="納品先住所"
+                value={deliveryAddress || null}
+              />
+              <FieldRow
+                label="納品先電話番号"
+                value={caseExtras.receiverPhone}
+              />
+            </div>
           </div>
         </section>
 
-        <section className="mt-8">
-          <table className="order-print-table w-full border-collapse text-sm">
+        <section className="order-print-lines">
+          <table className="order-print-table w-full border-collapse">
             <thead>
-              <tr className="border-b-2 border-gray-900 text-left">
-                <th className="py-2 pr-2 font-semibold">メーカー</th>
-                <th className="py-2 pr-2 font-semibold">型番</th>
-                <th className="py-2 pr-2 font-semibold">商品名</th>
-                <th className="py-2 pr-2 text-right font-semibold">数量</th>
-                <th className="py-2 pr-2 text-right font-semibold">単価</th>
-                <th className="py-2 pr-2 text-right font-semibold">金額</th>
-                <th className="py-2 font-semibold">備考</th>
+              <tr>
+                <th>メーカー</th>
+                <th>型番</th>
+                <th>商品名</th>
+                <th className="order-print-num">数量</th>
+                <th className="order-print-num">単価</th>
+                <th className="order-print-num">金額</th>
+                <th>備考</th>
               </tr>
             </thead>
             <tbody>
               {items.length === 0 ? (
                 <tr>
-                  <td
-                    colSpan={7}
-                    className="py-4 text-center text-gray-500"
-                  >
+                  <td colSpan={7} className="order-print-empty">
                     明細なし
                   </td>
                 </tr>
               ) : (
                 items.map((item) => (
-                  <tr
-                    key={item.id}
-                    className="order-print-row border-b border-gray-300"
-                  >
-                    <td className="py-2 pr-2 align-top">
-                      {displayIdentityValue(item.manufacturer_name)}
-                    </td>
-                    <td className="py-2 pr-2 align-top">
-                      {displayIdentityValue(item.model_no)}
-                    </td>
-                    <td className="py-2 pr-2 align-top">
-                      {displayText(item.product_name)}
-                    </td>
-                    <td className="py-2 pr-2 text-right align-top tabular-nums">
+                  <tr key={item.id} className="order-print-row">
+                    <td>{displayIdentityValue(item.manufacturer_name)}</td>
+                    <td>{displayIdentityValue(item.model_no)}</td>
+                    <td>{displayText(item.product_name)}</td>
+                    <td className="order-print-num tabular-nums">
                       {item.quantity}
                     </td>
-                    <td className="py-2 pr-2 text-right align-top tabular-nums">
+                    <td className="order-print-num tabular-nums">
                       {formatYen(toNumber(item.unit_price))}
                     </td>
-                    <td className="py-2 pr-2 text-right align-top tabular-nums">
+                    <td className="order-print-num tabular-nums">
                       {formatYen(toNumber(item.amount))}
                     </td>
-                    <td className="py-2 align-top whitespace-pre-wrap">
+                    <td className="order-print-memo whitespace-pre-wrap">
                       {displayText(item.memo)}
                     </td>
                   </tr>
@@ -331,26 +326,26 @@ export default function OrderPrintPage() {
           </table>
         </section>
 
-        <section className="mt-6 flex justify-end">
-          <div className="min-w-[220px] border-2 border-gray-900 p-4">
-            <p className="text-sm font-bold">発注合計</p>
-            <p className="mt-2 text-right text-2xl font-bold tabular-nums">
+        <section className="order-print-total-wrap">
+          <div className="order-print-total">
+            <div className="order-print-total-rule" aria-hidden="true" />
+            <p className="order-print-total-label">発注合計</p>
+            <p className="order-print-total-amount tabular-nums">
               {formatYen(total)}
             </p>
+            <div className="order-print-total-rule" aria-hidden="true" />
           </div>
         </section>
 
-        {order.memo ? (
-          <section className="mt-8 text-sm">
-            <p className="font-bold text-gray-700">発注備考</p>
-            <p className="mt-2 whitespace-pre-wrap border border-gray-300 p-3">
-              {order.memo}
-            </p>
-          </section>
-        ) : null}
+        <section className="order-print-notes">
+          <p className="order-print-notes-heading">【備考】</p>
+          <div className="order-print-notes-body whitespace-pre-wrap">
+            {order.memo?.trim() ? order.memo : "—"}
+          </div>
+        </section>
 
-        <footer className="mt-12 border-t border-gray-400 pt-4 text-xs text-gray-600">
-          本発注書はValueOSより出力されました
+        <footer className="order-print-footer">
+          本発注書は ValueOS より出力されました
         </footer>
       </main>
 
@@ -358,12 +353,161 @@ export default function OrderPrintPage() {
         .order-print-page {
           width: 210mm;
           min-height: 297mm;
-          padding: 15mm;
+          padding: 14mm 16mm 12mm;
           background: white;
+          color: #111827;
+          font-size: 10.5pt;
+          line-height: 1.55;
+        }
+
+        .order-print-header {
+          break-after: avoid;
+          page-break-after: avoid;
+        }
+
+        .order-print-header-row {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 24px;
+        }
+
+        .order-print-title {
+          margin: 0;
+          font-size: 22pt;
+          font-weight: 600;
+          letter-spacing: 0.08em;
+          color: #111827;
+        }
+
+        .order-print-meta {
+          margin: 0;
+          min-width: 220px;
+          display: grid;
+          gap: 8px;
+        }
+
+        .order-print-meta-item {
+          display: grid;
+          grid-template-columns: 6.5em 1fr;
+          gap: 12px;
+          align-items: baseline;
+        }
+
+        .order-print-meta-item dt {
+          margin: 0;
+          font-size: 9pt;
+          font-weight: 500;
+          color: #6b7280;
+        }
+
+        .order-print-meta-item dd {
+          margin: 0;
+          font-size: 10.5pt;
+          font-weight: 500;
+          color: #111827;
+          text-align: right;
+        }
+
+        .order-print-header-rule {
+          margin-top: 18px;
+          border-top: 1px solid #d1d5db;
+        }
+
+        .order-print-top {
+          margin-top: 28px;
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 32px;
+        }
+
+        .order-print-supplier {
+          margin: 0 0 20px;
+          font-size: 13pt;
+          font-weight: 600;
+          color: #111827;
+        }
+
+        .order-print-supplier-honorific {
+          font-weight: 500;
+        }
+
+        .order-print-section-title {
+          margin: 0 0 16px;
+          font-size: 10.5pt;
+          font-weight: 600;
+          color: #111827;
+        }
+
+        .order-print-fields {
+          display: grid;
+          gap: 12px;
+        }
+
+        .order-print-field {
+          display: grid;
+          grid-template-columns: 7.5em 1fr;
+          gap: 12px;
+          align-items: start;
+        }
+
+        .order-print-field-label {
+          font-size: 9pt;
+          font-weight: 500;
+          color: #6b7280;
+        }
+
+        .order-print-field-value {
+          font-size: 10.5pt;
+          color: #111827;
+          word-break: break-word;
+        }
+
+        .order-print-lines {
+          margin-top: 32px;
+        }
+
+        .order-print-table {
+          font-size: 9.5pt;
         }
 
         .order-print-table thead {
           display: table-header-group;
+        }
+
+        .order-print-table thead th {
+          padding: 12px 10px;
+          background: #1f2937;
+          color: #ffffff;
+          font-size: 9pt;
+          font-weight: 600;
+          text-align: left;
+          border: none;
+        }
+
+        .order-print-table thead th.order-print-num {
+          text-align: right;
+        }
+
+        .order-print-table tbody td {
+          padding: 14px 10px;
+          border-bottom: 1px solid #e5e7eb;
+          vertical-align: top;
+          color: #111827;
+        }
+
+        .order-print-table tbody td.order-print-num {
+          text-align: right;
+        }
+
+        .order-print-table tbody td.order-print-memo {
+          color: #374151;
+        }
+
+        .order-print-empty {
+          padding: 24px 10px !important;
+          text-align: center;
+          color: #6b7280;
         }
 
         .order-print-row {
@@ -371,9 +515,64 @@ export default function OrderPrintPage() {
           page-break-inside: avoid;
         }
 
-        .order-print-header {
-          break-after: avoid;
-          page-break-after: avoid;
+        .order-print-total-wrap {
+          margin-top: 28px;
+          display: flex;
+          justify-content: flex-end;
+        }
+
+        .order-print-total {
+          min-width: 240px;
+          text-align: right;
+        }
+
+        .order-print-total-rule {
+          border-top: 1px solid #9ca3af;
+        }
+
+        .order-print-total-label {
+          margin: 14px 0 6px;
+          font-size: 10pt;
+          font-weight: 600;
+          color: #374151;
+        }
+
+        .order-print-total-amount {
+          margin: 0 0 14px;
+          font-size: 20pt;
+          font-weight: 700;
+          color: #111827;
+          letter-spacing: 0.02em;
+        }
+
+        .order-print-notes {
+          margin-top: 32px;
+        }
+
+        .order-print-notes-heading {
+          margin: 0 0 10px;
+          font-size: 10pt;
+          font-weight: 600;
+          color: #374151;
+        }
+
+        .order-print-notes-body {
+          min-height: 72px;
+          padding: 16px 18px;
+          border: 1px solid #d1d5db;
+          border-radius: 4px;
+          background: #fafafa;
+          font-size: 10pt;
+          color: #111827;
+        }
+
+        .order-print-footer {
+          margin-top: 36px;
+          padding-top: 12px;
+          border-top: 1px solid #e5e7eb;
+          font-size: 8pt;
+          color: #9ca3af;
+          text-align: center;
         }
 
         @page {
@@ -403,8 +602,21 @@ export default function OrderPrintPage() {
             width: 210mm;
             min-height: 297mm;
             margin: 0;
-            padding: 15mm;
+            padding: 14mm 16mm 12mm;
             box-shadow: none;
+          }
+
+          .order-print-table thead th {
+            background: #1f2937 !important;
+            color: #ffffff !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+
+          .order-print-notes-body {
+            background: #fafafa !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
           }
         }
       `}</style>
@@ -412,7 +624,7 @@ export default function OrderPrintPage() {
   );
 }
 
-function Info({
+function FieldRow({
   label,
   value,
 }: {
@@ -420,11 +632,9 @@ function Info({
   value: string | null | undefined;
 }) {
   return (
-    <div>
-      <p className="text-xs font-bold text-gray-500">{label}</p>
-      <p className="mt-1 break-words text-sm text-gray-900">
-        {displayText(value)}
-      </p>
+    <div className="order-print-field">
+      <span className="order-print-field-label">{label}</span>
+      <span className="order-print-field-value">{displayText(value)}</span>
     </div>
   );
 }
