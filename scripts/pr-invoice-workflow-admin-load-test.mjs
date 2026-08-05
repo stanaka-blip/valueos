@@ -1,6 +1,6 @@
 /**
- * 発注登録 Workflow admin 読取 静的契約テスト
- * Run: node scripts/pr-order-workflow-admin-load-test.mjs
+ * 請求登録 Workflow admin 読取 静的契約テスト
+ * Run: node scripts/pr-invoice-workflow-admin-load-test.mjs
  */
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
@@ -21,20 +21,33 @@ function read(rel) {
   return readFileSync(join(ROOT, rel), "utf8");
 }
 
-const page = read("app/cases/[id]/orders/new/page.tsx");
+const page = read("app/cases/[id]/invoices/new/page.tsx");
 const action = read("app/cases/[id]/fetchCaseWorkflowAction.ts");
 const client = read("app/cases/[id]/fetchCaseWorkflow.ts");
 const admin = read("lib/workflow/loadCaseWorkflowAdmin.ts");
 const core = read("lib/workflow/evaluateCaseWorkflowFromSettlement.ts");
 
 assert(
-  "orders/new does not call loadCaseWorkflow directly",
+  "invoices/new does not call loadCaseWorkflow directly",
   !page.includes('from "@/lib/workflow/loadCaseWorkflow"') &&
     !page.includes("loadCaseWorkflow(")
 );
 assert(
-  "orders/new uses fetchCaseWorkflowForOrderPage",
-  page.includes("fetchCaseWorkflowForOrderPage")
+  "invoices/new uses fetchCaseWorkflowForCasePage",
+  page.includes("fetchCaseWorkflowForCasePage")
+);
+assert(
+  "invoices/new does not read case_settlements directly",
+  !page.includes("case_settlements")
+);
+assert(
+  "invoices/new distinguishes fetch error from unset",
+  page.includes("workflowLoadError") && page.includes("settlementUnset")
+);
+assert(
+  "invoices/new avoids duplicate unset warnings in rule block",
+  page.includes("invoiceBlockedBySettlementRule") &&
+    page.includes("!workflowLoadError && settlementUnset")
 );
 assert(
   "admin loader uses getCaseSettlementByCaseIdAdmin",
@@ -50,16 +63,16 @@ assert(
     core.includes("settlementMissing")
 );
 assert(
-  "files exist",
+  "shared files exist",
   existsSync(join(ROOT, "lib/workflow/loadCaseWorkflowAdmin.ts")) &&
     existsSync(join(ROOT, "lib/workflow/evaluateCaseWorkflowFromSettlement.ts")) &&
-    existsSync(join(ROOT, "app/cases/[id]/fetchCaseWorkflowAction.ts"))
+    existsSync(join(ROOT, "app/cases/[id]/fetchCaseWorkflowAction.ts")) &&
+    existsSync(join(ROOT, "app/cases/[id]/fetchCaseWorkflow.ts"))
 );
 assert(
   "client wrapper uses server action only",
   client.includes("fetchCaseWorkflowAction") &&
-    (client.includes("fetchCaseWorkflowForOrderPage") ||
-      client.includes("fetchCaseWorkflowForCasePage")) &&
+    client.includes("fetchCaseWorkflowForCasePage") &&
     !/\bloadCaseWorkflow\b/.test(client)
 );
 
@@ -93,4 +106,4 @@ if (failed > 0) {
   console.error(`\n${failed} failure(s)`);
   process.exit(1);
 }
-console.log("\nAll order workflow admin load checks passed");
+console.log("\nAll invoice workflow admin load checks passed");
