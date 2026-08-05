@@ -11,9 +11,18 @@ import {
   useState,
 } from "react";
 
+import { fetchCaseWorkflowForCasePage } from "@/app/cases/[id]/fetchCaseWorkflow";
 import { supabase } from "@/lib/supabase";
-import { loadCaseWorkflow } from "@/lib/workflow/loadCaseWorkflow";
 import type { WorkflowResult } from "@/lib/workflow";
+
+/** 決済区分未設定（WorkflowEngine の固定文言と一致） */
+function isSettlementTypeUnset(workflow: WorkflowResult | null): boolean {
+  if (!workflow) return false;
+  return (
+    workflow.ruleKey === null &&
+    workflow.warnings.includes("決済区分が未設定です")
+  );
+}
 
 type Dealer = {
   name: string | null;
@@ -84,6 +93,7 @@ export default function NewInvoicePage() {
   const [loadError, setLoadError] = useState(initialRouteError);
   const [submitError, setSubmitError] = useState("");
   const [workflow, setWorkflow] = useState<WorkflowResult | null>(null);
+  const [workflowLoadError, setWorkflowLoadError] = useState("");
 
   const [form, setForm] = useState<InvoiceForm>({
     invoice_no: "",
@@ -192,22 +202,40 @@ export default function NewInvoicePage() {
         normalizedProducts
       );
 
-      const workflowLoad = await loadCaseWorkflow(resolvedCaseId);
-      setWorkflow(workflowLoad.result);
-
-      setForm((current) => ({
-        ...current,
-        invoice_no:
-          current.invoice_no ||
-          generateInvoiceNumber(normalizedCase.case_no),
-        invoice_amount:
-          totalSales > 0
-            ? String(totalSales)
-            : current.invoice_amount,
-        due_date:
-          workflowLoad.result.paymentDueDate ||
-          current.due_date,
-      }));
+      const workflowLoad =
+        await fetchCaseWorkflowForCasePage(resolvedCaseId);
+      if (workflowLoad.ok) {
+        setWorkflow(workflowLoad.result);
+        setWorkflowLoadError("");
+        setForm((current) => ({
+          ...current,
+          invoice_no:
+            current.invoice_no ||
+            generateInvoiceNumber(normalizedCase.case_no),
+          invoice_amount:
+            totalSales > 0
+              ? String(totalSales)
+              : current.invoice_amount,
+          due_date:
+            workflowLoad.result.paymentDueDate ||
+            current.due_date,
+        }));
+      } else {
+        setWorkflow(null);
+        setWorkflowLoadError(
+          workflowLoad.error_message || "決済条件の取得に失敗しました"
+        );
+        setForm((current) => ({
+          ...current,
+          invoice_no:
+            current.invoice_no ||
+            generateInvoiceNumber(normalizedCase.case_no),
+          invoice_amount:
+            totalSales > 0
+              ? String(totalSales)
+              : current.invoice_amount,
+        }));
+      }
 
       setInitialLoading(false);
     }
@@ -222,6 +250,11 @@ export default function NewInvoicePage() {
   const productSalesTotal = useMemo(() => {
     return calculateSalesTotal(caseProducts);
   }, [caseProducts]);
+
+  const settlementUnset = isSettlementTypeUnset(workflow);
+  const invoiceBlockedBySettlementRule = Boolean(
+    workflow && !workflow.canInvoice && !settlementUnset
+  );
 
   function handleChange(
     event: ChangeEvent<
@@ -252,13 +285,27 @@ export default function NewInvoicePage() {
 
     setSubmitError("");
 
-    const latestWorkflow = await loadCaseWorkflow(caseData.id);
-    setWorkflow(latestWorkflow.result);
-    if (!latestWorkflow.result.canInvoice) {
-      setSubmitError(
-        latestWorkflow.result.warnings[0] ||
-          "現在の決済区分ルールでは請求できません。"
+    const latestWorkflow = await fetchCaseWorkflowForCasePage(caseData.id);
+    if (!latestWorkflow.ok) {
+      setWorkflow(null);
+      setWorkflowLoadError(
+        latestWorkflow.error_message || "決済条件の取得に失敗しました"
       );
+      setSubmitError(
+        latestWorkflow.error_message ||
+          "決済条件を確認できませんでした。画面を更新して再度お試しください。"
+      );
+      return;
+    }
+    setWorkflow(latestWorkflow.result);
+    setWorkflowLoadError("");
+    if (!latestWorkflow.result.canInvoice) {
+      if (!isSettlementTypeUnset(latestWorkflow.result)) {
+        setSubmitError(
+          latestWorkflow.result.warnings[0] ||
+            "現在の決済区分ルールでは請求できません。"
+        );
+      }
       return;
     }
 
@@ -577,14 +624,27 @@ export default function NewInvoicePage() {
             請求情報
           </h2>
 
-          {workflow && !workflow.canInvoice ? (
+          {workflowLoadError ? (
+            <div className="mb-5 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+              決済条件の取得に失敗しました：{workflowLoadError}
+              （未設定とは限りません。画面を更新して再度お試しください。）
+            </div>
+          ) : null}
+
+          {!workflowLoadError && settlementUnset ? (
+            <div className="mb-5 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              決済区分が未設定です。請求するには決済条件を設定してください。
+            </div>
+          ) : null}
+
+          {!workflowLoadError && invoiceBlockedBySettlementRule ? (
             <div className="mb-5 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
               <p className="font-semibold">請求できません</p>
               <p className="mt-1">
-                担当: {workflow.assignee} / 次のアクション:{" "}
-                {workflow.nextAction}
+                担当: {workflow?.assignee} / 次のアクション:{" "}
+                {workflow?.nextAction}
               </p>
-              {workflow.warnings.length > 0 ? (
+              {workflow && workflow.warnings.length > 0 ? (
                 <ul className="mt-2 list-disc space-y-1 pl-5">
                   {workflow.warnings.map((w) => (
                     <li key={w}>{w}</li>
