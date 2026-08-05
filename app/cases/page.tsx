@@ -93,6 +93,17 @@ export default async function CasesPage({
           manufacturers (
             name
           )
+        ),
+        case_packages (
+          case_package_items (
+            product_id,
+            model_no_snapshot,
+            is_selected,
+            is_hidden,
+            products (
+              model_no
+            )
+          )
         )
       )
     `

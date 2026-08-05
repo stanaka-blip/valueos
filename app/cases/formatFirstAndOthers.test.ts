@@ -69,6 +69,13 @@ test("summarizeCaseManufacturers / ModelNumbers from case_products lines", () =>
         name: "オール電化セット",
         manufacturers: { name: "パナソニック" },
       },
+      case_packages: {
+        case_package_items: {
+          product_id: "p1",
+          model_no_snapshot: "CS-Z402D2",
+          products: { model_no: "fallback-should-not-use" },
+        },
+      },
     },
   ];
 
@@ -76,26 +83,115 @@ test("summarizeCaseManufacturers / ModelNumbers from case_products lines", () =>
   assert.equal(summarizeCaseModelNumbers(lines), "S40ZTEP\n他2件");
 });
 
-test("PACKAGE: model_no when product linked, else package name fallback", () => {
+test("PACKAGE: model_no_snapshot → products.model_no, never packages.name", () => {
   assert.equal(
     summarizeCaseModelNumbers([
       {
         line_type: "PACKAGE",
-        products: { name: "構成商品", model_no: "PKG-MODEL-1" },
-        packages: { name: "長い商品説明パッケージ名" },
+        packages: { name: "全負荷単機能11.1kwシステム(10年保証)" },
+        case_packages: {
+          case_package_items: {
+            product_id: "p1",
+            model_no_snapshot: "PKG-SNAP-1",
+            products: { model_no: "PKG-PRODUCT-1" },
+          },
+        },
       },
     ]),
-    "PKG-MODEL-1"
+    "PKG-SNAP-1"
   );
   assert.equal(
     summarizeCaseModelNumbers([
       {
         line_type: "PACKAGE",
-        products: null,
-        packages: { name: "パッケージ名のみ" },
+        packages: { name: "全負荷単機能11.1kwシステム(10年保証)" },
+        case_packages: {
+          case_package_items: {
+            product_id: "p1",
+            model_no_snapshot: null,
+            products: { model_no: "PKG-PRODUCT-1" },
+          },
+        },
       },
     ]),
-    "パッケージ名のみ"
+    "PKG-PRODUCT-1"
+  );
+  assert.equal(
+    summarizeCaseModelNumbers([
+      {
+        line_type: "PACKAGE",
+        packages: { name: "パッケージ名のみ" },
+        case_packages: {
+          case_package_items: {
+            product_id: "p1",
+            model_no_snapshot: null,
+            products: { model_no: null },
+          },
+        },
+      },
+    ]),
+    "—"
+  );
+  assert.equal(
+    summarizeCaseModelNumbers([
+      {
+        line_type: "PACKAGE",
+        packages: { name: "パッケージ名のみ" },
+        case_packages: null,
+      },
+    ]),
+    "—"
+  );
+});
+
+test("PRODUCT: model_no only, no product name fallback", () => {
+  assert.equal(
+    summarizeCaseModelNumbers([
+      {
+        line_type: "PRODUCT",
+        products: { name: "長い商品説明", model_no: "S40ZTEP" },
+      },
+    ]),
+    "S40ZTEP"
+  );
+  assert.equal(
+    summarizeCaseModelNumbers([
+      {
+        line_type: "PRODUCT",
+        products: { name: "長い商品説明", model_no: null },
+      },
+    ]),
+    "—"
+  );
+});
+
+test("PACKAGE: hidden/unselected items are excluded", () => {
+  assert.equal(
+    summarizeCaseModelNumbers([
+      {
+        line_type: "PACKAGE",
+        case_packages: {
+          case_package_items: [
+            {
+              product_id: "p1",
+              model_no_snapshot: "VISIBLE-1",
+              is_hidden: false,
+            },
+            {
+              product_id: "p2",
+              model_no_snapshot: "HIDDEN-1",
+              is_hidden: true,
+            },
+            {
+              product_id: "p3",
+              model_no_snapshot: "UNSELECTED-1",
+              is_selected: false,
+            },
+          ],
+        },
+      },
+    ]),
+    "VISIBLE-1"
   );
 });
 
@@ -104,10 +200,22 @@ test("cases list page uses model_no in query", () => {
   assert.match(source, /loadAllCaseSettlementsAdmin/);
   assert.match(source, /summarizeCaseManufacturers/);
   assert.match(source, /summarizeCaseModelNumbers/);
-  assert.match(source, /model_no/);
+  assert.match(source, /model_no_snapshot/);
+  assert.match(source, /case_package_items/);
   assert.doesNotMatch(source, /summarizeCaseProducts/);
   assert.doesNotMatch(source, /sales_price/);
   assert.doesNotMatch(source, /gross_profit/);
+});
+
+test("caseListLineSummary does not fallback model column to package name", () => {
+  const source = readFileSync(
+    join(process.cwd(), "app/cases/caseListLineSummary.ts"),
+    "utf8"
+  );
+  assert.doesNotMatch(source, /pkg\?\.name/);
+  assert.doesNotMatch(source, /product\?\.name/);
+  assert.match(source, /model_no_snapshot/);
+  assert.match(source, /case_package_items/);
 });
 
 test("CasesList columns: 型番 replaces 商材", () => {
