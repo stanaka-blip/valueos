@@ -14,7 +14,6 @@ import { useParams, useRouter } from "next/navigation";
 
 import { fetchActivePurchaseUnitPrices } from "@/lib/purchasePrices";
 import { supabase } from "@/lib/supabase";
-import { loadCaseWorkflow } from "@/lib/workflow/loadCaseWorkflow";
 import type { WorkflowResult } from "@/lib/workflow";
 
 import {
@@ -22,6 +21,7 @@ import {
   PURCHASE_ORDER_STATUSES,
   resolveDeliveredDate,
 } from "@/app/orders/orderConstants";
+import { fetchCaseWorkflowForOrderPage } from "../fetchCaseWorkflow";
 import {
   calcLineAmount,
   formatDate,
@@ -107,6 +107,7 @@ export default function NewOrderPage() {
   const [submitError, setSubmitError] = useState("");
   const [missingPriceNames, setMissingPriceNames] = useState<string[]>([]);
   const [workflow, setWorkflow] = useState<WorkflowResult | null>(null);
+  const [workflowLoadError, setWorkflowLoadError] = useState("");
   const [form, setForm] = useState<OrderForm>({
     order_date: getTodayString(),
     expected_delivery_date: "",
@@ -311,7 +312,7 @@ export default function NewOrderPage() {
         return;
       }
 
-      const workflowLoad = await loadCaseWorkflow(caseId);
+      const workflowLoad = await fetchCaseWorkflowForOrderPage(caseId);
       if (cancelled) {
         return;
       }
@@ -320,7 +321,15 @@ export default function NewOrderPage() {
       setCaseData(normalizedCase);
       setTargets(nextTargets);
       setMissingPriceNames(priced.missingProductNames);
-      setWorkflow(workflowLoad.result);
+      if (workflowLoad.ok) {
+        setWorkflow(workflowLoad.result);
+        setWorkflowLoadError("");
+      } else {
+        setWorkflow(null);
+        setWorkflowLoadError(
+          workflowLoad.error_message || "決済条件の取得に失敗しました"
+        );
+      }
       setForm((current) => ({
         ...current,
         expected_delivery_date:
@@ -512,8 +521,20 @@ export default function NewOrderPage() {
       return;
     }
 
-    const latestWorkflow = await loadCaseWorkflow(caseData.id);
+    const latestWorkflow = await fetchCaseWorkflowForOrderPage(caseData.id);
+    if (!latestWorkflow.ok) {
+      setWorkflow(null);
+      setWorkflowLoadError(
+        latestWorkflow.error_message || "決済条件の取得に失敗しました"
+      );
+      setSubmitError(
+        latestWorkflow.error_message ||
+          "決済条件を確認できませんでした。画面を更新して再度お試しください。"
+      );
+      return;
+    }
     setWorkflow(latestWorkflow.result);
+    setWorkflowLoadError("");
     // 決済区分未設定は警告のみ（保存可）。それ以外の canOrder=false はブロック。
     if (
       !latestWorkflow.result.canOrder &&
@@ -720,13 +741,20 @@ export default function NewOrderPage() {
         >
           <h2 className="text-lg font-bold text-gray-900">発注情報</h2>
 
-          {settlementUnset ? (
+          {workflowLoadError ? (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+              決済条件の取得に失敗しました：{workflowLoadError}
+              （未設定とは限りません。画面を更新して再度お試しください。）
+            </div>
+          ) : null}
+
+          {!workflowLoadError && settlementUnset ? (
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
               決済区分が未設定です。発注はできますが、請求処理までに設定してください。
             </div>
           ) : null}
 
-          {orderBlockedBySettlementRule ? (
+          {!workflowLoadError && orderBlockedBySettlementRule ? (
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
               <p className="font-semibold">発注できません</p>
               <p className="mt-1">
