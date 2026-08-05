@@ -111,16 +111,32 @@ export function buildSettlementSavePatch(
     }
 
     const updateStatusColumns = body.update_status_columns !== false;
-    const loanStatus = asTrimmedString(body.loan_status);
-    const cardStatus = asTrimmedString(body.card_status);
-    if (updateStatusColumns && loanStatus && !isLoanStatus(loanStatus)) {
+    const loanStatusProvided = body.loan_status !== undefined;
+    const cardStatusProvided = body.card_status !== undefined;
+    const loanStatus = loanStatusProvided
+      ? asTrimmedString(body.loan_status)
+      : "";
+    const cardStatus = cardStatusProvided
+      ? asTrimmedString(body.card_status)
+      : "";
+    if (
+      updateStatusColumns &&
+      loanStatusProvided &&
+      loanStatus &&
+      !isLoanStatus(loanStatus)
+    ) {
       return {
         ok: false,
         error_code: "INVALID_INPUT",
         error_message: "ローンステータスが不正です",
       };
     }
-    if (updateStatusColumns && cardStatus && !isCardStatus(cardStatus)) {
+    if (
+      updateStatusColumns &&
+      cardStatusProvided &&
+      cardStatus &&
+      !isCardStatus(cardStatus)
+    ) {
       return {
         ok: false,
         error_code: "INVALID_INPUT",
@@ -174,10 +190,18 @@ export function buildSettlementSavePatch(
         finance_company: existing.finance_company,
         approval_number: existing.approval_number,
         card_brand: existing.card_brand,
-        loan_status: loanStatus || null,
-        card_status: cardStatus || null,
-        loan_status_updated_at: now,
-        card_status_updated_at: now,
+        loan_status: loanStatusProvided
+          ? loanStatus || null
+          : existing.loan_status,
+        card_status: cardStatusProvided
+          ? cardStatus || null
+          : existing.card_status,
+        loan_status_updated_at: loanStatusProvided
+          ? now
+          : existing.loan_status_updated_at,
+        card_status_updated_at: cardStatusProvided
+          ? now
+          : existing.card_status_updated_at,
       },
     };
   }

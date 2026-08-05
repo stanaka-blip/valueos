@@ -10,6 +10,12 @@ import type { WorkflowResult } from "@/lib/workflow";
 
 import { submitCaseSettlement } from "./submitCaseSettlement";
 import type { SettlementViewData } from "./settlementView";
+import {
+  buildWorkflowPanelMetaPayload,
+  buildWorkflowPanelSaveBody,
+  resolveWorkflowPanelFieldVisibility,
+  workflowPanelInputGridClass,
+} from "./workflowPanelFields";
 
 type Props = {
   caseId: string;
@@ -34,6 +40,10 @@ export default function WorkflowPanel({
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const visibility = resolveWorkflowPanelFieldVisibility(
+    settlement?.settlementType
+  );
+
   async function saveWorkflowFields() {
     if (!settlement?.settlementType) {
       setError("先に決済区分を保存してください");
@@ -45,28 +55,31 @@ export default function WorkflowPanel({
     setMessage(null);
 
     const now = new Date().toISOString();
+    const saveBody = buildWorkflowPanelSaveBody({
+      settlement,
+      visibility,
+      loanStatus,
+      cardStatus,
+      now,
+    });
+    const metaPayload = buildWorkflowPanelMetaPayload({
+      settlement,
+      visibility,
+      loanStatus,
+      cardStatus,
+      completedDate,
+    });
 
     // 1) 正式カラムへ保存を試行（詳細列はサーバーが既存値維持）
     let settlementResult = await submitCaseSettlement({
       caseId,
-      body: {
-        source: "workflow_panel",
-        memo: settlement.memo || null,
-        loan_status: loanStatus || null,
-        card_status: cardStatus || null,
-        loan_status_updated_at: now,
-        card_status_updated_at: now,
-      },
+      body: saveBody,
     });
 
     if (!settlementResult.ok) {
       if (settlementResult.error_code === "SETTLEMENT_SAVE_FAILED") {
         // カラム未適用時は memo メタへフォールバック（status 列は書かない）
-        const memoWithMeta = writeWorkflowMeta(settlement.memo, {
-          loan_status: loanStatus || null,
-          card_status: cardStatus || null,
-          construction_completed_date: completedDate || null,
-        });
+        const memoWithMeta = writeWorkflowMeta(settlement.memo, metaPayload);
         const fallback = await submitCaseSettlement({
           caseId,
           body: {
@@ -101,20 +114,12 @@ export default function WorkflowPanel({
       /construction_completed_date|schema cache/i.test(caseError.message)
     ) {
       // 完工日だけ memo へ退避
-      const memoWithMeta = writeWorkflowMeta(settlement.memo, {
-        loan_status: loanStatus || null,
-        card_status: cardStatus || null,
-        construction_completed_date: completedDate || null,
-      });
+      const memoWithMeta = writeWorkflowMeta(settlement.memo, metaPayload);
       const memoResult = await submitCaseSettlement({
         caseId,
         body: {
-          source: "workflow_panel",
+          ...saveBody,
           memo: memoWithMeta,
-          loan_status: loanStatus || null,
-          card_status: cardStatus || null,
-          loan_status_updated_at: now,
-          card_status_updated_at: now,
         },
       });
       setSaving(false);
@@ -184,46 +189,58 @@ export default function WorkflowPanel({
         </ul>
       ) : null}
 
-      <div className="mt-5 grid gap-3 border-t border-gray-100 pt-4 sm:grid-cols-3">
-        <label className="block text-sm">
-          <span className="text-xs font-medium text-gray-400">ローンステータス</span>
-          <select
-            value={loanStatus}
-            onChange={(e) => setLoanStatus(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
-          >
-            {LOAN_STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-        </label>
+      <div
+        className={`mt-5 grid gap-3 border-t border-gray-100 pt-4 ${workflowPanelInputGridClass(visibility)}`}
+      >
+        {visibility.showLoanStatus ? (
+          <label className="block text-sm">
+            <span className="text-xs font-medium text-gray-400">
+              ローンステータス
+            </span>
+            <select
+              value={loanStatus}
+              onChange={(e) => setLoanStatus(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+            >
+              {LOAN_STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
 
-        <label className="block text-sm">
-          <span className="text-xs font-medium text-gray-400">カードステータス</span>
-          <select
-            value={cardStatus}
-            onChange={(e) => setCardStatus(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
-          >
-            {CARD_STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-        </label>
+        {visibility.showCardStatus ? (
+          <label className="block text-sm">
+            <span className="text-xs font-medium text-gray-400">
+              カードステータス
+            </span>
+            <select
+              value={cardStatus}
+              onChange={(e) => setCardStatus(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+            >
+              {CARD_STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
 
-        <label className="block text-sm">
-          <span className="text-xs font-medium text-gray-400">完工日</span>
-          <input
-            type="date"
-            value={completedDate}
-            onChange={(e) => setCompletedDate(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
-          />
-        </label>
+        {visibility.showCompletionDate ? (
+          <label className="block text-sm">
+            <span className="text-xs font-medium text-gray-400">完工日</span>
+            <input
+              type="date"
+              value={completedDate}
+              onChange={(e) => setCompletedDate(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+            />
+          </label>
+        ) : null}
       </div>
 
       {error ? (
