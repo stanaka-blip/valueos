@@ -7,7 +7,7 @@ import { supabase } from "@/lib/supabase";
 
 import {
   summarizeCaseManufacturers,
-  summarizeCaseProducts,
+  summarizeCaseModelNumbers,
   type CaseListLineInput,
 } from "./caseListLineSummary";
 import CasesList, { type CasesListItem } from "./CasesList";
@@ -83,6 +83,7 @@ export default async function CasesPage({
         line_type,
         products (
           name,
+          model_no,
           manufacturers (
             name
           )
@@ -184,7 +185,7 @@ export default async function CasesPage({
         settlementType: resolveOrderQueueSettlementLabel(settlementType),
         desiredDeliveryDate: row.desired_delivery_date,
         manufacturerSummary: summarizeCaseManufacturers(lines),
-        productSummary: summarizeCaseProducts(lines),
+        modelNoSummary: summarizeCaseModelNumbers(lines),
         status: row.status,
         department: row.department || "",
         assignedUser: row.assigned_user || "",
