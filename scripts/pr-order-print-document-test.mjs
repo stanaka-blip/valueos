@@ -130,7 +130,19 @@ assert(
     page.includes("発注合計") &&
     page.includes("【備考】") &&
     page.includes("order.memo") &&
+    page.includes("株式会社Value Ecology") &&
     page.includes("本発注書は ValueOS より出力されました")
+);
+
+assert(
+  "company name appears once in footer",
+  (page.match(/株式会社Value Ecology/g) || []).length === 1
+);
+
+assert(
+  "footer avoids page break",
+  page.includes("order-print-footer") &&
+    /\.order-print-footer[\s\S]*break-inside:\s*avoid/.test(page)
 );
 
 assert(

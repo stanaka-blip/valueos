@@ -345,7 +345,10 @@ export default function OrderPrintPage() {
         </section>
 
         <footer className="order-print-footer">
-          本発注書は ValueOS より出力されました
+          <p className="order-print-footer-company">株式会社Value Ecology</p>
+          <p className="order-print-footer-note">
+            本発注書は ValueOS より出力されました
+          </p>
         </footer>
       </main>
 
@@ -570,9 +573,22 @@ export default function OrderPrintPage() {
           margin-top: 36px;
           padding-top: 12px;
           border-top: 1px solid #e5e7eb;
+          text-align: left;
+          break-inside: avoid;
+          page-break-inside: avoid;
+        }
+
+        .order-print-footer-company {
+          margin: 0 0 6px;
+          font-size: 11pt;
+          font-weight: 700;
+          color: #111827;
+        }
+
+        .order-print-footer-note {
+          margin: 0;
           font-size: 8pt;
           color: #9ca3af;
-          text-align: center;
         }
 
         @page {
