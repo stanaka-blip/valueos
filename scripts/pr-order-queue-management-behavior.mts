@@ -133,14 +133,14 @@ check("工事日が近い順・未設定は最後", () => {
   );
 });
 
-check("前金未入金は表示だが発注不可", () => {
+check("前金の入金確認待ちは表示だが発注不可", () => {
   const gate = evaluateOrderQueueGate({
     settlement: { settlement_type: "前金", deposit_amount: 100000 },
     payments: [],
     orders: [],
   });
   assert.equal(gate.canOrder, false);
-  assert.equal(gate.blockReason, "前金未入金");
+  assert.equal(gate.blockReason, "前金の入金確認待ち");
 
   const row = buildOrderQueueRow(
     {
@@ -239,7 +239,7 @@ check("カード未完了は発注不可", () => {
     orders: [],
   });
   assert.equal(gate.canOrder, false);
-  assert.equal(gate.blockReason, "カード決済待ち");
+  assert.equal(gate.blockReason, "カード決済確認待ち");
 });
 
 check("3社間未承認は発注不可", () => {
@@ -248,7 +248,7 @@ check("3社間未承認は発注不可", () => {
     orders: [],
   });
   assert.equal(gate.canOrder, false);
-  assert.equal(gate.blockReason, "審査承認待ち");
+  assert.equal(gate.blockReason, "3社間審査承認待ち");
 });
 
 check("決済未設定は発注不可", () => {
@@ -257,7 +257,7 @@ check("決済未設定は発注不可", () => {
     orders: [],
   });
   assert.equal(gate.canOrder, false);
-  assert.equal(gate.blockReason, "決済区分未設定");
+  assert.equal(gate.blockReason, "決済方法を選択してください");
 });
 
 check("発注成功後はキューから除外される判定", () => {
@@ -278,7 +278,7 @@ check("resolveOrderQueueBlockReason uses workflow", () => {
       orders: [],
     })
   );
-  assert.equal(resolveOrderQueueBlockReason(unset), "決済区分未設定");
+  assert.equal(resolveOrderQueueBlockReason(unset), "決済方法を選択してください");
 });
 
 if (failed > 0) {
