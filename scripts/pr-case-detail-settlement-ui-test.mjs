@@ -90,9 +90,11 @@ assert(
 );
 
 assert(
-  "WorkflowPanel preserves finance_company / approval_number",
-  workflowSrc.includes("finance_company: settlement.financeCompany") &&
-    workflowSrc.includes("approval_number: settlement.approvalNumber")
+  "WorkflowPanel uses settlement-type field visibility",
+  workflowSrc.includes("resolveWorkflowPanelFieldVisibility") &&
+    workflowSrc.includes("buildWorkflowPanelSaveBody") &&
+    workflowSrc.includes("visibility.showLoanStatus") &&
+    workflowSrc.includes("visibility.showCardStatus")
 );
 
 // dealer / registration / migration untouched

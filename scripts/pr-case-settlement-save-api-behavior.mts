@@ -184,6 +184,32 @@ for (const type of ["前金", "売掛"] as const) {
   }
 }
 
+// --- workflow: partial status update preserves omitted fields ---
+{
+  const r = buildSettlementSavePatch(
+    {
+      source: "workflow_panel",
+      card_status: "決済成功",
+      card_status_updated_at: "2026-08-05T00:00:00.000Z",
+    },
+    row({
+      settlement_type: "カード",
+      loan_status: "承認済",
+      loan_status_updated_at: "2026-01-01T00:00:00.000Z",
+      card_status: "処理中",
+    })
+  );
+  assert("card-only workflow ok", r.ok);
+  if (r.ok) {
+    assert("card-only keeps loan", r.patch.loan_status === "承認済");
+    assert(
+      "card-only keeps loan updated_at",
+      r.patch.loan_status_updated_at === "2026-01-01T00:00:00.000Z"
+    );
+    assert("card-only updates card", r.patch.card_status === "決済成功");
+  }
+}
+
 // --- workflow: preserve details ---
 {
   const r = buildSettlementSavePatch(
