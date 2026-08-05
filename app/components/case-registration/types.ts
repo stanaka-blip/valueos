@@ -37,16 +37,14 @@ export type CaseFormState = {
   customer_name: string;
   customer_phone: string;
   site_address: string;
+  contractor_name: string;
   order_received_date: string;
   desired_delivery_date: string;
   construction_desired_date: string;
+  assigned_user: string;
   delivery_same_as_site: boolean;
   delivery_address: string;
-  order_type: string;
-  construction_detail: string;
-  assigned_user: string;
-  memo: string;
-  case_no: string;
+  delivery_phone: string;
 };
 
 export type LineDraft = {
@@ -90,16 +88,14 @@ export function createInitialCaseForm(): CaseFormState {
     customer_name: "",
     customer_phone: "",
     site_address: "",
+    contractor_name: "",
     order_received_date: new Date().toISOString().slice(0, 10),
     desired_delivery_date: "",
     construction_desired_date: "",
+    assigned_user: "",
     delivery_same_as_site: true,
     delivery_address: "",
-    order_type: "",
-    construction_detail: "",
-    assigned_user: "",
-    memo: "",
-    case_no: "",
+    delivery_phone: "",
   };
 }
 

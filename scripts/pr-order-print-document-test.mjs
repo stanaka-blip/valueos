@@ -75,6 +75,16 @@ assert(
 );
 
 assert(
+  "case purchase-order fields present",
+  page.includes("納品希望日") &&
+    page.includes("お客様電話番号") &&
+    page.includes("施工店名") &&
+    page.includes("納品先電話番号") &&
+    page.includes("desired_delivery_date") &&
+    page.includes("parseCaseExtras")
+);
+
+assert(
   "header fields present",
   page.includes("発注番号") &&
     page.includes("発注日") &&

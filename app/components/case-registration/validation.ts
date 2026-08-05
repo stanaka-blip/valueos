@@ -1,3 +1,7 @@
+import {
+  buildCaseRegistrationConstructionDetail,
+  buildCaseRegistrationMemo,
+} from "./caseRegistrationExtras";
 import type {
   CaseFormErrors,
   CaseFormState,
@@ -146,15 +150,19 @@ export function buildGatewayBody(
       customer_name: caseForm.customer_name.trim(),
       site_address: caseForm.site_address.trim(),
       order_received_date: caseForm.order_received_date,
-      case_no: caseForm.case_no.trim() || null,
+      case_no: null,
       customer_phone: caseForm.customer_phone.trim() || null,
-      order_type: caseForm.order_type.trim() || null,
+      order_type: null,
       desired_delivery_date: caseForm.desired_delivery_date || null,
       delivery_address: resolvedDeliveryAddress(caseForm) || null,
       construction_desired_date: caseForm.construction_desired_date || null,
-      construction_detail: caseForm.construction_detail.trim() || null,
+      construction_detail: buildCaseRegistrationConstructionDetail({
+        contractor_name: caseForm.contractor_name,
+      }),
       assigned_user: caseForm.assigned_user.trim() || null,
-      memo: caseForm.memo.trim() || null,
+      memo: buildCaseRegistrationMemo({
+        delivery_phone: caseForm.delivery_phone,
+      }),
     },
     settlement: buildSettlementPayload(settlement),
     lines: lines.map((line) => ({
