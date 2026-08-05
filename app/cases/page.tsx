@@ -1,19 +1,21 @@
 import { loadWorkflowAlertCaseIds } from "@/lib/dashboard/caseAlerts";
 import { isDateInRange } from "@/lib/dashboard/period";
+import { loadAllCaseSettlementsAdmin } from "@/lib/queues/loadCaseSettlementsAdmin";
+import { resolveOrderQueueSettlementLabel } from "@/lib/queues/orderQueue";
 import { isActiveCaseStatus } from "@/lib/status/activeRecords";
 import { supabase } from "@/lib/supabase";
 
+import {
+  summarizeCaseManufacturers,
+  summarizeCaseProducts,
+  type CaseListLineInput,
+} from "./caseListLineSummary";
 import CasesList, { type CasesListItem } from "./CasesList";
 
 export const dynamic = "force-dynamic";
 
 type DealerRelation = {
   name: string | null;
-};
-
-type CaseProductAmount = {
-  sales_price: number | string | null;
-  gross_profit: number | string | null;
 };
 
 type CaseListRow = {
@@ -29,7 +31,7 @@ type CaseListRow = {
   desired_delivery_date: string | null;
   priority: string | null;
   dealers: DealerRelation | DealerRelation[] | null;
-  case_products: CaseProductAmount[] | null;
+  case_products: CaseListLineInput[] | null;
 };
 
 function getSingleRelation<T>(
@@ -38,12 +40,6 @@ function getSingleRelation<T>(
   if (!relation) return null;
   if (Array.isArray(relation)) return relation[0] || null;
   return relation;
-}
-
-function toNumber(value: number | string | null | undefined): number {
-  if (value == null || value === "") return 0;
-  const n = Number(value);
-  return Number.isFinite(n) ? n : 0;
 }
 
 export default async function CasesPage({
@@ -64,10 +60,11 @@ export default async function CasesPage({
   const orderReceivedTo = params.orderReceivedTo || params.to || "";
   const alert = params.alert || "";
 
-  const { data: cases, error } = await supabase
-    .from("cases")
-    .select(
-      `
+  const [{ data: cases, error }, settlementsResult] = await Promise.all([
+    supabase
+      .from("cases")
+      .select(
+        `
       id,
       case_no,
       created_at,
@@ -83,12 +80,25 @@ export default async function CasesPage({
         name
       ),
       case_products (
-        sales_price,
-        gross_profit
+        line_type,
+        products (
+          name,
+          manufacturers (
+            name
+          )
+        ),
+        packages (
+          name,
+          manufacturers (
+            name
+          )
+        )
       )
     `
-    )
-    .order("created_at", { ascending: false });
+      )
+      .order("created_at", { ascending: false }),
+    loadAllCaseSettlementsAdmin(),
+  ]);
 
   if (error) {
     return (
@@ -103,6 +113,27 @@ export default async function CasesPage({
         </div>
       </div>
     );
+  }
+
+  if (!settlementsResult.ok) {
+    return (
+      <div className="min-h-full bg-[#f7f7f5]">
+        <header className="border-b border-gray-200/80 bg-white px-6 py-5 md:px-8">
+          <h1 className="text-xl font-semibold text-gray-900">全案件</h1>
+        </header>
+        <div className="p-6 md:p-8">
+          <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-sm text-red-700">
+            データ取得エラー：{settlementsResult.error}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const settlementByCase = new Map<string, string | null>();
+  for (const row of settlementsResult.data) {
+    if (!row.case_id) continue;
+    settlementByCase.set(String(row.case_id), row.settlement_type);
   }
 
   let filterIds: Set<string> | null = null;
@@ -138,31 +169,26 @@ export default async function CasesPage({
     .filter((row) => (filterIds ? filterIds.has(row.id) : true))
     .map((row) => {
       const dealer = getSingleRelation(row.dealers);
-      const products = Array.isArray(row.case_products) ? row.case_products : [];
-      const salesTotal = products.reduce(
-        (sum, product) => sum + toNumber(product.sales_price),
-        0
-      );
-      const profitTotal = products.reduce(
-        (sum, product) => sum + toNumber(product.gross_profit),
-        0
-      );
+      const lines = Array.isArray(row.case_products) ? row.case_products : [];
+      const settlementType = settlementByCase.has(String(row.id))
+        ? settlementByCase.get(String(row.id))
+        : null;
 
       return {
         id: row.id,
         caseNo: row.case_no || "",
-        createdAt: row.created_at,
+        orderType: row.order_type || "",
         orderReceivedDate: row.order_received_date,
         dealerName: dealer?.name || "",
         customerName: row.customer_name || "",
-        orderType: row.order_type || "",
+        settlementType: resolveOrderQueueSettlementLabel(settlementType),
+        desiredDeliveryDate: row.desired_delivery_date,
+        manufacturerSummary: summarizeCaseManufacturers(lines),
+        productSummary: summarizeCaseProducts(lines),
         status: row.status,
         department: row.department || "",
         assignedUser: row.assigned_user || "",
-        desiredDeliveryDate: row.desired_delivery_date,
         priority: row.priority || "中",
-        salesTotal,
-        profitTotal,
       };
     });
 

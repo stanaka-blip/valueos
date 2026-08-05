@@ -6,36 +6,37 @@ import { useMemo, useState } from "react";
 import {
   CASE_STATUSES,
   getCaseStatusLabel,
-  normalizeCaseStatus,
 } from "./caseStatus";
 import StatusSelect from "./StatusSelect";
 
 export type CasesListItem = {
   id: string;
   caseNo: string;
-  createdAt: string | null;
-  orderReceivedDate?: string | null;
+  orderType: string;
+  orderReceivedDate: string | null;
   dealerName: string;
   customerName: string;
-  orderType: string;
+  settlementType: string;
+  desiredDeliveryDate: string | null;
+  manufacturerSummary: string;
+  productSummary: string;
   status: string | null;
   department: string;
   assignedUser: string;
-  desiredDeliveryDate: string | null;
   priority: string;
-  salesTotal: number;
-  profitTotal: number;
 };
 
-function formatYen(value: number): string {
-  return new Intl.NumberFormat("ja-JP").format(Math.round(value)) + "円";
-}
-
-function formatDate(value: string | null): string {
+function formatDate(value: string | null | undefined): string {
   if (!value) return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleDateString("ja-JP");
+}
+
+function MultilineCell({ value }: { value: string }) {
+  return (
+    <span className="whitespace-pre-line text-gray-700">{value || "—"}</span>
+  );
 }
 
 export default function CasesList({
@@ -65,6 +66,9 @@ export default function CasesList({
         item.caseNo,
         item.dealerName,
         item.customerName,
+        item.settlementType,
+        item.manufacturerSummary,
+        item.productSummary,
         item.assignedUser,
         item.department,
         item.orderType,
@@ -88,6 +92,9 @@ export default function CasesList({
           item.caseNo,
           item.dealerName,
           item.customerName,
+          item.settlementType,
+          item.manufacturerSummary,
+          item.productSummary,
           item.assignedUser,
           item.department,
           item.orderType,
@@ -106,12 +113,6 @@ export default function CasesList({
 
     return byStatus;
   }, [items, query]);
-
-  const summary = useMemo(() => {
-    const sales = filtered.reduce((sum, item) => sum + item.salesTotal, 0);
-    const profit = filtered.reduce((sum, item) => sum + item.profitTotal, 0);
-    return { sales, profit };
-  }, [filtered]);
 
   return (
     <div className="space-y-5">
@@ -132,7 +133,7 @@ export default function CasesList({
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="案件番号・販売店・顧客・担当者"
+              placeholder="案件番号・販売店・顧客・決済・メーカー・商材・担当"
               className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
             />
           </label>
@@ -167,10 +168,8 @@ export default function CasesList({
         </Link>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-1 sm:max-w-xs">
         <SummaryCard label="表示件数" value={`${filtered.length}件`} />
-        <SummaryCard label="売上合計" value={formatYen(summary.sales)} />
-        <SummaryCard label="粗利合計" value={formatYen(summary.profit)} />
       </div>
 
       <div className="overflow-hidden rounded-xl border border-gray-200/80 bg-white">
@@ -179,15 +178,15 @@ export default function CasesList({
             <thead className="border-b border-gray-200 bg-[#f7f7f5] text-xs text-gray-500">
               <tr>
                 <th className="px-4 py-3 font-medium">案件番号</th>
-                <th className="px-4 py-3 font-medium">受注日</th>
-                <th className="px-4 py-3 font-medium">登録日</th>
                 <th className="px-4 py-3 font-medium">販売店</th>
-                <th className="px-4 py-3 font-medium">顧客名</th>
-                <th className="px-4 py-3 font-medium">ステータス</th>
-                <th className="px-4 py-3 font-medium">担当</th>
+                <th className="px-4 py-3 font-medium">顧客</th>
+                <th className="px-4 py-3 font-medium">決済条件</th>
                 <th className="px-4 py-3 font-medium">希望納期</th>
-                <th className="px-4 py-3 font-medium">売上</th>
-                <th className="px-4 py-3 font-medium">粗利</th>
+                <th className="px-4 py-3 font-medium">発注メーカー</th>
+                <th className="px-4 py-3 font-medium">商材</th>
+                <th className="px-4 py-3 font-medium">ステータス</th>
+                <th className="px-4 py-3 font-medium">受注日</th>
+                <th className="px-4 py-3 font-medium">担当</th>
                 <th className="px-4 py-3 font-medium">優先度</th>
               </tr>
             </thead>
@@ -210,17 +209,23 @@ export default function CasesList({
                       </p>
                     ) : null}
                   </td>
-                  <td className="px-4 py-3 text-gray-600">
-                    {formatDate(item.orderReceivedDate || null)}
-                  </td>
-                  <td className="px-4 py-3 text-gray-600">
-                    {formatDate(item.createdAt)}
-                  </td>
                   <td className="px-4 py-3 text-gray-900">
                     {item.dealerName || "—"}
                   </td>
                   <td className="px-4 py-3 text-gray-700">
                     {item.customerName || "—"}
+                  </td>
+                  <td className="px-4 py-3 text-gray-700">
+                    {item.settlementType || "未設定"}
+                  </td>
+                  <td className="px-4 py-3 text-gray-600">
+                    {item.desiredDeliveryDate || "—"}
+                  </td>
+                  <td className="px-4 py-3">
+                    <MultilineCell value={item.manufacturerSummary} />
+                  </td>
+                  <td className="px-4 py-3">
+                    <MultilineCell value={item.productSummary} />
                   </td>
                   <td className="px-4 py-3">
                     <StatusSelect
@@ -229,22 +234,13 @@ export default function CasesList({
                     />
                   </td>
                   <td className="px-4 py-3 text-gray-600">
-                    <p>{item.assignedUser || "—"}</p>
-                    {item.department ? (
-                      <p className="text-xs text-gray-400">
-                        {normalizeCaseStatus(item.department) ||
-                          item.department}
-                      </p>
-                    ) : null}
+                    {formatDate(item.orderReceivedDate)}
                   </td>
                   <td className="px-4 py-3 text-gray-600">
-                    {item.desiredDeliveryDate || "—"}
-                  </td>
-                  <td className="px-4 py-3 tabular-nums text-gray-900">
-                    {formatYen(item.salesTotal)}
-                  </td>
-                  <td className="px-4 py-3 tabular-nums text-gray-900">
-                    {formatYen(item.profitTotal)}
+                    <p>{item.assignedUser || "—"}</p>
+                    {item.department ? (
+                      <p className="text-xs text-gray-400">{item.department}</p>
+                    ) : null}
                   </td>
                   <td className="px-4 py-3 text-gray-600">
                     {item.priority || "中"}
@@ -255,7 +251,7 @@ export default function CasesList({
               {filtered.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={10}
+                    colSpan={11}
                     className="px-6 py-12 text-center text-sm text-gray-400"
                   >
                     {items.length === 0
