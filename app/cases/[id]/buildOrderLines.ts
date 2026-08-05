@@ -27,8 +27,22 @@ export type CaseProductSource = {
   purchase_price: number | string | null;
   memo: string | null;
   products:
-    | { name: string | null; model_no: string | null }
-    | { name: string | null; model_no: string | null }[]
+    | {
+        name: string | null;
+        model_no: string | null;
+        manufacturers?:
+          | { name: string | null }
+          | { name: string | null }[]
+          | null;
+      }
+    | {
+        name: string | null;
+        model_no: string | null;
+        manufacturers?:
+          | { name: string | null }
+          | { name: string | null }[]
+          | null;
+      }[]
     | null;
 };
 
@@ -47,8 +61,22 @@ export type CasePackageItemSource = {
   model_no_snapshot: string | null;
   display_name_snapshot: string | null;
   products:
-    | { name: string | null; model_no: string | null }
-    | { name: string | null; model_no: string | null }[]
+    | {
+        name: string | null;
+        model_no: string | null;
+        manufacturers?:
+          | { name: string | null }
+          | { name: string | null }[]
+          | null;
+      }
+    | {
+        name: string | null;
+        model_no: string | null;
+        manufacturers?:
+          | { name: string | null }
+          | { name: string | null }[]
+          | null;
+      }[]
     | null;
 };
 

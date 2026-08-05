@@ -26,6 +26,7 @@ export type ProductOrderTarget = {
   case_product_id: string;
   product_id: string;
   product_name: string;
+  manufacturer_name: string;
   model_no: string;
   quantity: string;
   unit_price: string;
@@ -39,6 +40,7 @@ export type PackageItemOrderTarget = {
   local_id: string;
   product_id: string;
   product_name: string;
+  manufacturer_name: string;
   model_no: string;
   quantity: string;
   unit_price: string;
@@ -63,6 +65,10 @@ type ProductMasterRelation = {
   name: string | null;
   model_no: string | null;
   default_supplier_id?: string | null;
+  manufacturers?:
+    | { name: string | null }
+    | { name: string | null }[]
+    | null;
 };
 
 export type CaseProductWithDefaultSupplier = Omit<CaseProductSource, "products"> & {
@@ -109,6 +115,8 @@ export function buildOrderTargets(
       case_product_id: row.id,
       product_id: productId,
       product_name: product?.name || "名称未設定",
+      manufacturer_name:
+        getSingleRelation(product?.manufacturers)?.name?.trim() || "",
       model_no: product?.model_no || "",
       quantity: quantity == null ? "" : String(quantity),
       unit_price: snap.unitPrice,
@@ -156,6 +164,8 @@ export function buildOrderTargets(
           item.product_name_snapshot ||
           product?.name ||
           "名称未設定",
+        manufacturer_name:
+          getSingleRelation(product?.manufacturers)?.name?.trim() || "",
         model_no: item.model_no_snapshot || product?.model_no || "",
         quantity: quantity == null ? "" : String(quantity),
         unit_price: snap.unitPrice,

@@ -54,6 +54,15 @@ export type CaseDetailViewData = {
 
 export type CaseProductRow = CaseProductDisplayRow;
 
+export type OrderLineRow = {
+  id: string;
+  manufacturerName: string;
+  modelNo: string;
+  quantity: number;
+  unitPrice: number;
+  amount: number;
+};
+
 export type OrderRow = {
   id: string;
   orderNo: string;
@@ -64,6 +73,7 @@ export type OrderRow = {
   orderAmount: number;
   status: string;
   memo: string;
+  lines: OrderLineRow[];
 };
 
 export type InvoiceRow = {
@@ -936,7 +946,7 @@ function ProductsTab({
                   <Field label={row.nameLabel} value={row.displayName} />
                   <Field label="メーカー" value={row.manufacturerName} />
                   <Field label="カテゴリ" value={row.category} />
-                  <Field label="品番" value={row.modelNo} />
+                  <Field label="型番" value={row.modelNo} />
                   <Field label="仕入先" value={row.supplierName} />
                   <Field label="数量" value={row.quantity} />
                   <Field
@@ -1114,6 +1124,47 @@ function PurchaseTab({
                 </div>
               </div>
 
+              {order.lines.length > 0 ? (
+                <div className="mt-4 overflow-x-auto border-t border-gray-100 pt-4">
+                  <table className="min-w-full text-left text-sm">
+                    <thead className="text-xs text-gray-500">
+                      <tr>
+                        <th className="py-2 pr-3 font-medium">メーカー</th>
+                        <th className="py-2 pr-3 font-medium">型番</th>
+                        <th className="py-2 pr-3 font-medium text-right">
+                          数量
+                        </th>
+                        <th className="py-2 pr-3 font-medium text-right">
+                          仕入単価
+                        </th>
+                        <th className="py-2 font-medium text-right">金額</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {order.lines.map((line) => (
+                        <tr key={line.id} className="border-t border-gray-50">
+                          <td className="py-2 pr-3 text-gray-900">
+                            {line.manufacturerName || "—"}
+                          </td>
+                          <td className="py-2 pr-3 text-gray-700">
+                            {line.modelNo || "—"}
+                          </td>
+                          <td className="py-2 pr-3 text-right tabular-nums text-gray-700">
+                            {line.quantity.toLocaleString("ja-JP")}
+                          </td>
+                          <td className="py-2 pr-3 text-right tabular-nums text-gray-700">
+                            {formatYen(line.unitPrice)}
+                          </td>
+                          <td className="py-2 text-right tabular-nums font-medium text-gray-900">
+                            {formatYen(line.amount)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : null}
+
               {order.memo.trim() ? (
                 <p className="mt-4 whitespace-pre-wrap border-t border-gray-100 pt-4 text-sm text-gray-600">
                   {order.memo}
@@ -1221,6 +1272,46 @@ function DeliveryTab({
                     </div>
                   </div>
                 </div>
+
+                {order.lines.length > 0 ? (
+                  <div className="mt-4 overflow-x-auto border-t border-gray-100 pt-4">
+                    <table className="min-w-full text-left text-sm">
+                      <thead className="text-xs text-gray-500">
+                        <tr>
+                          <th className="py-2 pr-3 font-medium">メーカー</th>
+                          <th className="py-2 pr-3 font-medium">型番</th>
+                          <th className="py-2 pr-3 font-medium text-right">
+                            数量
+                          </th>
+                          <th className="py-2 pr-3 font-medium">納品予定</th>
+                          <th className="py-2 font-medium">納品日</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {order.lines.map((line) => (
+                          <tr key={line.id} className="border-t border-gray-50">
+                            <td className="py-2 pr-3 text-gray-900">
+                              {line.manufacturerName || "—"}
+                            </td>
+                            <td className="py-2 pr-3 text-gray-700">
+                              {line.modelNo || "—"}
+                            </td>
+                            <td className="py-2 pr-3 text-right tabular-nums text-gray-700">
+                              {line.quantity.toLocaleString("ja-JP")}
+                            </td>
+                            <td className="py-2 pr-3 text-gray-700">
+                              {formatDate(order.expectedDeliveryDate)}
+                            </td>
+                            <td className="py-2 text-gray-700">
+                              {formatDate(order.deliveredDate)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : null}
+
                 <div className="mt-4 flex flex-wrap justify-end gap-2 border-t border-gray-100 pt-4">
                   <Link
                     href={`/orders/${order.id}`}

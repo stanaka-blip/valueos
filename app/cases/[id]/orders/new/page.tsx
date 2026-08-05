@@ -218,7 +218,10 @@ export default function NewOrderPage() {
             products (
               name,
               model_no,
-              default_supplier_id
+              default_supplier_id,
+              manufacturers (
+                name
+              )
             )
           `
           )
@@ -251,7 +254,10 @@ export default function NewOrderPage() {
               display_name_snapshot,
               products (
                 name,
-                model_no
+                model_no,
+                manufacturers (
+                  name
+                )
               )
             )
           `
@@ -1044,10 +1050,10 @@ function ProductTargetCard({
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <p className="text-sm font-semibold text-gray-900">
-            {target.product_name || "-"}
+            {target.manufacturer_name || "—"}
           </p>
           <p className="mt-0.5 text-xs text-gray-500">
-            {target.model_no || "-"}
+            型番: {target.model_no || "—"}
             {target.has_case_snapshot ? " · 既存単価" : ""}
             {" · 単体商品"}
           </p>
@@ -1193,10 +1199,10 @@ function PackageTargetCard({
               className="rounded-md bg-[#f7f7f5] p-3"
             >
               <p className="text-sm font-medium text-gray-900">
-                {item.product_name || "-"}
+                {item.manufacturer_name || "—"}
               </p>
               <p className="mt-0.5 text-xs text-gray-500">
-                {item.model_no || "-"} · パッケージ構成
+                型番: {item.model_no || "—"} · パッケージ構成
                 {item.has_case_snapshot ? " · 既存単価" : ""}
                 {" · 仕入先はパッケージに準拠"}
               </p>
