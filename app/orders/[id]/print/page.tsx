@@ -38,6 +38,7 @@ type CaseRow = {
 type PrintLine = OrderItemRow & {
   manufacturer_name: string;
   model_no: string;
+  product_name: string;
 };
 
 function supplierNameOf(order: OrderRow | null): string {
@@ -111,12 +112,12 @@ export default function OrderPrintPage() {
 
         const productMap = new Map<
           string,
-          { manufacturer_name: string; model_no: string }
+          { manufacturer_name: string; model_no: string; product_name: string }
         >();
         if (productIds.length > 0) {
           const { data: products } = await supabase
             .from("products")
-            .select("id, model_no, manufacturers(name)")
+            .select("id, name, model_no, manufacturers(name)")
             .in("id", productIds);
           for (const product of products || []) {
             const identity = resolveProductIdentity(
@@ -131,6 +132,7 @@ export default function OrderPrintPage() {
             productMap.set(product.id as string, {
               manufacturer_name: identity.manufacturerName,
               model_no: identity.modelNo,
+              product_name: (product.name as string | null) || "",
             });
           }
         }
@@ -146,6 +148,7 @@ export default function OrderPrintPage() {
                 ...item,
                 manufacturer_name: product?.manufacturer_name || "",
                 model_no: product?.model_no || "",
+                product_name: product?.product_name || "",
               };
             })
           );
@@ -256,6 +259,7 @@ export default function OrderPrintPage() {
               <tr className="border-b-2 border-gray-900 text-left">
                 <th className="py-2 pr-2 font-semibold">メーカー</th>
                 <th className="py-2 pr-2 font-semibold">型番</th>
+                <th className="py-2 pr-2 font-semibold">商品名</th>
                 <th className="py-2 pr-2 text-right font-semibold">数量</th>
                 <th className="py-2 pr-2 text-right font-semibold">単価</th>
                 <th className="py-2 pr-2 text-right font-semibold">金額</th>
@@ -266,7 +270,7 @@ export default function OrderPrintPage() {
               {items.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={6}
+                    colSpan={7}
                     className="py-4 text-center text-gray-500"
                   >
                     明細なし
@@ -283,6 +287,9 @@ export default function OrderPrintPage() {
                     </td>
                     <td className="py-2 pr-2 align-top">
                       {displayIdentityValue(item.model_no)}
+                    </td>
+                    <td className="py-2 pr-2 align-top">
+                      {displayText(item.product_name)}
                     </td>
                     <td className="py-2 pr-2 text-right align-top tabular-nums">
                       {item.quantity}

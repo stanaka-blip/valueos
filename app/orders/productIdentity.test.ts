@@ -28,26 +28,36 @@ test("resolveManufacturerName / modelNo from nested product", () => {
   assert.equal(displayIdentityValue(""), "—");
 });
 
-test("print page: メーカー+型番, no 商品名 column", () => {
+test("print page: メーカー+型番+商品名 (帳票のみ商品名)", () => {
   const source = readFileSync(
     join(process.cwd(), "app/orders/[id]/print/page.tsx"),
     "utf8"
   );
   assert.match(source, />メーカー</);
   assert.match(source, />型番</);
-  assert.doesNotMatch(source, />商品名</);
+  assert.match(source, />商品名</);
+  assert.match(source, /product_name/);
+  assert.match(source, /select\("id, name, model_no, manufacturers\(name\)"\)/);
   assert.doesNotMatch(source, /メーカー型番/);
-  assert.match(source, /manufacturers/);
 });
 
-test("order detail: メーカー+型番, no 商品名 column", () => {
+test("order detail/edit: メーカー+型番, no 商品名 column", () => {
+  for (const rel of ["app/orders/[id]/page.tsx", "app/orders/[id]/edit/page.tsx"]) {
+    const source = readFileSync(join(process.cwd(), rel), "utf8");
+    assert.match(source, />メーカー</);
+    assert.match(source, />型番</);
+    assert.doesNotMatch(source, />商品名</);
+    assert.doesNotMatch(source, /メーカー型番/);
+  }
+});
+
+test("order create: no 商品名 column header", () => {
   const source = readFileSync(
-    join(process.cwd(), "app/orders/[id]/page.tsx"),
+    join(process.cwd(), "app/cases/[id]/orders/new/page.tsx"),
     "utf8"
   );
-  assert.match(source, />メーカー</);
-  assert.match(source, />型番</);
   assert.doesNotMatch(source, />商品名</);
+  assert.match(source, /manufacturer_name/);
   assert.doesNotMatch(source, /メーカー型番/);
 });
 
@@ -56,7 +66,6 @@ test("case purchase/delivery tabs show maker+model line columns", () => {
     join(process.cwd(), "app/cases/[id]/CaseDetailView.tsx"),
     "utf8"
   );
-  // 仕入: メーカー 型番 数量 仕入単価 金額
   const purchaseIdx = source.indexOf("function PurchaseTab");
   const deliveryIdx = source.indexOf("function DeliveryTab");
   assert.ok(purchaseIdx > 0 && deliveryIdx > purchaseIdx);
@@ -64,13 +73,13 @@ test("case purchase/delivery tabs show maker+model line columns", () => {
   for (const col of ["メーカー", "型番", "数量", "仕入単価", "金額"]) {
     assert.match(purchase, new RegExp(col));
   }
-  assert.doesNotMatch(purchase, /商品名/);
+  assert.doesNotMatch(purchase, />商品名</);
 
   const delivery = source.slice(deliveryIdx, deliveryIdx + 8000);
   for (const col of ["メーカー", "型番", "数量", "納品予定", "納品日"]) {
     assert.match(delivery, new RegExp(col));
   }
-  assert.doesNotMatch(delivery, /商品名/);
+  assert.doesNotMatch(delivery, />商品名</);
 });
 
 test("no メーカー型番 label in order/case purchase surfaces", () => {
@@ -79,6 +88,7 @@ test("no メーカー型番 label in order/case purchase surfaces", () => {
     "app/orders/[id]/page.tsx",
     "app/orders/[id]/edit/page.tsx",
     "app/cases/[id]/CaseDetailView.tsx",
+    "app/cases/[id]/orders/new/page.tsx",
   ]) {
     const source = readFileSync(join(process.cwd(), rel), "utf8");
     assert.doesNotMatch(source, /メーカー型番/);
