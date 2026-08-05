@@ -528,6 +528,11 @@ export default function NewOrderPage() {
       return;
     }
 
+    if (!form.expected_delivery_date) {
+      setSubmitError("納品予定日を入力してください。");
+      return;
+    }
+
     if (
       form.expected_delivery_date &&
       form.expected_delivery_date < form.order_date
@@ -786,12 +791,13 @@ export default function NewOrderPage() {
               />
             </Field>
 
-            <Field label="納品予定日">
+            <Field label="納品予定日" required>
               <input
                 type="date"
                 name="expected_delivery_date"
                 value={form.expected_delivery_date}
                 onChange={handleFormChange}
+                required
                 disabled={submitting}
                 className={inputClassName}
               />
