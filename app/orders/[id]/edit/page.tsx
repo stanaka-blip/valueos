@@ -11,6 +11,7 @@ import {
 } from "react";
 import { useParams, useRouter } from "next/navigation";
 
+import { parseCaseExtras } from "@/app/admin/orders/parseCaseExtras";
 import { supabase } from "@/lib/supabase";
 import {
   listOrderItemsByOrderId,
@@ -54,6 +55,14 @@ type OrderForm = {
   order_no: string;
 };
 
+type DeliveryConfirmInfo = {
+  customerName: string;
+  deliveryName: string;
+  deliveryAddress: string;
+  receiverPhone: string;
+  receiverName: string;
+};
+
 const inputClassName =
   "w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-gray-900 focus:ring-1 focus:ring-gray-900 disabled:cursor-not-allowed disabled:bg-gray-100";
 
@@ -74,12 +83,16 @@ export default function EditOrderPage() {
     order_no: "",
   });
   const [lines, setLines] = useState<LineDraft[]>([]);
+  const [headerOrderAmount, setHeaderOrderAmount] = useState(0);
+  const [deliveryInfo, setDeliveryInfo] = useState<DeliveryConfirmInfo | null>(
+    null
+  );
   const [loading, setLoading] = useState(!orderIdError);
   const [submitting, setSubmitting] = useState(false);
   const [loadError, setLoadError] = useState(orderIdError);
   const [submitError, setSubmitError] = useState("");
 
-  const orderAmount = useMemo(
+  const linesTotal = useMemo(
     () =>
       lines.reduce(
         (sum, line) =>
@@ -89,6 +102,13 @@ export default function EditOrderPage() {
       ),
     [lines]
   );
+
+  /**
+   * 明細があるときは明細合計を正とする。
+   * 明細が空の旧発注では orders.order_amount を表示フォールバックする。
+   */
+  const displayedOrderAmount =
+    lines.length > 0 ? linesTotal : headerOrderAmount;
 
   useEffect(() => {
     if (orderIdError) {
@@ -108,6 +128,7 @@ export default function EditOrderPage() {
           id,
           case_id,
           order_no,
+          order_amount,
           expected_delivery_date,
           delivered_date,
           status,
@@ -125,6 +146,49 @@ export default function EditOrderPage() {
         setLoadError(orderError?.message || "発注が見つかりません。");
         setLoading(false);
         return;
+      }
+
+      const caseId = (order.case_id as string | null) || null;
+      let nextDelivery: DeliveryConfirmInfo | null = null;
+
+      if (caseId) {
+        const { data: caseRow, error: caseError } = await supabase
+          .from("cases")
+          .select(
+            "id, customer_name, delivery_address, site_address, memo"
+          )
+          .eq("id", caseId)
+          .maybeSingle();
+
+        if (cancelled) {
+          return;
+        }
+
+        if (caseError) {
+          setLoadError(
+            `案件（納品先）情報の取得に失敗しました：${caseError.message}`
+          );
+          setLoading(false);
+          return;
+        }
+
+        if (caseRow) {
+          const extras = parseCaseExtras({
+            memo: (caseRow.memo as string | null) || null,
+            constructionDetail: null,
+          });
+          const deliveryAddress =
+            String(caseRow.delivery_address || "").trim() ||
+            String(caseRow.site_address || "").trim();
+
+          nextDelivery = {
+            customerName: String(caseRow.customer_name || "").trim(),
+            deliveryName: (extras.deliveryName || "").trim(),
+            deliveryAddress,
+            receiverPhone: (extras.receiverPhone || "").trim(),
+            receiverName: (extras.receiverName || "").trim(),
+          };
+        }
       }
 
       const itemsResult = await listOrderItemsByOrderId(orderId);
@@ -148,10 +212,22 @@ export default function EditOrderPage() {
       >();
 
       if (productIds.length > 0) {
-        const { data: products } = await supabase
+        const { data: products, error: productsError } = await supabase
           .from("products")
           .select("id, model_no, manufacturers(name)")
           .in("id", productIds);
+
+        if (cancelled) {
+          return;
+        }
+
+        if (productsError) {
+          setLoadError(
+            `商品情報の取得に失敗しました：${productsError.message}`
+          );
+          setLoading(false);
+          return;
+        }
 
         for (const product of products || []) {
           const identity = resolveProductIdentity(
@@ -179,9 +255,11 @@ export default function EditOrderPage() {
         status: (order.status as string) || "発注済",
         memo: (order.memo as string) || "",
         delivered_date: (order.delivered_date as string | null) || null,
-        case_id: (order.case_id as string | null) || null,
+        case_id: caseId,
         order_no: (order.order_no as string) || "",
       });
+      setHeaderOrderAmount(toNumber(order.order_amount));
+      setDeliveryInfo(nextDelivery);
 
       setLines(
         itemsResult.data.map((item) => {
@@ -241,7 +319,9 @@ export default function EditOrderPage() {
     }
 
     if (lines.length === 0) {
-      setSubmitError("発注明細がありません。");
+      setSubmitError(
+        "発注明細がありません。明細がない発注は金額・納品状態を保存できません。"
+      );
       return;
     }
 
@@ -271,7 +351,7 @@ export default function EditOrderPage() {
         status: form.status,
         memo: form.memo.trim() || null,
         delivered_date: deliveredDate,
-        order_amount: orderAmount,
+        order_amount: linesTotal,
       })
       .eq("id", orderId);
 
@@ -368,7 +448,7 @@ export default function EditOrderPage() {
           発注編集：{form.order_no || "-"}
         </h1>
         <p className="mt-1 text-sm text-gray-500">
-          数量・単価・ステータス・納品予定日・備考を変更できます。
+          納品確認・ステータス変更、および数量・単価・納品予定日・備考を更新できます。
         </p>
       </header>
 
@@ -381,6 +461,37 @@ export default function EditOrderPage() {
             ← 発注詳細へ戻る
           </Link>
         </div>
+
+        <section className="rounded-xl bg-white p-5 shadow-sm md:p-6">
+          <h2 className="mb-5 text-lg font-bold text-gray-900">納品先（確認）</h2>
+          <p className="mb-4 text-sm text-gray-500">
+            案件情報の読取専用表示です。ここからは編集できません。
+          </p>
+          {deliveryInfo ? (
+            <div className="grid gap-5 md:grid-cols-2">
+              {/*
+                「納品先名」の単一正式定義は未確定のため、
+                納品書と同じく顧客名を表示する。
+                dealer 案件の【納品先名称】がある場合のみ併記する。
+              */}
+              <Info label="顧客名" value={deliveryInfo.customerName} />
+              {deliveryInfo.deliveryName ? (
+                <Info label="納品先名称" value={deliveryInfo.deliveryName} />
+              ) : null}
+              <Info
+                label="納品先住所"
+                value={deliveryInfo.deliveryAddress}
+                className="md:col-span-2"
+              />
+              <Info label="納品先電話番号" value={deliveryInfo.receiverPhone} />
+              <Info label="荷受け担当者" value={deliveryInfo.receiverName} />
+            </div>
+          ) : (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              案件に紐づく納品先情報を表示できません。
+            </div>
+          )}
+        </section>
 
         <form
           onSubmit={handleSubmit}
@@ -420,98 +531,118 @@ export default function EditOrderPage() {
               />
             </Field>
 
-            <Field label="発注金額（明細合計）">
+            <Field
+              label={
+                lines.length > 0
+                  ? "発注金額（明細合計）"
+                  : "発注金額（ヘッダ）"
+              }
+            >
               <p className="rounded-lg border border-gray-200 bg-[#f7f7f5] px-4 py-3 text-right text-sm font-semibold">
-                {formatYen(orderAmount)}
+                {formatYen(displayedOrderAmount)}
               </p>
+              {lines.length === 0 && headerOrderAmount > 0 ? (
+                <p className="mt-2 text-xs text-amber-800">
+                  明細が無いため、発注ヘッダの金額を表示しています。
+                </p>
+              ) : null}
             </Field>
           </div>
 
           <div>
             <h3 className="mb-3 text-base font-bold text-gray-900">発注明細</h3>
-            <div className="overflow-x-auto rounded-lg border border-gray-200">
-              <table className="w-full min-w-[720px] text-left text-sm">
-                <thead className="border-b bg-[#f7f7f5] text-gray-500">
-                  <tr>
-                    <th className="px-3 py-3 font-medium">メーカー</th>
-                    <th className="px-3 py-3 font-medium">型番</th>
-                    <th className="px-3 py-3 font-medium">数量</th>
-                    <th className="px-3 py-3 font-medium">仕入単価</th>
-                    <th className="px-3 py-3 font-medium">金額</th>
-                    <th className="px-3 py-3 font-medium">備考</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {lines.map((line) => (
-                    <tr key={line.local_id} className="border-b last:border-b-0">
-                      <td className="px-3 py-3">
-                        {displayIdentityValue(line.manufacturer_name)}
-                      </td>
-                      <td className="px-3 py-3">
-                        {displayIdentityValue(line.model_no)}
-                      </td>
-                      <td className="px-3 py-3">
-                        <input
-                          type="number"
-                          min="1"
-                          step="1"
-                          value={line.quantity}
-                          onChange={(e) =>
-                            handleLineChange(
-                              line.local_id,
-                              "quantity",
-                              e.target.value
-                            )
-                          }
-                          disabled={submitting}
-                          className={`${inputClassName} w-24`}
-                        />
-                      </td>
-                      <td className="px-3 py-3">
-                        <input
-                          type="number"
-                          min="0"
-                          step="1"
-                          value={line.unit_price}
-                          onChange={(e) =>
-                            handleLineChange(
-                              line.local_id,
-                              "unit_price",
-                              e.target.value
-                            )
-                          }
-                          disabled={submitting}
-                          className={`${inputClassName} w-32 text-right`}
-                        />
-                      </td>
-                      <td className="px-3 py-3 text-right">
-                        {formatYen(
-                          calcLineAmount(
-                            toNumber(line.quantity),
-                            toNumber(line.unit_price)
-                          )
-                        )}
-                      </td>
-                      <td className="px-3 py-3">
-                        <input
-                          type="text"
-                          value={line.memo}
-                          onChange={(e) =>
-                            handleLineChange(
-                              line.local_id,
-                              "memo",
-                              e.target.value
-                            )
-                          }
-                          disabled={submitting}
-                          className={inputClassName}
-                        />
-                      </td>
+            {lines.length === 0 ? (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                発注明細がありません。旧データで明細が未作成の可能性があります。発注詳細・発注書も合わせて確認してください。
+              </div>
+            ) : (
+              <div className="overflow-x-auto rounded-lg border border-gray-200">
+                <table className="w-full min-w-[720px] text-left text-sm">
+                  <thead className="border-b bg-[#f7f7f5] text-gray-500">
+                    <tr>
+                      <th className="px-3 py-3 font-medium">メーカー</th>
+                      <th className="px-3 py-3 font-medium">型番</th>
+                      <th className="px-3 py-3 font-medium">数量</th>
+                      <th className="px-3 py-3 font-medium">仕入単価</th>
+                      <th className="px-3 py-3 font-medium">金額</th>
+                      <th className="px-3 py-3 font-medium">備考</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {lines.map((line) => (
+                      <tr
+                        key={line.local_id}
+                        className="border-b last:border-b-0"
+                      >
+                        <td className="px-3 py-3">
+                          {displayIdentityValue(line.manufacturer_name)}
+                        </td>
+                        <td className="px-3 py-3">
+                          {displayIdentityValue(line.model_no)}
+                        </td>
+                        <td className="px-3 py-3">
+                          <input
+                            type="number"
+                            min="1"
+                            step="1"
+                            value={line.quantity}
+                            onChange={(e) =>
+                              handleLineChange(
+                                line.local_id,
+                                "quantity",
+                                e.target.value
+                              )
+                            }
+                            disabled={submitting}
+                            className={`${inputClassName} w-24`}
+                          />
+                        </td>
+                        <td className="px-3 py-3">
+                          <input
+                            type="number"
+                            min="0"
+                            step="1"
+                            value={line.unit_price}
+                            onChange={(e) =>
+                              handleLineChange(
+                                line.local_id,
+                                "unit_price",
+                                e.target.value
+                              )
+                            }
+                            disabled={submitting}
+                            className={`${inputClassName} w-32 text-right`}
+                          />
+                        </td>
+                        <td className="px-3 py-3 text-right">
+                          {formatYen(
+                            calcLineAmount(
+                              toNumber(line.quantity),
+                              toNumber(line.unit_price)
+                            )
+                          )}
+                        </td>
+                        <td className="px-3 py-3">
+                          <input
+                            type="text"
+                            value={line.memo}
+                            onChange={(e) =>
+                              handleLineChange(
+                                line.local_id,
+                                "memo",
+                                e.target.value
+                              )
+                            }
+                            disabled={submitting}
+                            className={inputClassName}
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
 
           <Field label="備考">
@@ -534,7 +665,7 @@ export default function EditOrderPage() {
             </Link>
             <button
               type="submit"
-              disabled={submitting}
+              disabled={submitting || lines.length === 0}
               className="inline-flex items-center justify-center rounded-lg bg-gray-900 px-6 py-3 text-sm font-bold text-white hover:bg-gray-700 disabled:cursor-not-allowed disabled:bg-gray-400"
             >
               {submitting ? "保存しています..." : "変更を保存"}
@@ -563,5 +694,24 @@ function Field({
       </span>
       <div className="mt-2">{children}</div>
     </label>
+  );
+}
+
+function Info({
+  label,
+  value,
+  className = "",
+}: {
+  label: string;
+  value: string;
+  className?: string;
+}) {
+  return (
+    <div className={className}>
+      <p className="text-xs font-bold text-gray-500">{label}</p>
+      <p className="mt-1 break-words text-sm font-semibold text-gray-900">
+        {value || "—"}
+      </p>
+    </div>
   );
 }
