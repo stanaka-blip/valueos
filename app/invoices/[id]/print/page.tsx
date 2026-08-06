@@ -1,5 +1,9 @@
 import Link from "next/link";
 
+import {
+  summarizeCaseModelNumbers,
+  type CaseListLineInput,
+} from "@/app/cases/caseListLineSummary";
 import { formatDate, formatYen } from "@/app/orders/orderUtils";
 
 import { supabase } from "@/lib/supabase";
@@ -92,10 +96,11 @@ export default async function InvoicePrintPage({
   const invoiceMemo = (invoice.memo || "").trim();
 
   /*
-   * 請求時点の明細スナップショットはないため、
-   * 商品マスタから明細を再構成せず、案件単位の1行を表示する。
+   * 請求時点の明細スナップショットはない。
+   * 金額は invoices.invoice_amount を正式値とし、
+   * 摘要だけ案件明細の型番を集計表示する（案件一覧と同じ解決規則）。
    */
-  const lineSummary = "案件請求";
+  const lineSummary = await resolveInvoiceModelSummary(caseData?.id || null);
 
   return (
     <>
@@ -183,7 +188,7 @@ export default async function InvoicePrintPage({
                 <td>{formatDate(invoice.invoice_date)}</td>
                 <td>{displayText(caseData?.case_no)}</td>
                 <td>{displayText(caseData?.customer_name)}</td>
-                <td>{lineSummary}</td>
+                <td className="order-print-summary">{lineSummary}</td>
                 <td className="order-print-num tabular-nums">
                   {formatYen(invoiceAmount)}
                 </td>
@@ -416,6 +421,10 @@ export default async function InvoicePrintPage({
           text-align: right;
         }
 
+        .order-print-table tbody td.order-print-summary {
+          white-space: pre-line;
+        }
+
         .order-print-row {
           break-inside: avoid;
           page-break-inside: avoid;
@@ -590,4 +599,49 @@ function toNumber(value: number | string | null | undefined): number {
   const numberValue = Number(value);
 
   return Number.isFinite(numberValue) ? numberValue : 0;
+}
+
+/**
+ * 案件明細から型番摘要を解決する。
+ * PRODUCT: products.model_no
+ * PACKAGE: case_package_items.model_no_snapshot → products.model_no
+ * 商品名・パッケージ名にはフォールバックしない。
+ * 取得失敗・型番なしは「—」。
+ */
+async function resolveInvoiceModelSummary(
+  caseId: string | null
+): Promise<string> {
+  if (!caseId) {
+    return "—";
+  }
+
+  const { data, error } = await supabase
+    .from("case_products")
+    .select(
+      `
+      line_type,
+      products (
+        model_no
+      ),
+      case_packages (
+        case_package_items (
+          product_id,
+          model_no_snapshot,
+          is_selected,
+          is_hidden,
+          products (
+            model_no
+          )
+        )
+      )
+    `
+    )
+    .eq("case_id", caseId)
+    .order("created_at", { ascending: true });
+
+  if (error || !data) {
+    return "—";
+  }
+
+  return summarizeCaseModelNumbers(data as CaseListLineInput[]);
 }

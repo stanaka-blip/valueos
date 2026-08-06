@@ -73,10 +73,25 @@ assert(
 );
 
 assert(
-  "case-level line without product snapshot",
-  page.includes("案件請求") &&
-    page.includes("請求時点の明細スナップショットはない") &&
-    !page.includes('.from("case_products")')
+  "summary uses case model numbers not 案件請求",
+  page.includes("summarizeCaseModelNumbers") &&
+    page.includes("resolveInvoiceModelSummary") &&
+    page.includes('.from("case_products")') &&
+    page.includes("model_no_snapshot") &&
+    !page.includes('"案件請求"') &&
+    !page.includes("案件請求")
+);
+
+assert(
+  "summary never falls back to product/package name",
+  page.includes("商品名・パッケージ名にはフォールバックしない") &&
+    !/packages\s*\(\s*name/.test(page)
+);
+
+assert(
+  "invoice_amount remains formal line amount",
+  page.includes("formatYen(invoiceAmount)") &&
+    page.includes("invoices.invoice_amount を正式値")
 );
 
 assert(
