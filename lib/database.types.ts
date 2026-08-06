@@ -498,6 +498,60 @@ export type Database = {
         };
         Relationships: [];
       };
+      company_settings: {
+        Row: {
+          id: boolean;
+          company_name: string;
+          postal_code: string | null;
+          address: string | null;
+          phone: string | null;
+          fax: string | null;
+          email: string | null;
+          invoice_registration_number: string | null;
+          bank_name: string | null;
+          bank_branch: string | null;
+          bank_account_type: string | null;
+          bank_account_number: string | null;
+          bank_account_holder: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: boolean;
+          company_name: string;
+          postal_code?: string | null;
+          address?: string | null;
+          phone?: string | null;
+          fax?: string | null;
+          email?: string | null;
+          invoice_registration_number?: string | null;
+          bank_name?: string | null;
+          bank_branch?: string | null;
+          bank_account_type?: string | null;
+          bank_account_number?: string | null;
+          bank_account_holder?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: boolean;
+          company_name?: string;
+          postal_code?: string | null;
+          address?: string | null;
+          phone?: string | null;
+          fax?: string | null;
+          email?: string | null;
+          invoice_registration_number?: string | null;
+          bank_name?: string | null;
+          bank_branch?: string | null;
+          bank_account_type?: string | null;
+          bank_account_number?: string | null;
+          bank_account_holder?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       products: {
         Row: {
           id: string;
@@ -679,3 +733,7 @@ export type OrderItemUpdate = PublicTables["order_items"]["Update"];
 export type CaseSettlementRow = PublicTables["case_settlements"]["Row"];
 export type CaseSettlementInsert = PublicTables["case_settlements"]["Insert"];
 export type CaseSettlementUpdate = PublicTables["case_settlements"]["Update"];
+
+export type CompanySettingsRow = PublicTables["company_settings"]["Row"];
+export type CompanySettingsInsert = PublicTables["company_settings"]["Insert"];
+export type CompanySettingsUpdate = PublicTables["company_settings"]["Update"];
