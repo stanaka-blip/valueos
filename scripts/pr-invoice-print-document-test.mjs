@@ -48,11 +48,14 @@ assert(
 );
 
 assert(
-  "issuer company name only",
-  page.includes("株式会社Value Ecology") &&
-    !page.includes("Value Group Inc.") &&
+  "issuer uses company settings (no hardcoded-only name)",
+  page.includes("getCompanySettingsAdmin") &&
+    page.includes("InvoiceIssuerBlock") &&
+    page.includes("PrintCompanyFooter") &&
     !page.includes("会社住所を設定してください") &&
-    !page.includes("TEL：会社電話番号")
+    !page.includes("TEL：会社電話番号") &&
+    !page.includes("設定してください") &&
+    !page.includes("T0000000000000")
 );
 
 assert(
@@ -108,12 +111,13 @@ assert(
 );
 
 assert(
-  "no placeholder invoice registration or bank",
-  !page.includes("登録番号：T") &&
+  "bank transfer block is conditional (no placeholders)",
+  page.includes("InvoiceBankTransferBlock") &&
+    read("app/components/print/CompanyPrintBlocks.tsx").includes(
+      "hasBankTransferInfo"
+    ) &&
     !page.includes("T0000000000000") &&
-    !page.includes("お振込先") &&
-    !page.includes("設定してください") &&
-    !page.includes("銀行名")
+    !page.includes("設定してください")
 );
 
 assert(

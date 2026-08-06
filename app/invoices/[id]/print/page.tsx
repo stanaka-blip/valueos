@@ -1,10 +1,18 @@
 import Link from "next/link";
 
 import {
+  InvoiceBankTransferBlock,
+  InvoiceIssuerBlock,
+  PrintCompanyFooter,
+} from "@/app/components/print/CompanyPrintBlocks";
+import {
   summarizeCaseModelNumbers,
   type CaseListLineInput,
 } from "@/app/cases/caseListLineSummary";
 import { formatDate, formatYen } from "@/app/orders/orderUtils";
+import { toCompanySettingsDto } from "@/lib/companyInfo/companySettingsDto";
+import { getCompanySettingsAdmin } from "@/lib/companyInfo/getCompanySettingsAdmin";
+import type { PrintCompanyInfo } from "@/lib/companyInfo/printCompanyInfo";
 
 import { supabase } from "@/lib/supabase";
 
@@ -84,6 +92,20 @@ export default async function InvoicePrintPage({
   const caseData = getSingleRelation(invoice.cases);
   const dealer = getSingleRelation(caseData?.dealers);
 
+  const companyResult = await getCompanySettingsAdmin();
+  if (!companyResult.ok) {
+    return (
+      <main className="p-8">
+        <div className="rounded-lg bg-red-50 p-6 text-red-700">
+          会社情報の取得に失敗しました：
+          {companyResult.error_message}
+          （帳票を空欄のまま出力しません。設定またはサーバー状態を確認してください。）
+        </div>
+      </main>
+    );
+  }
+  const company: PrintCompanyInfo = toCompanySettingsDto(companyResult.data);
+
   const invoiceAmount = toNumber(invoice.invoice_amount);
 
   /*
@@ -154,10 +176,7 @@ export default async function InvoicePrintPage({
             </div>
           </div>
 
-          <div className="order-print-top-right">
-            <h2 className="order-print-section-title">発行元</h2>
-            <p className="order-print-issuer-name">株式会社Value Ecology</p>
-          </div>
+          <InvoiceIssuerBlock company={company} />
         </section>
 
         <section className="order-print-amount-summary">
@@ -206,12 +225,13 @@ export default async function InvoicePrintPage({
           </section>
         ) : null}
 
-        <footer className="order-print-footer">
-          <p className="order-print-footer-company">株式会社Value Ecology</p>
-          <p className="order-print-footer-note">
-            本請求書は ValueOS より出力されました
-          </p>
-        </footer>
+        <InvoiceBankTransferBlock company={company} />
+
+        <PrintCompanyFooter
+          company={company}
+          attribution="本請求書は ValueOS より出力されました"
+          showContact={false}
+        />
       </main>
 
       <style>{`
@@ -451,6 +471,10 @@ export default async function InvoicePrintPage({
           color: #111827;
         }
 
+        .order-print-bank {
+          margin-top: 28px;
+        }
+
         .order-print-footer {
           margin-top: 36px;
           padding-top: 12px;
@@ -465,6 +489,12 @@ export default async function InvoicePrintPage({
           font-size: 11pt;
           font-weight: 700;
           color: #111827;
+        }
+
+        .order-print-footer-meta {
+          margin: 0 0 4px;
+          font-size: 9pt;
+          color: #374151;
         }
 
         .order-print-footer-note {

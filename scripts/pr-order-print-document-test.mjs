@@ -125,18 +125,25 @@ assert(
 );
 
 assert(
-  "total and footer present",
+  "total section present",
   page.includes("order-print-total") &&
     page.includes("発注合計") &&
     page.includes("【備考】") &&
-    page.includes("order.memo") &&
-    page.includes("株式会社Value Ecology") &&
+    page.includes("order.memo")
+);
+
+assert(
+  "footer uses company settings loader (not hardcoded-only name)",
+  page.includes("PrintCompanyFooter") &&
+    page.includes("fetchCompanySettingsForPrint") &&
+    page.includes("会社情報の取得に失敗しました") &&
     page.includes("本発注書は ValueOS より出力されました")
 );
 
 assert(
-  "company name appears once in footer",
-  (page.match(/株式会社Value Ecology/g) || []).length === 1
+  "optional postal/address/phone only via PrintCompanyFooter",
+  page.includes("PrintCompanyFooter") &&
+    page.includes("order-print-footer-meta")
 );
 
 assert(
@@ -146,12 +153,11 @@ assert(
 );
 
 assert(
-  "no invented company address/phone/fax/contact",
+  "no invented company placeholders",
   !page.includes("会社住所を設定してください") &&
     !page.includes("株式会社バリューエコロジー") &&
-    !/TEL：/.test(page) &&
-    !page.includes("FAX") &&
-    !page.includes("担当者")
+    !page.includes("TEL：会社電話番号") &&
+    !page.includes("設定してください")
 );
 
 assert(
