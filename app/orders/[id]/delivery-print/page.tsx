@@ -5,6 +5,9 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 
 import { parseCaseExtras } from "@/app/admin/orders/parseCaseExtras";
+import { PrintCompanyFooter } from "@/app/components/print/CompanyPrintBlocks";
+import { fetchCompanySettingsForPrint } from "@/lib/companyInfo/fetchCompanySettingsForPrint";
+import type { PrintCompanyInfo } from "@/lib/companyInfo/printCompanyInfo";
 import { supabase } from "@/lib/supabase";
 import { listOrderItemsByOrderId } from "@/lib/repositories/orderItems";
 import type { OrderItemRow } from "@/lib/database.types";
@@ -53,6 +56,7 @@ export default function DeliveryPrintPage() {
   const [order, setOrder] = useState<OrderRow | null>(null);
   const [caseRow, setCaseRow] = useState<CaseRow | null>(null);
   const [items, setItems] = useState<PrintLine[]>([]);
+  const [company, setCompany] = useState<PrintCompanyInfo | null>(null);
   const [loading, setLoading] = useState(!orderIdError);
   const [error, setError] = useState<string | null>(orderIdError);
 
@@ -67,6 +71,15 @@ export default function DeliveryPrintPage() {
       setLoading(true);
       setError(null);
       try {
+        const companyLoad = await fetchCompanySettingsForPrint();
+        if (!companyLoad.ok) {
+          throw new Error(
+            `会社情報の取得に失敗しました：${companyLoad.error_message}`
+          );
+        }
+        if (cancelled) return;
+        setCompany(companyLoad.data);
+
         const { data: orderData, error: orderError } = await supabase
           .from("orders")
           .select("id, case_id, order_no, delivered_date, memo")
@@ -164,7 +177,7 @@ export default function DeliveryPrintPage() {
     );
   }
 
-  if (error || !order) {
+  if (error || !order || !company) {
     return (
       <main className="min-h-screen bg-white p-8 text-sm text-red-600">
         {error ?? "発注が見つかりません"}
@@ -285,12 +298,10 @@ export default function DeliveryPrintPage() {
           </section>
         ) : null}
 
-        <footer className="order-print-footer">
-          <p className="order-print-footer-company">株式会社Value Ecology</p>
-          <p className="order-print-footer-note">
-            本納品書は ValueOS より出力されました
-          </p>
-        </footer>
+        <PrintCompanyFooter
+          company={company}
+          attribution="本納品書は ValueOS より出力されました"
+        />
       </main>
 
       <style>{`
@@ -479,6 +490,12 @@ export default function DeliveryPrintPage() {
           font-size: 11pt;
           font-weight: 700;
           color: #111827;
+        }
+
+        .order-print-footer-meta {
+          margin: 0 0 4px;
+          font-size: 9pt;
+          color: #374151;
         }
 
         .order-print-footer-note {

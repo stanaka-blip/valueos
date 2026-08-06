@@ -112,10 +112,11 @@ assert(
 );
 
 assert(
-  "footer company and attribution",
-  page.includes("株式会社Value Ecology") &&
+  "footer company from settings and attribution",
+  page.includes("PrintCompanyFooter") &&
+    page.includes("fetchCompanySettingsForPrint") &&
     page.includes("本納品書は ValueOS より出力されました") &&
-    (page.match(/株式会社Value Ecology/g) || []).length === 1
+    page.includes("会社情報の取得に失敗しました")
 );
 
 assert(

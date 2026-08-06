@@ -79,12 +79,9 @@ assert(
 );
 
 assert(
-  "prints unchanged in this PR",
-  !read("app/invoices/[id]/print/page.tsx").includes("getCompanySettingsAdmin") &&
-    !read("app/orders/[id]/print/page.tsx").includes("getCompanySettingsAdmin") &&
-    !read("app/orders/[id]/delivery-print/page.tsx").includes(
-      "getCompanySettingsAdmin"
-    )
+  "client settings submit does not import service role",
+  !submit.includes("getServiceRoleSupabase") &&
+    !submit.includes("SUPABASE_SERVICE_ROLE")
 );
 
 const status = spawnSync("git", ["status", "--porcelain"], {

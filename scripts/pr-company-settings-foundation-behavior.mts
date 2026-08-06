@@ -109,18 +109,25 @@ check("fallback never invents invoice or bank placeholders", () => {
   assert.doesNotMatch(JSON.stringify(row), /設定してください/);
 });
 
-check("admin module does not leak into client print pages", () => {
-  const prints = [
-    "app/invoices/[id]/print/page.tsx",
+check("admin module does not leak service role into client print pages", () => {
+  const clientPrints = [
     "app/orders/[id]/print/page.tsx",
     "app/orders/[id]/delivery-print/page.tsx",
   ];
-  for (const rel of prints) {
+  for (const rel of clientPrints) {
     const src = readFileSync(join(ROOT, rel), "utf8");
-    assert.doesNotMatch(src, /getCompanySettingsAdmin/);
     assert.doesNotMatch(src, /getServiceRoleSupabase/);
     assert.doesNotMatch(src, /SUPABASE_SERVICE_ROLE/);
+    assert.doesNotMatch(src, /getCompanySettingsAdmin/);
+    assert.match(src, /fetchCompanySettingsForPrint/);
   }
+  const invoice = readFileSync(
+    join(ROOT, "app/invoices/[id]/print/page.tsx"),
+    "utf8"
+  );
+  assert.match(invoice, /getCompanySettingsAdmin/);
+  assert.doesNotMatch(invoice, /getServiceRoleSupabase/);
+  assert.doesNotMatch(invoice, /SUPABASE_SERVICE_ROLE/);
 });
 
 check("server-only admin file marks server-only", () => {
