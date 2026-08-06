@@ -102,9 +102,9 @@ assert(
 );
 
 assert(
-  "no settings UI / print / sidebar in this PR",
-  !existsSync(join(ROOT, "app/settings")) &&
-    !read("app/components/AppSidebar.tsx").includes("/settings/company")
+  "foundation modules remain server-safe",
+  admin.includes('import "server-only"') &&
+    existsSync(join(ROOT, "lib/companyInfo/getCompanySettingsAdmin.ts"))
 );
 
 const status = spawnSync("git", ["status", "--porcelain"], {

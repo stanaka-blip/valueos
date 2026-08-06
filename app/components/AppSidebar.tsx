@@ -234,6 +234,20 @@ function IconPrice() {
   );
 }
 
+function IconBuilding() {
+  return (
+    <svg className={iconClass} viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M4 20h16M6 20V6.5A1.5 1.5 0 0 1 7.5 5h9A1.5 1.5 0 0 1 18 6.5V20M9 9h1.5M13.5 9H15M9 13h1.5M13.5 13H15M9 17h1.5M13.5 17H15"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 const dashboardItem: NavItem = {
   name: "ダッシュボード",
   href: "/",
@@ -281,7 +295,13 @@ const navGroups: NavGroup[] = [
   },
   {
     label: "設定",
-    entries: [],
+    entries: [
+      {
+        name: "会社情報",
+        href: "/settings/company",
+        icon: <IconBuilding />,
+      },
+    ],
   },
 ];
 
