@@ -53,15 +53,26 @@ assert(
     dto.includes("optionalText")
 );
 
+const getHandler = api.slice(
+  api.indexOf("export async function GET"),
+  api.indexOf("export async function PUT")
+);
+const putHandler = api.slice(api.indexOf("export async function PUT"));
+
 assert(
-  "API GET/PUT with staff cookie CSRF Origin service_role",
-  api.includes("export async function GET") &&
-    api.includes("export async function PUT") &&
-    api.includes("getSessionFromRequest") &&
-    api.includes("assertCsrf") &&
-    api.includes("assertAppOrigin") &&
-    api.includes("getCompanySettingsAdmin") &&
-    api.includes("saveCompanySettingsAdmin")
+  "API GET uses staff cookie only (no Origin/CSRF)",
+  getHandler.includes("getSessionFromRequest") &&
+    getHandler.includes("getCompanySettingsAdmin") &&
+    !getHandler.includes("assertAppOrigin") &&
+    !getHandler.includes("assertCsrf")
+);
+
+assert(
+  "API PUT keeps Origin CSRF and service_role save",
+  putHandler.includes("assertAppOrigin") &&
+    putHandler.includes("assertCsrf") &&
+    putHandler.includes("saveCompanySettingsAdmin") &&
+    api.includes("getSessionFromRequest")
 );
 
 assert(
