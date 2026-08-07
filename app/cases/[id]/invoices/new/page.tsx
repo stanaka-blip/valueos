@@ -22,6 +22,7 @@ import {
   type InvoiceLineForAutofill,
   type ResolvedInvoiceLinePrice,
 } from "@/lib/invoices/invoiceAmountAutofill";
+import { buildInvoiceTaxSnapshotForSave } from "@/lib/invoices/invoiceTaxSnapshot";
 import type { PriceTargetType } from "@/lib/prices/targetType";
 import { fetchActiveSalesPrice } from "@/lib/salesPrices";
 import { supabase } from "@/lib/supabase";
@@ -423,7 +424,16 @@ export default function NewInvoicePage() {
 
     /*
      * caseData.idはSupabaseから取得した本物のUUIDです。
+     * 税スナップショット:
+     * - 自動入力のまま未編集 → subtotal_ex_tax / tax_amount / invoice_amount を保存
+     * - 手入力 → invoice_amount のみ（税抜・税額は逆算せず NULL）
      */
+    const taxSnapshot = buildInvoiceTaxSnapshotForSave({
+      invoiceAmountTouched: invoiceAmountTouchedRef.current,
+      invoiceAmount,
+      autofill,
+    });
+
     const { data: insertedInvoice, error: invoiceError } =
       await supabase
         .from("invoices")
@@ -432,7 +442,9 @@ export default function NewInvoicePage() {
           invoice_no: form.invoice_no.trim(),
           invoice_date: form.invoice_date,
           due_date: form.due_date || null,
-          invoice_amount: invoiceAmount,
+          invoice_amount: taxSnapshot.invoice_amount,
+          subtotal_ex_tax: taxSnapshot.subtotal_ex_tax,
+          tax_amount: taxSnapshot.tax_amount,
           status: form.status,
           memo: form.memo.trim() || null,
         })
