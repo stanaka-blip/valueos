@@ -552,6 +552,60 @@ export type Database = {
         };
         Relationships: [];
       };
+      /**
+       * 請求（ライブスキーマ互換の手生成型）。
+       * subtotal_ex_tax / tax_amount は 20260807120000 で追加（NULL可）。
+       */
+      invoices: {
+        Row: {
+          id: string;
+          created_at: string;
+          case_id: string;
+          invoice_no: string;
+          invoice_date: string;
+          due_date: string | null;
+          invoice_amount: number;
+          subtotal_ex_tax: number | null;
+          tax_amount: number | null;
+          status: string | null;
+          memo: string | null;
+        };
+        Insert: {
+          id?: string;
+          created_at?: string;
+          case_id: string;
+          invoice_no: string;
+          invoice_date: string;
+          due_date?: string | null;
+          invoice_amount: number;
+          subtotal_ex_tax?: number | null;
+          tax_amount?: number | null;
+          status?: string | null;
+          memo?: string | null;
+        };
+        Update: {
+          id?: string;
+          created_at?: string;
+          case_id?: string;
+          invoice_no?: string;
+          invoice_date?: string;
+          due_date?: string | null;
+          invoice_amount?: number;
+          subtotal_ex_tax?: number | null;
+          tax_amount?: number | null;
+          status?: string | null;
+          memo?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "invoices_case_id_fkey";
+            columns: ["case_id"];
+            isOneToOne: false;
+            referencedRelation: "cases";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       products: {
         Row: {
           id: string;
