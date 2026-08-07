@@ -8,10 +8,22 @@ import {
   ReactNode,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
 import { fetchCaseWorkflowForCasePage } from "@/app/cases/[id]/fetchCaseWorkflow";
+import {
+  UNSET_PRICE_LABEL,
+  UNSET_PRICE_WARNING,
+  buildInvoiceAmountAutofill,
+  resolveLineFromLookup,
+  type InvoiceAmountAutofillResult,
+  type InvoiceLineForAutofill,
+  type ResolvedInvoiceLinePrice,
+} from "@/lib/invoices/invoiceAmountAutofill";
+import type { PriceTargetType } from "@/lib/prices/targetType";
+import { fetchActiveSalesPrice } from "@/lib/salesPrices";
 import { supabase } from "@/lib/supabase";
 import type { WorkflowResult } from "@/lib/workflow";
 
@@ -35,6 +47,7 @@ type CaseData = {
   id: string;
   case_no: string | null;
   dealer_id: string | null;
+  order_received_date: string | null;
   customer_name: string | null;
   customer_phone: string | null;
   site_address: string | null;
@@ -47,11 +60,18 @@ type ProductRelation = {
   model_no: string | null;
 };
 
+type PackageRelation = {
+  name: string | null;
+};
+
 type CaseProduct = {
   id: string;
+  line_type: string | null;
+  product_id: string | null;
+  package_id: string | null;
   quantity: number | null;
-  sales_price: number | string | null;
   products: ProductRelation | ProductRelation[] | null;
+  packages: PackageRelation | PackageRelation[] | null;
 };
 
 type InvoiceForm = {
@@ -86,6 +106,12 @@ export default function NewInvoicePage() {
 
   const [caseData, setCaseData] = useState<CaseData | null>(null);
   const [caseProducts, setCaseProducts] = useState<CaseProduct[]>([]);
+  const [priceLines, setPriceLines] = useState<ResolvedInvoiceLinePrice[]>([]);
+  const [autofill, setAutofill] =
+    useState<InvoiceAmountAutofillResult | null>(null);
+  /** 請求金額をユーザーが手動変更したら true。再計算で上書きしない */
+  const [invoiceAmountTouched, setInvoiceAmountTouched] = useState(false);
+  const invoiceAmountTouchedRef = useRef(false);
 
   const [initialLoading, setInitialLoading] = useState(!initialRouteError);
   const [submitting, setSubmitting] = useState(false);
@@ -123,6 +149,7 @@ export default function NewInvoicePage() {
           id,
           case_no,
           dealer_id,
+          order_received_date,
           customer_name,
           customer_phone,
           site_address,
@@ -171,11 +198,16 @@ export default function NewInvoicePage() {
           .from("case_products")
           .select(`
             id,
+            line_type,
+            product_id,
+            package_id,
             quantity,
-            sales_price,
             products (
               name,
               model_no
+            ),
+            packages (
+              name
             )
           `)
           .eq("case_id", resolvedCaseId)
@@ -198,9 +230,24 @@ export default function NewInvoicePage() {
 
       setCaseProducts(normalizedProducts);
 
-      const totalSales = calculateSalesTotal(
-        normalizedProducts
-      );
+      const asOfDate =
+        (normalizedCase.order_received_date || "").trim() ||
+        getTodayString();
+      const dealerId = (normalizedCase.dealer_id || "").trim();
+
+      const resolvedLines = await resolveSalesPricesForCaseProducts({
+        products: normalizedProducts,
+        dealerId,
+        asOfDate,
+      });
+      const autofillResult = buildInvoiceAmountAutofill(resolvedLines);
+      setPriceLines(resolvedLines);
+      setAutofill(autofillResult);
+
+      const suggestedInclusive =
+        autofillResult.invoiceAmountInclusive != null
+          ? String(autofillResult.invoiceAmountInclusive)
+          : "";
 
       const workflowLoad =
         await fetchCaseWorkflowForCasePage(resolvedCaseId);
@@ -212,10 +259,9 @@ export default function NewInvoicePage() {
           invoice_no:
             current.invoice_no ||
             generateInvoiceNumber(normalizedCase.case_no),
-          invoice_amount:
-            totalSales > 0
-              ? String(totalSales)
-              : current.invoice_amount,
+          invoice_amount: invoiceAmountTouchedRef.current
+            ? current.invoice_amount
+            : suggestedInclusive || current.invoice_amount,
           due_date:
             workflowLoad.result.paymentDueDate ||
             current.due_date,
@@ -230,10 +276,9 @@ export default function NewInvoicePage() {
           invoice_no:
             current.invoice_no ||
             generateInvoiceNumber(normalizedCase.case_no),
-          invoice_amount:
-            totalSales > 0
-              ? String(totalSales)
-              : current.invoice_amount,
+          invoice_amount: invoiceAmountTouchedRef.current
+            ? current.invoice_amount
+            : suggestedInclusive || current.invoice_amount,
         }));
       }
 
@@ -246,10 +291,6 @@ export default function NewInvoicePage() {
   const dealer = useMemo(() => {
     return getSingleRelation(caseData?.dealers);
   }, [caseData]);
-
-  const productSalesTotal = useMemo(() => {
-    return calculateSalesTotal(caseProducts);
-  }, [caseProducts]);
 
   const settlementUnset = isSettlementTypeUnset(workflow);
   const invoiceBlockedBySettlementRule = Boolean(
@@ -264,6 +305,11 @@ export default function NewInvoicePage() {
     >
   ) {
     const { name, value } = event.target;
+
+    if (name === "invoice_amount") {
+      invoiceAmountTouchedRef.current = true;
+      setInvoiceAmountTouched(true);
+    }
 
     setForm((current) => ({
       ...current,
@@ -559,10 +605,31 @@ export default function NewInvoicePage() {
 
           {caseProducts.length > 0 ? (
             <div className="space-y-3">
+              {autofill?.hasUnsetPrices ? (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                  {UNSET_PRICE_WARNING}
+                </div>
+              ) : null}
+
               {caseProducts.map((caseProduct, index) => {
                 const product = getSingleRelation(
                   caseProduct.products
                 );
+                const pkg = getSingleRelation(caseProduct.packages);
+                const priced = priceLines.find(
+                  (line) => line.id === caseProduct.id
+                );
+                const lineType = normalizeCaseLineType(
+                  caseProduct.line_type
+                );
+                const title =
+                  lineType === "PACKAGE"
+                    ? pkg?.name || product?.name || "パッケージ"
+                    : product?.name;
+                const modelOrType =
+                  lineType === "PACKAGE"
+                    ? "パッケージ"
+                    : product?.model_no;
 
                 return (
                   <div
@@ -571,13 +638,13 @@ export default function NewInvoicePage() {
                   >
                     <div className="grid gap-4 md:grid-cols-4">
                       <Info
-                        label={`商品 ${index + 1}`}
-                        value={product?.name}
+                        label={`${lineType === "PACKAGE" ? "パッケージ" : "商品"} ${index + 1}`}
+                        value={title}
                       />
 
                       <Info
-                        label="品番"
-                        value={product?.model_no}
+                        label={lineType === "PACKAGE" ? "種別" : "品番"}
+                        value={modelOrType}
                       />
 
                       <Info
@@ -588,24 +655,30 @@ export default function NewInvoicePage() {
                       />
 
                       <Info
-                        label="販売金額"
-                        value={formatCurrency(
-                          caseProduct.sales_price
-                        )}
+                        label="販売金額（税抜）"
+                        value={formatResolvedLineAmount(priced)}
                       />
                     </div>
                   </div>
                 );
               })}
 
-              <div className="rounded-lg bg-gray-50 p-4">
+              <div className="rounded-lg bg-gray-50 p-4 space-y-2">
                 <p className="text-xs font-bold text-gray-500">
-                  案件商品販売合計
+                  販売合計（税抜・価格取得済みのみ）
                 </p>
-
-                <p className="mt-2 text-2xl font-bold text-gray-900">
-                  {formatCurrency(productSalesTotal)}
+                <p className="text-2xl font-bold text-gray-900">
+                  {formatCurrency(autofill?.subtotalExTax ?? 0)}
                 </p>
+                {autofill && autofill.pricedCount > 0 ? (
+                  <p className="text-xs text-gray-500">
+                    消費税（10%・切捨）{" "}
+                    {formatCurrency(autofill.tax)}
+                    {" / "}
+                    税込見込み{" "}
+                    {formatCurrency(autofill.invoiceAmountInclusive)}
+                  </p>
+                ) : null}
               </div>
             </div>
           ) : (
@@ -736,11 +809,16 @@ export default function NewInvoicePage() {
               label="請求金額"
               required
               description={
-                productSalesTotal > 0
-                  ? `案件商品販売合計 ${formatCurrency(
-                      productSalesTotal
-                    )} を初期入力しています。`
-                  : "請求金額を入力してください。"
+                autofill?.invoiceAmountInclusive != null &&
+                !invoiceAmountTouched
+                  ? `販売価格マスタの税抜合計 ${formatCurrency(
+                      autofill.subtotalExTax
+                    )} に消費税（切捨）を加算した税込 ${formatCurrency(
+                      autofill.invoiceAmountInclusive
+                    )} を初期入力しています。変更後は自動では上書きしません。`
+                  : invoiceAmountTouched
+                    ? "請求金額は手入力値を優先しています。"
+                    : "請求金額を入力してください。"
               }
             >
               <div className="relative">
@@ -894,19 +972,104 @@ function getSingleRelation<T>(
   return relation;
 }
 
-function calculateSalesTotal(
-  products: CaseProduct[]
-): number {
-  /*
-   * 現在のValueOSでは、
-   * case_products.sales_priceに数量込み合計が保存されています。
-   * そのため数量は掛けず、そのまま合計します。
-   */
-  return products.reduce(
-    (total, product) =>
-      total + toNumber(product.sales_price),
-    0
+function normalizeCaseLineType(
+  value: string | null | undefined
+): PriceTargetType {
+  return String(value || "")
+    .trim()
+    .toUpperCase() === "PACKAGE"
+    ? "PACKAGE"
+    : "PRODUCT";
+}
+
+function toInvoiceLineForAutofill(
+  caseProduct: CaseProduct
+): InvoiceLineForAutofill {
+  const lineType = normalizeCaseLineType(caseProduct.line_type);
+  const product = getSingleRelation(caseProduct.products);
+  const pkg = getSingleRelation(caseProduct.packages);
+  const quantity = toNumber(caseProduct.quantity);
+
+  return {
+    id: caseProduct.id,
+    lineType,
+    productId: caseProduct.product_id,
+    packageId: caseProduct.package_id,
+    quantity: quantity > 0 ? quantity : 0,
+    label:
+      lineType === "PACKAGE"
+        ? pkg?.name || "パッケージ"
+        : product?.name || product?.model_no || "商品",
+  };
+}
+
+async function resolveSalesPricesForCaseProducts(input: {
+  products: CaseProduct[];
+  dealerId: string;
+  asOfDate: string;
+}): Promise<ResolvedInvoiceLinePrice[]> {
+  const { products, dealerId, asOfDate } = input;
+
+  return Promise.all(
+    products.map(async (caseProduct) => {
+      const line = toInvoiceLineForAutofill(caseProduct);
+
+      if (!dealerId) {
+        return resolveLineFromLookup({
+          line,
+          found: false,
+          unitPrice: 0,
+          lookupError: null,
+        });
+      }
+
+      if (line.lineType === "PRODUCT" && !line.productId) {
+        return resolveLineFromLookup({
+          line,
+          found: false,
+          unitPrice: 0,
+          lookupError: null,
+        });
+      }
+
+      if (line.lineType === "PACKAGE" && !line.packageId) {
+        return resolveLineFromLookup({
+          line,
+          found: false,
+          unitPrice: 0,
+          lookupError: null,
+        });
+      }
+
+      const lookup = await fetchActiveSalesPrice(supabase, {
+        targetType: line.lineType,
+        productId: line.productId,
+        packageId: line.packageId,
+        dealerId,
+        asOfDate,
+      });
+
+      return resolveLineFromLookup({
+        line,
+        found: lookup.found,
+        unitPrice: lookup.unitPrice,
+        lookupError: lookup.error,
+      });
+    })
   );
+}
+
+function formatResolvedLineAmount(
+  line: ResolvedInvoiceLinePrice | undefined
+): string {
+  if (!line) return "-";
+  if (line.status === "priced" && line.lineTotalExTax != null) {
+    return formatCurrency(line.lineTotalExTax);
+  }
+  if (line.status === "error") {
+    return line.errorMessage || UNSET_PRICE_LABEL;
+  }
+  return UNSET_PRICE_LABEL;
 }
 
 function toNumber(
