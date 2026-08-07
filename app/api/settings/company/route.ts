@@ -32,23 +32,11 @@ function errorBody(input: {
 
 /**
  * 会社情報取得。
- * - cookie / Origin 必須
+ * - staff cookie 必須（/api/auth/csrf と同様。Origin / CSRF は不要）
  * - service role はサーバー内のみ
  */
 export async function GET(request: NextRequest) {
   const started = Date.now();
-
-  const originResult = assertAppOrigin(request);
-  if (originResult !== "ok") {
-    const err = originErrorResponse(originResult);
-    gatewayLog({
-      route: "settings/company",
-      error_code: err.body.error_code,
-      duration_ms: Date.now() - started,
-      ok: false,
-    });
-    return NextResponse.json(err.body, { status: err.status });
-  }
 
   const session = getSessionFromRequest(request);
   if (!session) {

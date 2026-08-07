@@ -1,6 +1,6 @@
 /**
  * 会社情報設定クライアント。
- * CSRF 取得 → GET/PUT /api/settings/company。
+ * GET: staff cookie のみ。PUT: CSRF 取得後に Origin/CSRF 付きで送信。
  * Origin ヘッダーはブラウザに任せ、手動設定しない。
  */
 
