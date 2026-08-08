@@ -11,7 +11,6 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 
-import MasterPricePanels from "@/app/components/prices/MasterPricePanels";
 import { supabase } from "@/lib/supabase";
 
 type Manufacturer = {
@@ -213,7 +212,7 @@ export default function EditProductPage({
       return;
     }
 
-    router.push("/products");
+    router.push(`/products/${id}`);
     router.refresh();
   }
 
@@ -390,7 +389,7 @@ export default function EditProductPage({
           <div className="mt-8 flex flex-col-reverse gap-3 border-t pt-6 sm:flex-row sm:justify-end">
             <button
               type="button"
-              onClick={() => router.push("/products")}
+              onClick={() => router.push(`/products/${id}`)}
               disabled={submitting}
               className="rounded-lg border border-gray-300 bg-white px-6 py-3 text-sm font-bold text-gray-700"
             >
@@ -405,15 +404,6 @@ export default function EditProductPage({
             </button>
           </div>
         </form>
-
-        <MasterPricePanels
-          targetType="PRODUCT"
-          productId={id}
-          defaultSupplierId={form.default_supplier_id}
-          defaultSupplierName={
-            suppliers.find((s) => s.id === form.default_supplier_id)?.name || ""
-          }
-        />
       </main>
     </>
   );
