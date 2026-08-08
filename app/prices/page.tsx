@@ -91,12 +91,20 @@ export default async function PricesPage() {
             </p>
           </div>
 
-          <Link
-            href="/prices/new"
-            className="rounded-lg bg-gray-900 px-5 py-3 text-sm font-bold text-white"
-          >
-            ＋ 価格登録
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/prices/bulk-by-supplier"
+              className="rounded-lg border border-gray-300 bg-white px-5 py-3 text-sm font-bold text-gray-800"
+            >
+              仕入先ごとに一括登録
+            </Link>
+            <Link
+              href="/prices/new"
+              className="rounded-lg bg-gray-900 px-5 py-3 text-sm font-bold text-white"
+            >
+              ＋ 価格登録
+            </Link>
+          </div>
         </div>
       </header>
 
