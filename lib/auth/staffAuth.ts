@@ -63,24 +63,51 @@ export async function loadStaffProfile(
   userId: string
 ): Promise<StaffProfileRow | null> {
   const admin = getServiceRoleSupabase();
-  const { data, error } = await admin
+  const withAdmin = await admin
     .from("staff_profiles")
     .select("id, display_name, is_active, is_admin")
     .eq("id", userId)
     .maybeSingle();
-  if (error || !data) return null;
-  const row = data as {
+
+  if (!withAdmin.error && withAdmin.data) {
+    const row = withAdmin.data as {
+      id: string;
+      display_name: string;
+      is_active: boolean;
+      is_admin?: boolean | null;
+    };
+    return {
+      id: row.id,
+      display_name: row.display_name,
+      is_active: row.is_active,
+      is_admin: row.is_admin === true,
+    };
+  }
+
+  // is_admin 未適用（column missing）でもログイン経路を落とさない
+  const msg = (withAdmin.error?.message || "").toLowerCase();
+  const missingAdminCol =
+    msg.includes("is_admin") ||
+    msg.includes("column") ||
+    withAdmin.error?.code === "42703";
+  if (!missingAdminCol) return null;
+
+  const fallback = await admin
+    .from("staff_profiles")
+    .select("id, display_name, is_active")
+    .eq("id", userId)
+    .maybeSingle();
+  if (fallback.error || !fallback.data) return null;
+  const row = fallback.data as {
     id: string;
     display_name: string;
     is_active: boolean;
-    is_admin?: boolean | null;
   };
   return {
     id: row.id,
     display_name: row.display_name,
     is_active: row.is_active,
-    // Migration 未適用環境でも落ちないよう欠落時は false
-    is_admin: row.is_admin === true,
+    is_admin: false,
   };
 }
 
