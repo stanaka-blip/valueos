@@ -5,6 +5,8 @@ import {
 } from "@/lib/purchasePrices";
 import { supabase } from "@/lib/supabase";
 
+import MasterListRowActions from "@/app/components/masters/MasterListRowActions";
+
 import ProductListSearchForm from "./ProductListSearchForm";
 import {
   filterProductListRows,
@@ -275,32 +277,23 @@ export default async function ProductsPage({
                         )}
                       </td>
                       <td className="px-5 py-4 text-center">
-                        <div className="flex flex-wrap items-center justify-center gap-2">
-                          <Link
-                            href={`/products/${item.id}`}
-                            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-bold text-gray-800"
-                          >
-                            詳細
-                          </Link>
-                          <Link
-                            href={`/products/${item.id}/edit`}
-                            className="rounded-lg bg-gray-900 px-3 py-2 text-xs font-bold text-white"
-                          >
-                            編集
-                          </Link>
-                          <Link
-                            href={`/prices/new?product_id=${item.id}`}
-                            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-bold text-gray-800"
-                          >
-                            仕入価格を追加
-                          </Link>
-                          <Link
-                            href={`/sales-prices/new?product_id=${item.id}`}
-                            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-bold text-gray-800"
-                          >
-                            販売価格を追加
-                          </Link>
-                        </div>
+                        <MasterListRowActions
+                          label={item.name || item.model_no || "商品"}
+                          items={[
+                            {
+                              label: "編集",
+                              href: `/products/${item.id}/edit`,
+                            },
+                            {
+                              label: "仕入価格を追加",
+                              href: `/prices/new?product_id=${item.id}`,
+                            },
+                            {
+                              label: "販売価格を追加",
+                              href: `/sales-prices/new?product_id=${item.id}`,
+                            },
+                          ]}
+                        />
                       </td>
                     </tr>
                   );
