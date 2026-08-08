@@ -59,11 +59,14 @@ assert(
 );
 
 assert(
-  "amount summary three items",
+  "amount summary three items with snapshot-first tax display",
   page.includes("今回請求額（税抜）") &&
     page.includes("消費税") &&
     page.includes("ご請求金額（税込）") &&
-    page.includes("Math.floor(invoiceAmount / 1.1)")
+    page.includes("resolveInvoicePrintTaxDisplay") &&
+    page.includes("subtotal_ex_tax") &&
+    page.includes("tax_amount") &&
+    page.includes("floor(invoice_amount / 1.1)")
 );
 
 assert(
