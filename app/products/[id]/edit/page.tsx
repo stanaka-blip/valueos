@@ -10,6 +10,8 @@ import {
   useState,
 } from "react";
 import { useRouter } from "next/navigation";
+
+import MasterPricePanels from "@/app/components/prices/MasterPricePanels";
 import { supabase } from "@/lib/supabase";
 
 type Manufacturer = {
@@ -403,6 +405,15 @@ export default function EditProductPage({
             </button>
           </div>
         </form>
+
+        <MasterPricePanels
+          targetType="PRODUCT"
+          productId={id}
+          defaultSupplierId={form.default_supplier_id}
+          defaultSupplierName={
+            suppliers.find((s) => s.id === form.default_supplier_id)?.name || ""
+          }
+        />
       </main>
     </>
   );

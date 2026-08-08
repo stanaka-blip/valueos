@@ -2,6 +2,8 @@
 
 import { FormEvent, use, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+
+import MasterPricePanels from "@/app/components/prices/MasterPricePanels";
 import { supabase } from "@/lib/supabase";
 
 type Manufacturer = { id: string; name: string | null };
@@ -372,6 +374,15 @@ export default function EditPackagePage({
             </button>
           </div>
         </form>
+
+        <MasterPricePanels
+          targetType="PACKAGE"
+          packageId={id}
+          defaultSupplierId={form.default_supplier_id}
+          defaultSupplierName={
+            suppliers.find((s) => s.id === form.default_supplier_id)?.name || ""
+          }
+        />
       </main>
     </>
   );
