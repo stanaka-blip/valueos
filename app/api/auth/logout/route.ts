@@ -1,5 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { AUTH_COOKIE_NAME, authCookieOptions } from "@/lib/gateway/authCookie";
+
+import { signOutSupabaseTokens } from "@/lib/auth/staffAuth";
+import {
+  AUTH_COOKIE_NAME,
+  SB_ACCESS_COOKIE_NAME,
+  SB_REFRESH_COOKIE_NAME,
+  authCookieOptions,
+} from "@/lib/gateway/authCookie";
 import { assertCsrf, getSessionFromRequest } from "@/lib/gateway/http";
 import { assertAppOrigin, originErrorResponse } from "@/lib/gateway/origin";
 import { gatewayLog } from "@/lib/gateway/safeDto";
@@ -7,8 +14,10 @@ import { gatewayLog } from "@/lib/gateway/safeDto";
 export const runtime = "nodejs";
 
 /**
- * 暫定社内ログアウト。session + CSRF + Origin 必須。
- * 失敗時は cookie を変更しない。
+ * 社内ログアウト。
+ * - ValueOS staff session cookie
+ * - Supabase Auth tokens
+ * の両方を破棄。Origin + session + CSRF 必須。
  */
 export async function POST(request: NextRequest) {
   const started = Date.now();
@@ -46,11 +55,16 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const accessToken = request.cookies.get(SB_ACCESS_COOKIE_NAME)?.value || null;
+  const refreshToken = request.cookies.get(SB_REFRESH_COOKIE_NAME)?.value || null;
+  await signOutSupabaseTokens({ accessToken, refreshToken });
+
   const res = NextResponse.json({ ok: true });
-  res.cookies.set(AUTH_COOKIE_NAME, "", {
-    ...authCookieOptions(),
-    maxAge: 0,
-  });
+  const clear = { ...authCookieOptions(), maxAge: 0 };
+  res.cookies.set(AUTH_COOKIE_NAME, "", clear);
+  res.cookies.set(SB_ACCESS_COOKIE_NAME, "", clear);
+  res.cookies.set(SB_REFRESH_COOKIE_NAME, "", clear);
+
   gatewayLog({
     route: "auth/logout",
     duration_ms: Date.now() - started,

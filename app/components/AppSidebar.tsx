@@ -2,10 +2,15 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 /** lib/gateway/authCookie の CSRF_HEADER_NAME と一致（client へ server-only を引かない） */
 const CSRF_HEADER_NAME = "x-csrf-token";
+
+type StaffMe = {
+  displayName: string | null;
+  email: string | null;
+};
 
 type NavItem = {
   name: string;
@@ -356,9 +361,51 @@ export default function AppSidebar() {
   const pathname = usePathname() || "/";
   const router = useRouter();
   const [loggingOut, setLoggingOut] = useState(false);
+  const [me, setMe] = useState<StaffMe | null>(null);
+  const hideSidebar =
+    pathname === "/login" || pathname.startsWith("/login/");
+
+  useEffect(() => {
+    if (hideSidebar) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/auth/me", {
+          method: "GET",
+          credentials: "same-origin",
+          cache: "no-store",
+        });
+        const data = (await res.json().catch(() => ({}))) as {
+          ok?: boolean;
+          user?: { displayName?: string | null; email?: string | null };
+          error_code?: string;
+        };
+        if (cancelled) return;
+        if (!res.ok || !data.ok) {
+          if (
+            data.error_code === "INACTIVE" ||
+            data.error_code === "UNAUTHORIZED" ||
+            data.error_code === "PROFILE_MISSING"
+          ) {
+            window.location.assign("/login");
+          }
+          return;
+        }
+        setMe({
+          displayName: data.user?.displayName ?? null,
+          email: data.user?.email ?? null,
+        });
+      } catch {
+        // ignore transient errors
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [hideSidebar]);
 
   // /login ではサイドバーを出さない（認証前の業務ナビ誘導を防ぐ）
-  if (pathname === "/login" || pathname.startsWith("/login/")) {
+  if (hideSidebar) {
     return null;
   }
 
@@ -469,7 +516,16 @@ export default function AppSidebar() {
         ))}
       </nav>
 
-      <div className="border-t border-gray-700 p-3">
+      <div className="space-y-2 border-t border-gray-700 p-3">
+        <div className="rounded-lg bg-gray-800/60 px-3 py-2">
+          <p className="text-[11px] text-gray-400">ログイン中</p>
+          <p className="truncate text-sm font-medium text-white">
+            {me?.displayName || "社内ユーザー"}
+          </p>
+          {me?.email ? (
+            <p className="truncate text-xs text-gray-400">{me.email}</p>
+          ) : null}
+        </div>
         <button
           type="button"
           onClick={onLogout}

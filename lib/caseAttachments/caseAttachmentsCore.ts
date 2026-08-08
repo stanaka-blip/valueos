@@ -44,6 +44,7 @@ type IntentRow = {
   storage_path: string;
   status: string;
   uploaded_by_sid: string | null;
+  uploaded_by_user_id: string | null;
   expires_at: string;
   completed_at: string | null;
 };
@@ -213,6 +214,7 @@ export async function createUploadIntent(input: {
   contentType: unknown;
   byteSize: unknown;
   uploadedBySid: string | null;
+  uploadedByUserId?: string | null;
   client?: SupabaseClient<Database>;
 }): Promise<Result<SafeUploadIntentSuccess>> {
   try {
@@ -277,6 +279,7 @@ export async function createUploadIntent(input: {
         storage_path: storagePath,
         status: "pending",
         uploaded_by_sid: input.uploadedBySid,
+        uploaded_by_user_id: input.uploadedByUserId ?? null,
         expires_at: expiresAt,
       })
       .select(
@@ -336,6 +339,8 @@ export async function createUploadIntent(input: {
 export async function completeUploadIntent(input: {
   intentId: string;
   uploadedBySid: string | null;
+  uploadedByUserId?: string | null;
+  uploadedByLabel?: string | null;
   client?: SupabaseClient<Database>;
 }): Promise<Result<SafeCompleteSuccess>> {
   try {
@@ -501,7 +506,11 @@ export async function completeUploadIntent(input: {
         storage_bucket: intent.storage_bucket,
         storage_path: intent.storage_path,
         uploaded_by_sid: input.uploadedBySid ?? intent.uploaded_by_sid,
-        uploaded_by_label: "社内ユーザー",
+        uploaded_by_user_id:
+          input.uploadedByUserId ?? intent.uploaded_by_user_id ?? null,
+        uploaded_by_label:
+          (input.uploadedByLabel && input.uploadedByLabel.trim()) ||
+          "社内ユーザー",
         is_active: true,
         deleted_at: null,
       })
@@ -707,6 +716,7 @@ export async function createSignedDownloadUrl(input: {
 export async function deactivateAttachment(input: {
   attachmentId: string;
   deletedBySid: string | null;
+  deletedByUserId?: string | null;
   expectedCaseId: string;
   client?: SupabaseClient<Database>;
 }): Promise<Result<SafeDeactivateSuccess>> {
@@ -753,6 +763,7 @@ export async function deactivateAttachment(input: {
         is_active: false,
         deleted_at: new Date().toISOString(),
         deleted_by_sid: input.deletedBySid,
+        deleted_by_user_id: input.deletedByUserId ?? null,
       })
       .eq("id", data.id)
       .eq("is_active", true);

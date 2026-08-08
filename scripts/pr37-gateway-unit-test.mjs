@@ -34,7 +34,7 @@ function unseal(token, secret, nowSec) {
 }
 function derive(secret, sessionId, key) {
   if (!secret || secret.length < 32) throw new Error("CONFIG");
-  const digest = createHmac("sha256", secret).update(`case-reg:v1:${sessionId}:${key}`).digest();
+  const digest = createHmac("sha256", secret).update(`case-reg:v2:${sessionId}:${key}`).digest();
   const bytes = Buffer.from(digest.subarray(0, 16));
   bytes[6] = (bytes[6] & 0x0f) | 0x40;
   bytes[8] = (bytes[8] & 0x3f) | 0x80;

@@ -10,6 +10,7 @@ import {
 } from "@/lib/gateway/http";
 import { assertAppOrigin, originErrorResponse } from "@/lib/gateway/origin";
 import { gatewayLog } from "@/lib/gateway/safeDto";
+import { assertStaffSessionStillAllowed } from "@/lib/auth/staffAuth";
 import type { StaffSession } from "@/lib/gateway/authCookie";
 import { toSafeAttachmentError } from "./safeDto";
 
@@ -94,6 +95,29 @@ export async function requireStaffJsonMutation(
     };
   }
 
+  const allowed = await assertStaffSessionStillAllowed(session);
+  if (!allowed.ok) {
+    gatewayLog({
+      route,
+      error_code: allowed.error_code,
+      duration_ms: Date.now() - started,
+      ok: false,
+    });
+    return {
+      ok: false,
+      response: NextResponse.json(
+        toSafeAttachmentError({
+          error_code: allowed.error_code,
+          error_message:
+            allowed.error_code === "INACTIVE"
+              ? "このアカウントは利用停止中です"
+              : "認証が必要です",
+        }),
+        { status: allowed.error_code === "INACTIVE" ? 403 : 401 }
+      ),
+    };
+  }
+
   if (!requireJsonContentType(request)) {
     return {
       ok: false,
@@ -154,15 +178,33 @@ export async function requireStaffSessionGet(
       ),
     };
   }
+  const allowed = await assertStaffSessionStillAllowed(session);
+  if (!allowed.ok) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        toSafeAttachmentError({
+          error_code: allowed.error_code,
+          error_message:
+            allowed.error_code === "INACTIVE"
+              ? "このアカウントは利用停止中です"
+              : "認証が必要です",
+        }),
+        { status: allowed.error_code === "INACTIVE" ? 403 : 401 }
+      ),
+    };
+  }
   return { ok: true, session };
 }
 
 export function statusForAttachmentError(errorCode: string): number {
   switch (errorCode) {
     case "UNAUTHORIZED":
+    case "PROFILE_MISSING":
       return 401;
     case "FORBIDDEN":
     case "ATTACHMENT_INACTIVE":
+    case "INACTIVE":
       return 403;
     case "CASE_NOT_FOUND":
     case "INTENT_NOT_FOUND":

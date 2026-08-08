@@ -5,6 +5,7 @@ import {
   deriveRequestId,
   isAuthSecretConfigured,
   isUuid,
+  sessionActorKey,
 } from "@/lib/gateway/authCookie";
 import {
   assertCsrf,
@@ -105,7 +106,7 @@ export async function POST(request: NextRequest) {
 
   const ip = clientIp(request);
   const limited = await hitRateLimit({
-    bucketKey: registrationRateBucket(session.sid, ip),
+    bucketKey: registrationRateBucket(sessionActorKey(session), ip),
     limit: REGISTRATION_LIMIT,
     windowSeconds: REGISTRATION_WINDOW_SECONDS,
   });
@@ -176,7 +177,7 @@ export async function POST(request: NextRequest) {
 
   let requestId: string;
   try {
-    requestId = deriveRequestId(session.sid, idempotencyKey);
+    requestId = deriveRequestId(sessionActorKey(session), idempotencyKey);
   } catch (e) {
     if (e instanceof AuthConfigError) {
       return NextResponse.json(

@@ -53,6 +53,7 @@ export async function POST(request: NextRequest) {
     contentType: body.content_type,
     byteSize: body.byte_size,
     uploadedBySid: auth.session.sid,
+    uploadedByUserId: auth.session.userId,
   });
 
   if (!result.ok) {

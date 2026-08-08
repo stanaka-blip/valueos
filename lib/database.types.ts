@@ -773,6 +773,34 @@ export type Database = {
         Relationships: [];
       };
       /**
+       * 社内スタッフプロファイル（20260808220000_staff_profiles_and_attachment_actors）。
+       * email は auth.users を正式値とし、ここでは保持しない。
+       */
+      staff_profiles: {
+        Row: {
+          id: string;
+          display_name: string;
+          is_active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id: string;
+          display_name: string;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          display_name?: string;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      /**
        * 案件添付資料 metadata（20260808200000_case_attachments）。
        * ファイル本体は Storage bucket case-attachments（private）。
        */
@@ -787,10 +815,12 @@ export type Database = {
           storage_bucket: string;
           storage_path: string;
           uploaded_by_sid: string | null;
+          uploaded_by_user_id: string | null;
           uploaded_by_label: string;
           is_active: boolean;
           deleted_at: string | null;
           deleted_by_sid: string | null;
+          deleted_by_user_id: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -804,10 +834,12 @@ export type Database = {
           storage_bucket?: string;
           storage_path: string;
           uploaded_by_sid?: string | null;
+          uploaded_by_user_id?: string | null;
           uploaded_by_label?: string;
           is_active?: boolean;
           deleted_at?: string | null;
           deleted_by_sid?: string | null;
+          deleted_by_user_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -821,10 +853,12 @@ export type Database = {
           storage_bucket?: string;
           storage_path?: string;
           uploaded_by_sid?: string | null;
+          uploaded_by_user_id?: string | null;
           uploaded_by_label?: string;
           is_active?: boolean;
           deleted_at?: string | null;
           deleted_by_sid?: string | null;
+          deleted_by_user_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -851,6 +885,7 @@ export type Database = {
           storage_path: string;
           status: string;
           uploaded_by_sid: string | null;
+          uploaded_by_user_id: string | null;
           expires_at: string;
           completed_at: string | null;
           created_at: string;
@@ -868,6 +903,7 @@ export type Database = {
           storage_path: string;
           status?: string;
           uploaded_by_sid?: string | null;
+          uploaded_by_user_id?: string | null;
           expires_at: string;
           completed_at?: string | null;
           created_at?: string;
@@ -885,6 +921,7 @@ export type Database = {
           storage_path?: string;
           status?: string;
           uploaded_by_sid?: string | null;
+          uploaded_by_user_id?: string | null;
           expires_at?: string;
           completed_at?: string | null;
           created_at?: string;

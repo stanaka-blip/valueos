@@ -4,6 +4,7 @@ import {
   AuthConfigError,
   derivePackageBulkSetupRequestId,
   isUuid,
+  sessionActorKey,
 } from "@/lib/gateway/authCookie";
 import {
   assertCsrf,
@@ -84,7 +85,7 @@ export async function POST(request: NextRequest) {
 
   let requestId: string;
   try {
-    requestId = derivePackageBulkSetupRequestId(session.sid, idempotencyKey);
+    requestId = derivePackageBulkSetupRequestId(sessionActorKey(session), idempotencyKey);
   } catch (e) {
     if (e instanceof AuthConfigError) {
       return NextResponse.json(
