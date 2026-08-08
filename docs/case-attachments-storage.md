@@ -72,5 +72,7 @@ Storage RLS: signed URL 経由の upload/download を使うため、anon 向け�
 
 ## Path 規約
 
-`cases/{case_id}/{attachment_id}/{sanitized_filename}`  
-クライアント指定禁止。gateway が生成する。
+`cases/{case_id}/{attachment_id}/file.{ext}`  
+クライアント指定禁止。gateway が生成する。  
+`{ext}` は検証済み元ファイル名から取得する ASCII 拡張子のみ。  
+表示用の元ファイル名（日本語・空白・括弧可）は DB `original_filename` に保持し、Storage key には使わない。
