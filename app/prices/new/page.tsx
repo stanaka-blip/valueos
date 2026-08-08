@@ -7,13 +7,19 @@ import {
   useEffect,
   useState,
 } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
-import { supabase } from "@/lib/supabase";
+import PriceTargetPrefillBanner from "@/app/components/prices/PriceTargetPrefillBanner";
+import {
+  buildPackagePriceSummary,
+  buildProductPriceSummary,
+  parsePriceNewPrefill,
+} from "@/lib/prices/parsePriceNewPrefill";
 import {
   PRICE_TARGET_OPTIONS,
   type PriceTargetType,
 } from "@/lib/prices/targetType";
+import { supabase } from "@/lib/supabase";
 
 type ManufacturerRelationItem = {
   name: string | null;
@@ -61,6 +67,11 @@ type PriceForm = {
 
 export default function NewPricePage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const prefill = parsePriceNewPrefill({
+    product_id: searchParams.get("product_id"),
+    package_id: searchParams.get("package_id"),
+  });
 
   const [products, setProducts] = useState<Product[]>([]);
   const [packages, setPackages] = useState<PackageRow[]>([]);
@@ -71,11 +82,12 @@ export default function NewPricePage() {
 
   const [loadError, setLoadError] = useState("");
   const [submitError, setSubmitError] = useState("");
+  const [prefillMissing, setPrefillMissing] = useState(false);
 
   const [form, setForm] = useState<PriceForm>({
-    price_target_type: "PRODUCT",
-    product_id: "",
-    package_id: "",
+    price_target_type: prefill.fromQuery ? prefill.price_target_type : "PRODUCT",
+    product_id: prefill.product_id,
+    package_id: prefill.package_id,
     supplier_id: "",
     purchase_price: "",
     start_date: getTodayString(),
@@ -88,16 +100,9 @@ export default function NewPricePage() {
     async function fetchData() {
       setInitialLoading(true);
       setLoadError("");
+      setPrefillMissing(false);
 
-      const [
-        { data: productData, error: productError },
-        { data: packageData, error: packageError },
-        { data: supplierData, error: supplierError },
-      ] = await Promise.all([
-        supabase
-          .from("products")
-          .select(
-            `
+      const productSelect = `
             id,
             name,
             model_no,
@@ -105,14 +110,8 @@ export default function NewPricePage() {
             manufacturers (
               name
             )
-          `
-          )
-          .eq("is_active", true)
-          .order("created_at", { ascending: false }),
-        supabase
-          .from("packages")
-          .select(
-            `
+          `;
+      const packageSelect = `
             id,
             name,
             package_code,
@@ -122,8 +121,21 @@ export default function NewPricePage() {
             manufacturers (
               name
             )
-          `
-          )
+          `;
+
+      const [
+        { data: productData, error: productError },
+        { data: packageData, error: packageError },
+        { data: supplierData, error: supplierError },
+      ] = await Promise.all([
+        supabase
+          .from("products")
+          .select(productSelect)
+          .eq("is_active", true)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("packages")
+          .select(packageSelect)
           .eq("is_active", true)
           .order("name", { ascending: true }),
         supabase
@@ -156,14 +168,55 @@ export default function NewPricePage() {
         return;
       }
 
-      setProducts((productData || []) as unknown as Product[]);
-      setPackages((packageData || []) as unknown as PackageRow[]);
+      let nextProducts = (productData || []) as unknown as Product[];
+      let nextPackages = (packageData || []) as unknown as PackageRow[];
+
+      if (prefill.fromQuery && prefill.price_target_type === "PRODUCT") {
+        if (!nextProducts.some((p) => p.id === prefill.product_id)) {
+          const { data: one } = await supabase
+            .from("products")
+            .select(productSelect)
+            .eq("id", prefill.product_id)
+            .maybeSingle();
+          if (one) {
+            nextProducts = [one as unknown as Product, ...nextProducts];
+          } else {
+            setPrefillMissing(true);
+          }
+        }
+      }
+
+      if (prefill.fromQuery && prefill.price_target_type === "PACKAGE") {
+        if (!nextPackages.some((p) => p.id === prefill.package_id)) {
+          const { data: one } = await supabase
+            .from("packages")
+            .select(packageSelect)
+            .eq("id", prefill.package_id)
+            .maybeSingle();
+          if (one) {
+            nextPackages = [one as unknown as PackageRow, ...nextPackages];
+          } else {
+            setPrefillMissing(true);
+          }
+        }
+      }
+
+      setProducts(nextProducts);
+      setPackages(nextPackages);
       setSuppliers((supplierData || []) as Supplier[]);
+      setForm((current) => ({
+        ...current,
+        price_target_type: prefill.fromQuery
+          ? prefill.price_target_type
+          : current.price_target_type,
+        product_id: prefill.fromQuery ? prefill.product_id : current.product_id,
+        package_id: prefill.fromQuery ? prefill.package_id : current.package_id,
+      }));
       setInitialLoading(false);
     }
 
     fetchData();
-  }, []);
+  }, [prefill.fromQuery, prefill.package_id, prefill.price_target_type, prefill.product_id]);
 
   function handleChange(
     event: ChangeEvent<
@@ -330,6 +383,24 @@ export default function NewPricePage() {
   }
 
   const isProduct = form.price_target_type === "PRODUCT";
+  const selectedProduct = products.find((p) => p.id === form.product_id);
+  const selectedPackage = packages.find((p) => p.id === form.package_id);
+  const prefillSummary =
+    prefill.fromQuery && !prefillMissing
+      ? isProduct && selectedProduct
+        ? buildProductPriceSummary({
+            name: selectedProduct.name,
+            model_no: selectedProduct.model_no,
+            manufacturerName: getManufacturerName(selectedProduct.manufacturers),
+          })
+        : !isProduct && selectedPackage
+          ? buildPackagePriceSummary({
+              name: selectedPackage.name,
+              package_code: selectedPackage.package_code,
+              manufacturerName: getManufacturerName(selectedPackage.manufacturers),
+            })
+          : null
+      : null;
 
   return (
     <>
@@ -349,6 +420,11 @@ export default function NewPricePage() {
               価格対象・仕入先・適用期間を設定してください。
             </p>
           </div>
+
+          <PriceTargetPrefillBanner
+            summary={prefillSummary}
+            missing={prefill.fromQuery && prefillMissing}
+          />
 
           {submitError ? (
             <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
