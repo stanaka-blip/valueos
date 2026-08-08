@@ -113,21 +113,23 @@ assert(
 );
 
 assert(
-  "line columns present (print keeps 商品名)",
+  "line columns present (print keeps 商品名, tax-ex labels)",
   page.includes(">メーカー<") &&
     page.includes(">型番<") &&
     page.includes(">商品名<") &&
     page.includes(">数量<") &&
-    page.includes(">単価<") &&
-    page.includes(">金額<") &&
+    page.includes(">単価（税抜）<") &&
+    page.includes(">金額（税抜）<") &&
     page.includes(">備考<") &&
     !page.includes("メーカー型番")
 );
 
 assert(
-  "total section present",
+  "total section present (ex-tax / tax / in-tax)",
   page.includes("order-print-total") &&
-    page.includes("発注合計") &&
+    page.includes("発注小計（税抜）") &&
+    page.includes("消費税（10%）") &&
+    page.includes("発注合計（税込）") &&
     page.includes("【備考】") &&
     page.includes("order.memo")
 );
