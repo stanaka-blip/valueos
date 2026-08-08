@@ -25,28 +25,37 @@ export function extractExtension(filename: string): string | null {
 }
 
 /**
- * 危険文字を除去し、パス区切りを潰す。空になった場合は file.bin。
+ * Storage object 名（最終セグメント）を server 生成する。
+ * ユーザーの元ファイル名は使わず、検証済み拡張子だけを引き継ぐ。
+ * 例: file.xlsx / file.pdf
  */
-export function sanitizeFilename(filename: string): string {
-  const base = (filename.trim().split(/[/\\]/).pop() || "file").normalize("NFKC");
-  const cleaned = base
-    .replace(/[\u0000-\u001f\u007f]/g, "")
-    .replace(/[<>:"|?*]/g, "_")
-    .replace(/\s+/g, " ")
-    .replace(/^\.+/, "")
-    .slice(0, 180)
-    .trim();
-  if (!cleaned || cleaned === "." || cleaned === "..") return "file.bin";
-  return cleaned;
+export function buildStorageObjectName(originalFilename: string): string {
+  const ext = extractExtension(originalFilename);
+  if (!ext || !ALLOWED_EXTENSIONS.has(ext)) {
+    return "file.bin";
+  }
+  // ASCII のみ。空白・日本語・括弧・記号・path 断片を持ち込まない。
+  return `file.${ext}`;
 }
 
+/**
+ * @deprecated Storage key には使わない。互換のため残し、object 名生成へ委譲。
+ */
+export function sanitizeFilename(filename: string): string {
+  return buildStorageObjectName(filename);
+}
+
+/**
+ * Storage key: cases/{case_id}/{attachment_id}/file.{ext}
+ * 元の表示用ファイル名は DB original_filename に別途保持する。
+ */
 export function buildStoragePath(input: {
   caseId: string;
   attachmentId: string;
   originalFilename: string;
 }): string {
-  const safe = sanitizeFilename(input.originalFilename);
-  return `cases/${input.caseId}/${input.attachmentId}/${safe}`;
+  const objectName = buildStorageObjectName(input.originalFilename);
+  return `cases/${input.caseId}/${input.attachmentId}/${objectName}`;
 }
 
 export function validateFileMeta(input: {

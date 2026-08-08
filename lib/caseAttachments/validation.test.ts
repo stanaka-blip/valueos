@@ -6,8 +6,8 @@ import {
   MAX_TOTAL_ATTACHMENT_BYTES_PER_CASE,
 } from "./constants";
 import {
+  buildStorageObjectName,
   buildStoragePath,
-  sanitizeFilename,
   validateCaseQuota,
   validateFileMeta,
 } from "./validation";
@@ -15,6 +15,9 @@ import {
 function ok(name: string) {
   console.log("OK", name);
 }
+
+const CASE_ID = "11111111-1111-4111-8111-111111111111";
+const ATTACHMENT_ID = "22222222-2222-4222-8222-222222222222";
 
 {
   const err = validateFileMeta({
@@ -64,25 +67,58 @@ function ok(name: string) {
 }
 
 {
-  const safe = sanitizeFilename("../../evil name?.pdf");
-  assert.equal(safe.includes(".."), false);
-  assert.equal(safe.includes("/"), false);
-  assert.equal(safe.includes("?"), false);
-  ok("sanitizeFilename strips path tricks");
+  const cases: Array<{ original: string; ext: string }> = [
+    { original: "代理店課題分析テンプレート (1).xlsx", ext: "xlsx" },
+    { original: "見積書_田中様.pdf", ext: "pdf" },
+    { original: "test file.xlsx", ext: "xlsx" },
+    { original: "a(b)c.pdf", ext: "pdf" },
+    { original: "../../evil.pdf", ext: "pdf" },
+    { original: "a/b.pdf", ext: "pdf" },
+  ];
+
+  for (const c of cases) {
+    const objectName = buildStorageObjectName(c.original);
+    assert.equal(objectName, `file.${c.ext}`, c.original);
+    assert.match(objectName, /^file\.[a-z0-9]+$/);
+    assert.equal(objectName.includes(" "), false);
+    assert.equal(objectName.includes("("), false);
+    assert.equal(objectName.includes(")"), false);
+    assert.equal(objectName.includes("/"), false);
+    assert.equal(objectName.includes("\\"), false);
+    assert.equal(objectName.includes(".."), false);
+    assert.equal(/[^\x20-\x7E]/.test(objectName), false);
+
+    const path = buildStoragePath({
+      caseId: CASE_ID,
+      attachmentId: ATTACHMENT_ID,
+      originalFilename: c.original,
+    });
+    assert.equal(
+      path,
+      `cases/${CASE_ID}/${ATTACHMENT_ID}/file.${c.ext}`,
+      c.original
+    );
+    assert.equal(path.includes(c.original), false);
+    // path traversal fragments from user input must not appear as path segments
+    assert.equal(path.includes("/../"), false);
+    assert.equal(path.startsWith("cases/"), true);
+
+    // DB 表示用の元名は validate 後もそのまま保持できること（生成は別）
+    assert.ok(c.original.length > 0);
+  }
+  ok("storage keys are ASCII-safe file.{ext} for japanese/spaces/parens/traversal names");
 }
 
 {
   const path = buildStoragePath({
-    caseId: "11111111-1111-4111-8111-111111111111",
-    attachmentId: "22222222-2222-4222-8222-222222222222",
-    originalFilename: "見積 書.pdf",
+    caseId: CASE_ID,
+    attachmentId: ATTACHMENT_ID,
+    originalFilename: "代理店課題分析テンプレート (1).xlsx",
   });
-  assert.match(
-    path,
-    /^cases\/11111111-1111-4111-8111-111111111111\/22222222-2222-4222-8222-222222222222\//
-  );
-  assert.ok(!path.includes(".."));
-  ok("storage path server shape");
+  assert.equal(path.endsWith("/file.xlsx"), true);
+  assert.equal(path.includes("代理店"), false);
+  assert.equal(path.includes(" "), false);
+  ok("japanese display name never enters storage path");
 }
 
 {

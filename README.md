@@ -130,7 +130,7 @@ ValueOS の社内業務画面は原則すべて暫定の社内パスワードゲ
 | 項目 | 値 |
 |---|---|
 | Bucket | `case-attachments`（**private**） |
-| Path | `cases/{case_id}/{attachment_id}/{sanitized_filename}`（server 生成のみ） |
+| Path | `cases/{case_id}/{attachment_id}/file.{ext}`（server 生成のみ。表示名は DB に保持） |
 | 制限 | 1ファイル 20MB / 1案件 20件 / 合計 100MB |
 | 公開 URL | 禁止（短寿命 signed download のみ） |
 

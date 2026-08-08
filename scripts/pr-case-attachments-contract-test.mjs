@@ -80,8 +80,15 @@ assert(
 );
 
 assert(
-  "path shape cases/{case_id}/{attachment_id}/...",
-  validation.includes("`cases/${input.caseId}/${input.attachmentId}/${safe}`")
+  "path shape cases/{case_id}/{attachment_id}/file.{ext}",
+  validation.includes(
+    "`cases/${input.caseId}/${input.attachmentId}/${objectName}`"
+  ) && validation.includes("`file.${ext}`")
+);
+assert(
+  "storage object name ignores user filename body",
+  validation.includes("buildStorageObjectName") &&
+    !validation.includes(".replace(/\\s+/g, \" \")")
 );
 assert(
   "extension + mime both validated",
