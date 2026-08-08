@@ -94,8 +94,8 @@ assert(
   "official lookup rules unchanged",
   purchaseLib.includes('.order("start_date", { ascending: false })') &&
     salesLib.includes('.order("start_date", { ascending: false })') &&
-    purchaseLib.includes(".eq(\"is_active\", true)") ||
-    purchaseLib.includes('.eq("is_active", true)')
+    purchaseLib.includes('.eq("is_active", true)') &&
+    salesLib.includes('.eq("is_active", true)')
 );
 
 const behavior = spawnSync(
