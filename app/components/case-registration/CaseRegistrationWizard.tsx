@@ -3,9 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  fetchActiveContractors,
   fetchActiveDealers,
   fetchActivePackages,
   fetchActiveProducts,
+  type ContractorOption,
   type DealerOption,
   type PackageOption,
   type ProductOption,
@@ -47,6 +49,7 @@ export default function CaseRegistrationWizard() {
   );
 
   const [dealers, setDealers] = useState<DealerOption[]>([]);
+  const [contractors, setContractors] = useState<ContractorOption[]>([]);
   const [products, setProducts] = useState<ProductOption[]>([]);
   const [packages, setPackages] = useState<PackageOption[]>([]);
   const [masterError, setMasterError] = useState<string | null>(null);
@@ -64,16 +67,23 @@ export default function CaseRegistrationWizard() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const [d, p, pkg] = await Promise.all([
+      const [d, c, p, pkg] = await Promise.all([
         fetchActiveDealers(),
+        fetchActiveContractors(),
         fetchActiveProducts(),
         fetchActivePackages(),
       ]);
       if (cancelled) return;
-      if (d.errorMessage || p.errorMessage || pkg.errorMessage) {
+      if (
+        d.errorMessage ||
+        c.errorMessage ||
+        p.errorMessage ||
+        pkg.errorMessage
+      ) {
         setMasterError("マスタの取得に失敗しました");
       }
       setDealers(d.data);
+      setContractors(c.data);
       setProducts(p.data);
       setPackages(pkg.data);
     })();
@@ -180,6 +190,7 @@ export default function CaseRegistrationWizard() {
         <Step1CaseForm
           caseForm={caseForm}
           dealers={dealers}
+          contractors={contractors}
           errors={step1Errors}
           onChange={handleCaseFormChange}
           onNext={goStep2}

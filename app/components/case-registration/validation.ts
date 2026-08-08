@@ -161,6 +161,7 @@ export function buildGatewayBody(
       }),
       assigned_user: caseForm.assigned_user.trim() || null,
       memo: buildCaseRegistrationMemo({
+        delivery_name: caseForm.delivery_name,
         receiver_name: caseForm.receiver_name,
         delivery_phone: caseForm.delivery_phone,
       }),
