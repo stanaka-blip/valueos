@@ -1,5 +1,8 @@
 import Link from "next/link";
 
+import {
+  fetchListCurrentPurchaseUnitPrices,
+} from "@/lib/purchasePrices";
 import { supabase } from "@/lib/supabase";
 
 import ProductListSearchForm from "./ProductListSearchForm";
@@ -11,6 +14,11 @@ import {
 } from "./productListQuery";
 
 export const dynamic = "force-dynamic";
+
+function formatYen(amount: number | null | undefined): string {
+  if (amount == null || !Number.isFinite(amount)) return "—";
+  return `${amount.toLocaleString("ja-JP")}円`;
+}
 
 function supplierName(
   suppliers:
@@ -45,6 +53,7 @@ type ProductFetchRow = {
   unit: string | null;
   is_active: unknown;
   manufacturer_id: string | null;
+  default_supplier_id: string | null;
   manufacturers: { name: string | null } | { name: string | null }[] | null;
   series: { name: string | null } | { name: string | null }[] | null;
   suppliers: { name: string | null } | { name: string | null }[] | null;
@@ -76,6 +85,7 @@ export default async function ProductsPage({
       unit,
       is_active,
       manufacturer_id,
+      default_supplier_id,
       manufacturers ( name ),
       series:series_id ( name ),
       suppliers:default_supplier_id ( name )
@@ -108,6 +118,16 @@ export default async function ProductsPage({
       const bi = filtered.findIndex((r) => r.id === b.id);
       return ai - bi;
     });
+
+  const supplierByTargetId = new Map<string, string>();
+  for (const row of visible) {
+    const supplierId = (row.default_supplier_id || "").trim();
+    if (supplierId) supplierByTargetId.set(row.id, supplierId);
+  }
+  const purchasePrices = await fetchListCurrentPurchaseUnitPrices(supabase, {
+    targetType: "PRODUCT",
+    supplierByTargetId,
+  });
 
   const categories = Array.from(
     new Set(
@@ -172,6 +192,7 @@ export default async function ProductsPage({
                 <th className="px-5 py-4">商品名</th>
                 <th className="px-5 py-4">容量</th>
                 <th className="px-5 py-4">標準仕入先</th>
+                <th className="px-5 py-4">現行仕入価格</th>
                 <th className="px-5 py-4">状態</th>
                 <th className="px-5 py-4 text-center">操作</th>
               </tr>
@@ -180,8 +201,14 @@ export default async function ProductsPage({
             <tbody>
               {error ? (
                 <tr>
-                  <td colSpan={9} className="px-5 py-10 text-center text-red-500">
+                  <td colSpan={10} className="px-5 py-10 text-center text-red-500">
                     データ取得エラー：{error.message}
+                  </td>
+                </tr>
+              ) : purchasePrices.error ? (
+                <tr>
+                  <td colSpan={10} className="px-5 py-10 text-center text-red-500">
+                    仕入価格の取得エラー：{purchasePrices.error}
                   </td>
                 </tr>
               ) : visible.length > 0 ? (
@@ -189,6 +216,8 @@ export default async function ProductsPage({
                   const maker = relationName(item.manufacturers) || "-";
                   const seriesName = relationName(item.series) || "-";
                   const defaultSupplier = supplierName(item.suppliers);
+                  const currentPurchase =
+                    purchasePrices.unitPriceByTargetId.get(item.id) ?? null;
 
                   return (
                     <tr key={item.id} className="border-t hover:bg-gray-50">
@@ -222,6 +251,9 @@ export default async function ProductsPage({
                         ) : (
                           defaultSupplier
                         )}
+                      </td>
+                      <td className="px-5 py-4 font-semibold tabular-nums">
+                        {formatYen(currentPurchase)}
                       </td>
                       <td className="px-5 py-4">
                         {item.is_active ? (
@@ -267,7 +299,7 @@ export default async function ProductsPage({
                 })
               ) : (
                 <tr>
-                  <td colSpan={9} className="px-5 py-10 text-center text-gray-500">
+                  <td colSpan={10} className="px-5 py-10 text-center text-gray-500">
                     {hasFilters
                       ? "条件に一致する商品がありません"
                       : "商品が登録されていません。"}

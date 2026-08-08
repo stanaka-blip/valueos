@@ -1,5 +1,8 @@
 import Link from "next/link";
 
+import {
+  fetchListCurrentPurchaseUnitPrices,
+} from "@/lib/purchasePrices";
 import { supabase } from "@/lib/supabase";
 
 import PackageListSearchForm from "./PackageListSearchForm";
@@ -11,6 +14,11 @@ import {
 } from "./packageListQuery";
 
 export const dynamic = "force-dynamic";
+
+function formatYen(amount: number | null | undefined): string {
+  if (amount == null || !Number.isFinite(amount)) return "—";
+  return `${amount.toLocaleString("ja-JP")}円`;
+}
 
 function supplierName(
   suppliers:
@@ -46,6 +54,7 @@ type PackageFetchRow = {
   warranty_years: number | null;
   is_active: unknown;
   manufacturer_id: string | null;
+  default_supplier_id: string | null;
   manufacturers: { name: string | null } | { name: string | null }[] | null;
   series: { name: string | null } | { name: string | null }[] | null;
   suppliers: { name: string | null } | { name: string | null }[] | null;
@@ -77,6 +86,7 @@ export default async function PackagesPage({
       warranty_years,
       is_active,
       manufacturer_id,
+      default_supplier_id,
       manufacturers ( name ),
       series:series_id ( name ),
       suppliers:default_supplier_id ( name )
@@ -104,6 +114,16 @@ export default async function PackagesPage({
   const visible = rawRows
     .filter((row) => order.has(row.id))
     .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
+
+  const supplierByTargetId = new Map<string, string>();
+  for (const row of visible) {
+    const supplierId = (row.default_supplier_id || "").trim();
+    if (supplierId) supplierByTargetId.set(row.id, supplierId);
+  }
+  const purchasePrices = await fetchListCurrentPurchaseUnitPrices(supabase, {
+    targetType: "PACKAGE",
+    supplierByTargetId,
+  });
 
   const manufacturerOptions = (manufacturers || [])
     .map((m) => ({
@@ -157,6 +177,7 @@ export default async function PackagesPage({
                 <th className="px-5 py-4">容量</th>
                 <th className="px-5 py-4">保証</th>
                 <th className="px-5 py-4">標準仕入先</th>
+                <th className="px-5 py-4">現行仕入価格</th>
                 <th className="px-5 py-4">状態</th>
                 <th className="px-5 py-4 text-center">操作</th>
               </tr>
@@ -164,8 +185,14 @@ export default async function PackagesPage({
             <tbody>
               {error ? (
                 <tr>
-                  <td colSpan={8} className="px-5 py-10 text-center text-red-500">
+                  <td colSpan={9} className="px-5 py-10 text-center text-red-500">
                     データ取得エラー：{error.message}
+                  </td>
+                </tr>
+              ) : purchasePrices.error ? (
+                <tr>
+                  <td colSpan={9} className="px-5 py-10 text-center text-red-500">
+                    仕入価格の取得エラー：{purchasePrices.error}
                   </td>
                 </tr>
               ) : visible.length > 0 ? (
@@ -173,6 +200,8 @@ export default async function PackagesPage({
                   const maker = relationName(item.manufacturers) || "-";
                   const seriesName = relationName(item.series) || "-";
                   const defaultSupplier = supplierName(item.suppliers);
+                  const currentPurchase =
+                    purchasePrices.unitPriceByTargetId.get(item.id) ?? null;
                   return (
                     <tr key={item.id} className="border-t hover:bg-gray-50">
                       <td className="px-5 py-4 font-semibold">{maker}</td>
@@ -201,6 +230,9 @@ export default async function PackagesPage({
                         ) : (
                           defaultSupplier
                         )}
+                      </td>
+                      <td className="px-5 py-4 font-semibold tabular-nums">
+                        {formatYen(currentPurchase)}
                       </td>
                       <td className="px-5 py-4">
                         {item.is_active ? (
@@ -246,7 +278,7 @@ export default async function PackagesPage({
                 })
               ) : (
                 <tr>
-                  <td colSpan={8} className="px-5 py-10 text-center text-gray-500">
+                  <td colSpan={9} className="px-5 py-10 text-center text-gray-500">
                     {hasFilters
                       ? "条件に一致するパッケージがありません"
                       : "パッケージ商品が登録されていません。"}

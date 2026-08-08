@@ -69,6 +69,64 @@ function toUnitPrice(value: unknown): number {
   return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
+export function isActivePurchaseFlag(value: unknown): boolean {
+  return value === true || value === "true";
+}
+
+/**
+ * fetchActivePurchasePrice と同じ適用期間・有効フラグ判定。
+ * 一覧バッチ用の純関数（独自ルールを作らない）。
+ */
+export function matchesActivePurchaseWindow(
+  row: {
+    start_date: string | null | undefined;
+    end_date: string | null | undefined;
+    is_active: unknown;
+  },
+  asOfDate: string
+): boolean {
+  if (!isActivePurchaseFlag(row.is_active)) return false;
+  if (!row.start_date || row.start_date > asOfDate) return false;
+  if (row.end_date && row.end_date < asOfDate) return false;
+  return true;
+}
+
+export type ListPurchasePriceCandidate = {
+  targetId: string;
+  supplierId: string;
+  purchase_price: unknown;
+  start_date: string | null;
+  end_date: string | null;
+  is_active: unknown;
+};
+
+/**
+ * 候補行から対象×仕入先の現行仕入単価を選ぶ。
+ * 条件は fetchActivePurchasePrice と同じ（有効・期間内・start_date DESC・金額>0）。
+ */
+export function pickActivePurchaseUnitForTarget(
+  candidates: ListPurchasePriceCandidate[],
+  targetId: string,
+  supplierId: string,
+  asOfDate: string
+): number | null {
+  if (!targetId || !supplierId) return null;
+
+  const eligible = candidates
+    .filter(
+      (row) => row.targetId === targetId && row.supplierId === supplierId
+    )
+    .filter((row) => matchesActivePurchaseWindow(row, asOfDate))
+    .map((row) => ({
+      start_date: row.start_date || "",
+      unitPrice: toUnitPrice(row.purchase_price),
+    }))
+    .filter((row) => row.unitPrice > 0)
+    .sort((a, b) => b.start_date.localeCompare(a.start_date));
+
+  return eligible[0]?.unitPrice ?? null;
+}
+
 /** 有効な仕入単価を1件取得（PRODUCT / PACKAGE、マスタID付き） */
 export async function fetchActivePurchasePrice(
   client: SupabaseClient,
@@ -259,6 +317,81 @@ export async function fetchActivePurchaseUnitPrices(
     missingProductIds,
     error: null,
   };
+}
+
+/**
+ * 一覧用: 複数対象の現行仕入単価を一括取得。
+ * - N+1 を避け、対象IDをまとめて取得（仕入先ごとに分割しない）
+ * - 判定は fetchActivePurchasePrice と同じ条件
+ * - supplierByTargetId に無い / 空の対象は結果に載せない（画面では —）
+ */
+export async function fetchListCurrentPurchaseUnitPrices(
+  client: SupabaseClient,
+  params: {
+    targetType: PriceTargetType;
+    /** targetId → default_supplier_id */
+    supplierByTargetId: Map<string, string>;
+    asOfDate?: string;
+  }
+): Promise<{
+  unitPriceByTargetId: Map<string, number>;
+  error: string | null;
+}> {
+  const asOfDate = params.asOfDate || getTodayDateString();
+  const targetIds = Array.from(params.supplierByTargetId.keys()).filter(
+    (id) => Boolean(id) && Boolean(params.supplierByTargetId.get(id))
+  );
+
+  if (targetIds.length === 0) {
+    return { unitPriceByTargetId: new Map(), error: null };
+  }
+
+  const idColumn =
+    params.targetType === "PRODUCT" ? "product_id" : "package_id";
+
+  const { data, error } = await client
+    .from("purchase_prices")
+    .select(
+      `${idColumn}, supplier_id, purchase_price, start_date, end_date, is_active`
+    )
+    .eq("price_target_type", params.targetType)
+    .in(idColumn, targetIds)
+    .eq("is_active", true)
+    .lte("start_date", asOfDate)
+    .or(`end_date.is.null,end_date.gte.${asOfDate}`)
+    .order("start_date", { ascending: false });
+
+  if (error) {
+    return { unitPriceByTargetId: new Map(), error: error.message };
+  }
+
+  const candidates: ListPurchasePriceCandidate[] = (data || []).map((row) => {
+    const record = row as Record<string, unknown>;
+    return {
+      targetId: (record[idColumn] as string | null) || "",
+      supplierId: (record.supplier_id as string | null) || "",
+      purchase_price: record.purchase_price,
+      start_date: (record.start_date as string | null) || null,
+      end_date: (record.end_date as string | null) || null,
+      is_active: record.is_active,
+    };
+  });
+
+  const unitPriceByTargetId = new Map<string, number>();
+  for (const targetId of targetIds) {
+    const supplierId = params.supplierByTargetId.get(targetId) || "";
+    const unit = pickActivePurchaseUnitForTarget(
+      candidates,
+      targetId,
+      supplierId,
+      asOfDate
+    );
+    if (unit != null) {
+      unitPriceByTargetId.set(targetId, unit);
+    }
+  }
+
+  return { unitPriceByTargetId, error: null };
 }
 
 /** 販売店の default_supplier_id を取得 */
