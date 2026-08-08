@@ -248,6 +248,20 @@ function IconBuilding() {
   );
 }
 
+function IconContractor() {
+  return (
+    <svg className={iconClass} viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M4 18h16M6 18V10l6-4 6 4v8M9 18v-4h6v4"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 const dashboardItem: NavItem = {
   name: "ダッシュボード",
   href: "/",
@@ -273,6 +287,7 @@ const navGroups: NavGroup[] = [
     label: "マスタ",
     entries: [
       { name: "販売店", href: "/dealers", icon: <IconStore /> },
+      { name: "施工店", href: "/contractors", icon: <IconContractor /> },
       {
         name: "メーカー",
         href: "/manufacturers",
