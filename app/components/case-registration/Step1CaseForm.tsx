@@ -25,7 +25,7 @@ export default function Step1CaseForm({
   onChange,
   onNext,
 }: Props) {
-  /** UI のみ。cases.contractor_id は保存しない */
+  /** UI のみの選択状態（案件へマスタIDは保存しない） */
   const [selectedContractorId, setSelectedContractorId] = useState("");
 
   function set<K extends keyof CaseFormState>(key: K, value: CaseFormState[K]) {

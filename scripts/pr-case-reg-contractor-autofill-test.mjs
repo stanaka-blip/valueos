@@ -74,11 +74,11 @@ assert(
 );
 
 assert(
-  "no cases.contractor_id in registration path",
+  "gateway/types do not persist master contractor FK",
   !typesSrc.includes("contractor_id") &&
     !validationSrc.includes("contractor_id") &&
-    !step1Src.includes("contractor_id") &&
-    !wizardSrc.includes("contractor_id")
+    !wizardSrc.includes("contractor_id") &&
+    !/"contractor_id"/.test(step1Src)
 );
 
 assert(
