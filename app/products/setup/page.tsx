@@ -168,8 +168,7 @@ export default function ProductSetupPage() {
             capacity,
             unit,
             is_active,
-            manufacturers ( name ),
-            series:product_series ( name )
+            manufacturers ( name )
           `
           )
           .order("model_no", { ascending: true }),
@@ -194,8 +193,13 @@ export default function ProductSetupPage() {
         return;
       }
 
+      const seriesRows = (sRes.data || []) as Series[];
+      const seriesNameById = new Map(
+        seriesRows.map((s) => [s.id, s.name || null] as const)
+      );
+
       setManufacturers((mRes.data || []) as Manufacturer[]);
-      setSeriesList((sRes.data || []) as Series[]);
+      setSeriesList(seriesRows);
       setSuppliers(
         ((supplierRes.data || []) as { id: string; name: string | null; is_active: unknown }[])
           .filter(
@@ -217,6 +221,7 @@ export default function ProductSetupPage() {
           .map((d) => ({ id: d.id, name: d.name }))
       );
 
+      // シリーズ名は product_series 一覧とクライアント結合（embed 失敗で全件落ちるのを避ける）
       const mapped: ProductOption[] = (
         (productRes.data || []) as Array<Record<string, unknown>>
       ).map((row) => {
@@ -224,23 +229,19 @@ export default function ProductSetupPage() {
           | { name: string | null }
           | { name: string | null }[]
           | null;
-        const seriesRel = row.series as
-          | { name: string | null }
-          | { name: string | null }[]
-          | null;
         const makerRow = Array.isArray(makers) ? makers[0] : makers;
-        const seriesRow = Array.isArray(seriesRel) ? seriesRel[0] : seriesRel;
+        const seriesId = (row.series_id as string | null) || null;
         return {
           id: String(row.id),
           manufacturer_id: (row.manufacturer_id as string | null) || null,
-          series_id: (row.series_id as string | null) || null,
+          series_id: seriesId,
           category: (row.category as string | null) || null,
           model_no: (row.model_no as string | null) || null,
           name: (row.name as string | null) || null,
           capacity: (row.capacity as string | null) || null,
           unit: (row.unit as string | null) || null,
           is_active: row.is_active,
-          series_name: seriesRow?.name || null,
+          series_name: seriesId ? seriesNameById.get(seriesId) || null : null,
           manufacturer_name: makerRow?.name || null,
         };
       });
@@ -474,14 +475,20 @@ export default function ProductSetupPage() {
               <ModeButton
                 active={mode === "new"}
                 onClick={() => switchMode("new")}
-                label="新規商品を作成"
+                label="新規商品を登録"
               />
             </div>
+            <p className="text-xs text-gray-500">
+              初期は「既存商品を選択」です。新規の手入力フォームは「新規商品を登録」に切り替えたときだけ表示されます。
+            </p>
           </section>
 
           {mode === "existing" ? (
-            <section className="space-y-4">
+            <section className="space-y-4" data-testid="existing-product-setup">
               <h2 className="text-lg font-bold text-gray-900">既存商品</h2>
+              <p className="text-sm text-gray-500">
+                メーカーで絞り込み、検索可能な商品Pickerから選択します（型番・商品名の手入力はありません）。
+              </p>
               <div className="grid gap-4 md:grid-cols-2">
                 <Field label="メーカー *">
                   <select
@@ -519,30 +526,29 @@ export default function ProductSetupPage() {
                 ) : filteredExistingProducts.length === 0 ? (
                   <p className="text-sm text-gray-500">該当する商品がありません</p>
                 ) : (
-                  <div className="max-h-64 overflow-y-auto rounded-lg border border-gray-200">
+                  <div
+                    className="max-h-64 overflow-y-auto rounded-lg border border-gray-200"
+                    data-testid="existing-product-picker"
+                  >
                     {filteredExistingProducts.map((p) => {
                       const active = p.id === selectedProductId;
+                      const label = [
+                        p.model_no?.trim() || "—",
+                        p.name?.trim() || "—",
+                        p.series_name?.trim() || "—",
+                      ].join(" ｜ ");
                       return (
                         <button
                           key={p.id}
                           type="button"
                           onClick={() => setSelectedProductId(p.id)}
-                          className={`flex w-full flex-col gap-0.5 border-b border-gray-100 px-3 py-2 text-left text-sm last:border-b-0 ${
+                          className={`block w-full border-b border-gray-100 px-3 py-2 text-left text-sm last:border-b-0 ${
                             active
-                              ? "bg-gray-900 text-white"
+                              ? "bg-gray-900 font-semibold text-white"
                               : "bg-white text-gray-900 hover:bg-gray-50"
                           }`}
                         >
-                          <span className="font-semibold">
-                            {p.model_no || "—"} / {p.name || "—"}
-                          </span>
-                          <span
-                            className={
-                              active ? "text-gray-200" : "text-gray-500"
-                            }
-                          >
-                            シリーズ: {p.series_name || "—"}
-                          </span>
+                          {label}
                         </button>
                       );
                     })}
@@ -570,7 +576,7 @@ export default function ProductSetupPage() {
               ) : null}
             </section>
           ) : (
-            <section className="space-y-4">
+            <section className="space-y-4" data-testid="new-product-setup">
               <h2 className="text-lg font-bold text-gray-900">商品基本情報</h2>
               <div className="grid gap-4 md:grid-cols-2">
                 <Field label="メーカー *">
