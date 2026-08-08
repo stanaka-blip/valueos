@@ -1,24 +1,36 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+
+import PriceTargetPrefillBanner from "@/app/components/prices/PriceTargetPrefillBanner";
+import {
+  buildPackagePriceSummary,
+  buildProductPriceSummary,
+  parsePriceNewPrefill,
+} from "@/lib/prices/parsePriceNewPrefill";
 import {
   PRICE_TARGET_OPTIONS,
   type PriceTargetType,
 } from "@/lib/prices/targetType";
+import { supabase } from "@/lib/supabase";
 
 type Dealer = {
   id: string;
   name: string | null;
 };
 
+type ManufacturerRelation =
+  | { name: string | null }
+  | { name: string | null }[]
+  | null;
+
 type Product = {
   id: string;
   name: string | null;
   model_no: string | null;
   category: string | null;
-  manufacturers: { name: string | null } | null;
+  manufacturers: ManufacturerRelation;
 };
 
 type PackageRow = {
@@ -28,23 +40,59 @@ type PackageRow = {
   capacity: number | string | null;
   capacity_unit: string | null;
   system_type: string | null;
-  manufacturers: { name: string | null } | null;
+  manufacturers: ManufacturerRelation;
 };
 
+function manufacturerName(relation: ManufacturerRelation): string {
+  if (!relation) return "-";
+  if (Array.isArray(relation)) return relation[0]?.name || "-";
+  return relation.name || "-";
+}
+
 export default function NewSalesPricePage() {
+  return (
+    <Suspense
+      fallback={
+        <>
+          <header className="border-b bg-white px-8 py-5">
+            <h1 className="text-2xl font-bold text-gray-900">販売価格登録</h1>
+            <p className="text-sm text-gray-500">読み込み中...</p>
+          </header>
+          <main className="p-8">
+            <div className="rounded-xl bg-white p-8 text-center shadow-sm">
+              <p className="text-sm text-gray-500">読み込み中...</p>
+            </div>
+          </main>
+        </>
+      }
+    >
+      <NewSalesPricePageInner />
+    </Suspense>
+  );
+}
+
+function NewSalesPricePageInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const prefill = parsePriceNewPrefill({
+    product_id: searchParams.get("product_id"),
+    package_id: searchParams.get("package_id"),
+  });
 
   const [dealers, setDealers] = useState<Dealer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [packages, setPackages] = useState<PackageRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState("");
+  const [prefillMissing, setPrefillMissing] = useState(false);
 
   const [form, setForm] = useState({
     dealer_id: "",
-    price_target_type: "PRODUCT" as PriceTargetType,
-    product_id: "",
-    package_id: "",
+    price_target_type: (prefill.fromQuery
+      ? prefill.price_target_type
+      : "PRODUCT") as PriceTargetType,
+    product_id: prefill.product_id,
+    package_id: prefill.package_id,
     sales_price: "",
     start_date: "",
     end_date: "",
@@ -55,6 +103,29 @@ export default function NewSalesPricePage() {
   useEffect(() => {
     async function fetchData() {
       setLoadError("");
+      setPrefillMissing(false);
+
+      const productSelect = `
+            id,
+            name,
+            model_no,
+            category,
+            manufacturers (
+              name
+            )
+          `;
+      const packageSelect = `
+            id,
+            name,
+            package_code,
+            capacity,
+            capacity_unit,
+            system_type,
+            manufacturers (
+              name
+            )
+          `;
+
       const [
         { data: dealerData, error: dealerError },
         { data: productData, error: productError },
@@ -67,34 +138,12 @@ export default function NewSalesPricePage() {
           .order("name", { ascending: true }),
         supabase
           .from("products")
-          .select(
-            `
-            id,
-            name,
-            model_no,
-            category,
-            manufacturers (
-              name
-            )
-          `
-          )
+          .select(productSelect)
           .eq("is_active", true)
           .order("created_at", { ascending: false }),
         supabase
           .from("packages")
-          .select(
-            `
-            id,
-            name,
-            package_code,
-            capacity,
-            capacity_unit,
-            system_type,
-            manufacturers (
-              name
-            )
-          `
-          )
+          .select(packageSelect)
           .eq("is_active", true)
           .order("name", { ascending: true }),
       ]);
@@ -109,13 +158,54 @@ export default function NewSalesPricePage() {
         return;
       }
 
+      let nextProducts = (productData || []) as unknown as Product[];
+      let nextPackages = (packageData || []) as unknown as PackageRow[];
+
+      if (prefill.fromQuery && prefill.price_target_type === "PRODUCT") {
+        if (!nextProducts.some((p) => p.id === prefill.product_id)) {
+          const { data: one } = await supabase
+            .from("products")
+            .select(productSelect)
+            .eq("id", prefill.product_id)
+            .maybeSingle();
+          if (one) {
+            nextProducts = [one as unknown as Product, ...nextProducts];
+          } else {
+            setPrefillMissing(true);
+          }
+        }
+      }
+
+      if (prefill.fromQuery && prefill.price_target_type === "PACKAGE") {
+        if (!nextPackages.some((p) => p.id === prefill.package_id)) {
+          const { data: one } = await supabase
+            .from("packages")
+            .select(packageSelect)
+            .eq("id", prefill.package_id)
+            .maybeSingle();
+          if (one) {
+            nextPackages = [one as unknown as PackageRow, ...nextPackages];
+          } else {
+            setPrefillMissing(true);
+          }
+        }
+      }
+
       setDealers(dealerData || []);
-      setProducts(((productData || []) as unknown as Product[]));
-      setPackages(((packageData || []) as unknown as PackageRow[]));
+      setProducts(nextProducts);
+      setPackages(nextPackages);
+      setForm((current) => ({
+        ...current,
+        price_target_type: prefill.fromQuery
+          ? prefill.price_target_type
+          : current.price_target_type,
+        product_id: prefill.fromQuery ? prefill.product_id : current.product_id,
+        package_id: prefill.fromQuery ? prefill.package_id : current.package_id,
+      }));
     }
 
     fetchData();
-  }, []);
+  }, [prefill.fromQuery, prefill.package_id, prefill.price_target_type, prefill.product_id]);
 
   function handleChange(
     e: React.ChangeEvent<
@@ -195,6 +285,24 @@ export default function NewSalesPricePage() {
   }
 
   const isProduct = form.price_target_type === "PRODUCT";
+  const selectedProduct = products.find((p) => p.id === form.product_id);
+  const selectedPackage = packages.find((p) => p.id === form.package_id);
+  const prefillSummary =
+    prefill.fromQuery && !prefillMissing
+      ? isProduct && selectedProduct
+        ? buildProductPriceSummary({
+            name: selectedProduct.name,
+            model_no: selectedProduct.model_no,
+            manufacturerName: manufacturerName(selectedProduct.manufacturers),
+          })
+        : !isProduct && selectedPackage
+          ? buildPackagePriceSummary({
+              name: selectedPackage.name,
+              package_code: selectedPackage.package_code,
+              manufacturerName: manufacturerName(selectedPackage.manufacturers),
+            })
+          : null
+      : null;
 
   return (
     <>
@@ -216,6 +324,11 @@ export default function NewSalesPricePage() {
           onSubmit={handleSubmit}
           className="mx-auto max-w-5xl rounded-xl bg-white p-8 shadow-sm"
         >
+          <PriceTargetPrefillBanner
+            summary={prefillSummary}
+            missing={prefill.fromQuery && prefillMissing}
+          />
+
           <div className="grid gap-6 md:grid-cols-2">
             <Field label="販売店">
               <select
@@ -262,7 +375,7 @@ export default function NewSalesPricePage() {
                   <option value="">商品を選択</option>
                   {products.map((product) => (
                     <option key={product.id} value={product.id}>
-                      {product.manufacturers?.name || "-"} /{" "}
+                      {manufacturerName(product.manufacturers)} /{" "}
                       {product.category || "-"} / {product.model_no || "-"} /{" "}
                       {product.name || "-"}
                     </option>
@@ -281,7 +394,7 @@ export default function NewSalesPricePage() {
                   <option value="">パッケージ商品を選択</option>
                   {packages.map((pkg) => (
                     <option key={pkg.id} value={pkg.id}>
-                      {pkg.manufacturers?.name || "-"} /{" "}
+                      {manufacturerName(pkg.manufacturers)} /{" "}
                       {pkg.system_type || "-"} /{" "}
                       {pkg.capacity != null
                         ? `${pkg.capacity}${pkg.capacity_unit || ""}`

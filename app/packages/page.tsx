@@ -209,12 +209,26 @@ export default async function PackagesPage({
                         )}
                       </td>
                       <td className="px-5 py-4 text-center">
-                        <Link
-                          href={`/packages/${item.id}/edit`}
-                          className="rounded-lg bg-gray-900 px-3 py-2 text-xs font-bold text-white"
-                        >
-                          編集
-                        </Link>
+                        <div className="flex flex-wrap items-center justify-center gap-2">
+                          <Link
+                            href={`/packages/${item.id}/edit`}
+                            className="rounded-lg bg-gray-900 px-3 py-2 text-xs font-bold text-white"
+                          >
+                            編集
+                          </Link>
+                          <Link
+                            href={`/prices/new?package_id=${item.id}`}
+                            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-bold text-gray-800"
+                          >
+                            仕入価格を追加
+                          </Link>
+                          <Link
+                            href={`/sales-prices/new?package_id=${item.id}`}
+                            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-bold text-gray-800"
+                          >
+                            販売価格を追加
+                          </Link>
+                        </div>
                       </td>
                     </tr>
                   );
