@@ -72,6 +72,7 @@ export async function GET(request: NextRequest) {
       userId: session.userId,
       email: allowed.email,
       displayName: allowed.displayName,
+      isAdmin: allowed.isAdmin,
       authMode: session.authMode,
     },
   });

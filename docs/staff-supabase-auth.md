@@ -1,4 +1,4 @@
-# 社内ユーザー — Supabase Auth 運用手順
+# 社内ユーザー — Supabase Auth / ユーザー管理 運用手順
 
 コード PR と分離して、人間が本番 / Preview の Supabase・Vercel で設定する。
 
@@ -12,6 +12,7 @@ Supabase Dashboard → Authentication → Providers / Settings:
 
 アプリに「新規会員登録」画面は無い。
 
+<<<<<<< HEAD
 ## 2. Site URL / Redirect URLs（Production 前提）
 
 Dashboard → Authentication → URL Configuration:
@@ -28,9 +29,14 @@ Dashboard → Authentication → URL Configuration:
 公開セルフ signup 画面は追加しない（invite-only 維持）。
 
 ## 3. 社内ユーザーを作成 / 招待
+=======
+## 2. Migration 適用（人間）
+>>>>>>> 7126b7c (feat(staff): admin user management UI with invite and soft-disable)
 
-Dashboard → Authentication → Users:
+1. `supabase/migrations/20260808220000_staff_profiles_and_attachment_actors.sql`
+2. `supabase/migrations/20260808230000_staff_profiles_is_admin.sql`
 
+<<<<<<< HEAD
 1. **Invite user**（推奨）または Add user
 2. メールアドレスを入力
 3. 招待メールのリンク → `/auth/set-password` で初回パスワード設定 → `/login` でログイン
@@ -42,23 +48,34 @@ Dashboard → Authentication → Users:
 ## 4. staff_profiles に display_name を設定
 
 Migration `20260808220000_staff_profiles_and_attachment_actors.sql` 適用後:
+=======
+## 3. 最初の管理者だけ Dashboard で作成
+
+1. Dashboard → Authentication → Users → **Add user**（または Invite）
+2. メール + パスワードを設定
+3. `auth.users.id` を控える
+4. SQL Editor で profiles を作成し **管理者にする**:
+>>>>>>> 7126b7c (feat(staff): admin user management UI with invite and soft-disable)
 
 ```sql
--- auth.users.id を確認してから実行
-INSERT INTO public.staff_profiles (id, display_name, is_active)
+INSERT INTO public.staff_profiles (id, display_name, is_active, is_admin)
 VALUES (
   '<auth-user-uuid>',
   '田中 太郎',
+  true,
   true
 )
 ON CONFLICT (id) DO UPDATE
 SET display_name = EXCLUDED.display_name,
-    is_active = EXCLUDED.is_active;
+    is_active = EXCLUDED.is_active,
+    is_admin = EXCLUDED.is_admin;
 ```
 
 - `email` は `auth.users` が正式値（profiles には保存しない）
-- `is_active = false` にすると ValueOS 利用不可
+- `is_admin = true` がユーザー管理画面の利用条件
+- 以降の社内ユーザーは ValueOS の `/staff` から招待する
 
+<<<<<<< HEAD
 ## 5. 初回ログイン確認
 
 1. 招待メール → `/auth/set-password` でパスワード設定
@@ -67,6 +84,27 @@ SET display_name = EXCLUDED.display_name,
 4. ログアウトできること
 5. inactive ユーザーはログインできない / 利用できないこと
 6. 期限切れリンクで有効期限メッセージが出ること
+=======
+## 4. ValueOS ユーザー管理（/staff）
+
+管理者ログイン後:
+
+1. サイドバー「ユーザー管理」
+2. 「＋ユーザー追加」で氏名・メールを入力して招待
+3. 招待メールからパスワード設定 → `/login`
+4. 無効化（`is_active=false`）でログイン不可。物理削除はしない
+5. 未確認ユーザーには「招待再送」可能
+
+一般ユーザー（`is_admin=false`）は `/staff` と `/api/staff*` にアクセスできない。
+
+## 5. 初回ログイン確認
+
+1. `/login` でメール + パスワード
+2. サイドバーに「ログイン中：表示名 / email」
+3. 管理者なら「ユーザー管理」が見える
+4. ログアウトできる
+5. inactive ユーザーはログインできない
+>>>>>>> 7126b7c (feat(staff): admin user management UI with invite and soft-disable)
 
 ## 6. Vercel 環境変数
 
@@ -74,18 +112,16 @@ SET display_name = EXCLUDED.display_name,
 |---|---|
 | `NEXT_PUBLIC_SUPABASE_URL` | Auth / 既存クライアント |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Auth signIn（browser に出るのは publishable のみ） |
-| `SUPABASE_SERVICE_ROLE_KEY` | **server only**（profiles 参照等） |
+| `SUPABASE_SERVICE_ROLE_KEY` | **server only**（Admin invite / profiles） |
 | `INTERNAL_AUTH_SECRET` | staff cookie 署名（32文字以上） |
-| `INTERNAL_APP_ORIGIN` | Origin 完全一致 |
-| `ALLOW_LEGACY_STAFF_PASSWORD` | 緊急時のみ `true`。共有パスワード経路 |
-| `INTERNAL_APP_PASSWORD` | legacy 経路用。本番 Auth 安定後は削除予定 |
+| `INTERNAL_APP_ORIGIN` | Origin 完全一致（招待 redirect にも使用） |
+| `ALLOW_LEGACY_STAFF_PASSWORD` | 緊急時のみ `true` |
+| `INTERNAL_APP_PASSWORD` | legacy 経路用 |
 
 `SUPABASE_SERVICE_ROLE_KEY` を `NEXT_PUBLIC_` にしないこと。
 
 ## 7. 共有パスワード移行
 
-1. Auth + profiles で社内メンバーがログインできることを確認
+1. Auth + profiles + 管理者で `/staff` 招待ができることを確認
 2. `ALLOW_LEGACY_STAFF_PASSWORD` を未設定 / false にする
 3. `INTERNAL_APP_PASSWORD` を削除
-
-legacy 経路は UI に出さず、API で `legacySharedPassword: true` が必要な明示オプトイン。

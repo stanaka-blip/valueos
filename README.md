@@ -121,6 +121,7 @@ ValueOS の社内業務画面は **Supabase Auth（email + password, invite-only
 - `supabase/migrations/20260727010000_gateway_rate_limits.sql`
 - `supabase/migrations/20260727010100_gateway_rate_limit_cleanup.sql`
 - `supabase/migrations/20260808220000_staff_profiles_and_attachment_actors.sql`（staff_profiles + 添付 user_id）
+- `supabase/migrations/20260808230000_staff_profiles_is_admin.sql`（is_admin）
 
 レート制限の古い bucket 掃除:
 

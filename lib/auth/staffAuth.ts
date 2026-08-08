@@ -12,6 +12,7 @@ export type StaffProfileRow = {
   id: string;
   display_name: string;
   is_active: boolean;
+  is_admin: boolean;
 };
 
 export type AuthLoginSuccess = {
@@ -64,11 +65,23 @@ export async function loadStaffProfile(
   const admin = getServiceRoleSupabase();
   const { data, error } = await admin
     .from("staff_profiles")
-    .select("id, display_name, is_active")
+    .select("id, display_name, is_active, is_admin")
     .eq("id", userId)
     .maybeSingle();
   if (error || !data) return null;
-  return data as StaffProfileRow;
+  const row = data as {
+    id: string;
+    display_name: string;
+    is_active: boolean;
+    is_admin?: boolean | null;
+  };
+  return {
+    id: row.id,
+    display_name: row.display_name,
+    is_active: row.is_active,
+    // Migration 未適用環境でも落ちないよう欠落時は false
+    is_admin: row.is_admin === true,
+  };
 }
 
 /**
@@ -189,7 +202,12 @@ export async function signOutSupabaseTokens(input: {
 export async function assertStaffSessionStillAllowed(
   session: StaffSession
 ): Promise<
-  | { ok: true; displayName: string | null; email: string | null }
+  | {
+      ok: true;
+      displayName: string | null;
+      email: string | null;
+      isAdmin: boolean;
+    }
   | { ok: false; error_code: "INACTIVE" | "PROFILE_MISSING" | "CONFIG_ERROR" }
 > {
   if (session.authMode === "legacy_password" || !session.userId) {
@@ -197,6 +215,7 @@ export async function assertStaffSessionStillAllowed(
       ok: true,
       displayName: session.displayName,
       email: session.email,
+      isAdmin: false,
     };
   }
   try {
@@ -207,6 +226,7 @@ export async function assertStaffSessionStillAllowed(
       ok: true,
       displayName: profile.display_name,
       email: session.email,
+      isAdmin: profile.is_admin,
     };
   } catch (e) {
     if (e instanceof ServerAdminConfigError) {
