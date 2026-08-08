@@ -98,6 +98,44 @@ export function activeInvoicesForCollection<
   return invoices.filter((inv) => isActiveInvoiceStatus(inv.status));
 }
 
+/**
+ * 未収の有効請求。
+ * - 取消請求は除外（activeInvoicesForCollection）
+ * - 確認済入金が請求額に達した請求は除外
+ * - 一部入金は未収として残す
+ */
+export function unpaidActiveInvoicesForCollection(
+  invoices: ReadonlyArray<CollectionQueueInvoiceInput>,
+  payments: ReadonlyArray<CollectionQueuePaymentInput>
+): CollectionQueueInvoiceInput[] {
+  return activeInvoicesForCollection(invoices).filter((inv) => {
+    const invPayments = payments.filter((p) => p.invoice_id === inv.id);
+    const summary = summarizeInvoicePayments({
+      invoiceAmount: inv.invoice_amount,
+      dueDate: inv.due_date,
+      payments: paymentInputs(invPayments),
+    });
+    return summary.paymentStatus !== "入金済";
+  });
+}
+
+/** 入金系 secondary ボタンの href / 文言（状態判定自体は変えない） */
+export function resolveCollectionPaymentSecondary(
+  caseId: string,
+  unpaidInvoices: ReadonlyArray<CollectionQueueInvoiceInput>
+): { secondaryHref: string; secondaryLabel: string } {
+  if (unpaidInvoices.length === 1) {
+    return {
+      secondaryHref: `/invoices/${unpaidInvoices[0].id}/payments/new`,
+      secondaryLabel: "入金登録",
+    };
+  }
+  return {
+    secondaryHref: `/cases/${caseId}?tab=invoice`,
+    secondaryLabel: "請求・入金",
+  };
+}
+
 /** 前金完了: isPaymentConfirmedFromBilling と同趣旨 */
 export function isAdvancePaymentComplete(input: {
   depositAmount: number | null | undefined;
@@ -171,13 +209,17 @@ function evaluateAdvance(input: CollectionQueueCaseInput): CollectionQueueRow | 
   } else if (paid <= 0) {
     stateLabel = "未入金";
     nextAction = "入金確認";
-    secondaryHref = "/payments";
-    secondaryLabel = "入金管理";
+    ({ secondaryHref, secondaryLabel } = resolveCollectionPaymentSecondary(
+      input.id,
+      unpaidActiveInvoicesForCollection(input.invoices, input.payments)
+    ));
   } else {
     stateLabel = "一部入金";
     nextAction = "残額確認";
-    secondaryHref = "/payments";
-    secondaryLabel = "入金管理";
+    ({ secondaryHref, secondaryLabel } = resolveCollectionPaymentSecondary(
+      input.id,
+      unpaidActiveInvoicesForCollection(input.invoices, input.payments)
+    ));
   }
 
   return baseRow(input, {
@@ -259,6 +301,11 @@ function evaluateCredit(input: CollectionQueueCaseInput): CollectionQueueRow | n
     nextAction = "入金確認";
   }
 
+  const paymentSecondary = resolveCollectionPaymentSecondary(
+    input.id,
+    unpaidActiveInvoicesForCollection(input.invoices, input.payments)
+  );
+
   return baseRow(input, {
     settlementType: "売掛",
     amountLabel: "請求額",
@@ -267,8 +314,8 @@ function evaluateCredit(input: CollectionQueueCaseInput): CollectionQueueRow | n
     nextAction,
     dueDate,
     isOverdue: summary.isOverdue,
-    secondaryHref: "/payments",
-    secondaryLabel: "入金管理",
+    secondaryHref: paymentSecondary.secondaryHref,
+    secondaryLabel: paymentSecondary.secondaryLabel,
   });
 }
 
