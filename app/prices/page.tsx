@@ -1,38 +1,70 @@
 import Link from "next/link";
-import { supabase } from "@/lib/supabase";
+
+import PriceListSearchForm from "@/app/components/prices/PriceListSearchForm";
+import {
+  collectPriceListCategories,
+  filterPriceListRows,
+  parsePriceListQuery,
+  type PriceListFilterRow,
+} from "@/lib/prices/priceListQuery";
+import {
+  resolveTargetDisplay,
+  type PackageRel,
+  type ProductRel,
+} from "@/lib/prices/resolveTargetDisplay";
 import { priceTargetLabel } from "@/lib/prices/targetType";
+import { supabase } from "@/lib/supabase";
+
 import PriceActions from "./PriceActions";
 
 export const dynamic = "force-dynamic";
 
-type ManufacturerRel = { name: string | null } | null;
+type Option = { id: string; name: string };
 
-type ProductRel = {
-  name: string | null;
-  model_no: string | null;
-  category: string | null;
-  manufacturers: ManufacturerRel;
-} | null;
+function toOptions(
+  rows: Array<{ id: string; name: string | null }> | null | undefined
+): Option[] {
+  return (rows || [])
+    .map((r) => ({
+      id: r.id,
+      name: (r.name || "").trim() || "名称未設定",
+    }))
+    .filter((r) => r.id);
+}
 
-type PackageRel = {
-  name: string | null;
-  package_code: string | null;
-  capacity: number | string | null;
-  capacity_unit: string | null;
-  system_type: string | null;
-  manufacturers: ManufacturerRel;
-} | null;
+export default async function PricesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{
+    q?: string;
+    supplier_id?: string;
+    manufacturer_id?: string;
+    price_target_type?: string;
+    category?: string;
+    status?: string;
+  }>;
+}) {
+  const params = await searchParams;
+  const query = parsePriceListQuery({
+    ...params,
+    partnerParam: "supplier_id",
+  });
 
-export default async function PricesPage() {
-  let { data: prices, error } = await supabase
-    .from("purchase_prices")
-    .select(
-      `
+  const [
+    { data: prices, error: pricesError },
+    { data: manufacturers },
+    { data: suppliers },
+  ] = await Promise.all([
+    supabase
+      .from("purchase_prices")
+      .select(
+        `
       *,
       products (
         name,
         model_no,
         category,
+        manufacturer_id,
         manufacturers (
           name
         )
@@ -43,6 +75,7 @@ export default async function PricesPage() {
         capacity,
         capacity_unit,
         system_type,
+        manufacturer_id,
         manufacturers (
           name
         )
@@ -51,15 +84,29 @@ export default async function PricesPage() {
         name
       )
     `
-    )
-    .order("created_at", { ascending: false });
+      )
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("manufacturers")
+      .select("id, name")
+      .order("name", { ascending: true }),
+    supabase
+      .from("suppliers")
+      .select("id, name, is_active")
+      .order("name", { ascending: true }),
+  ]);
+
+  let rows = prices;
+  let error = pricesError;
 
   // price_target_type / package_id 未適用環境向けフォールバック
   if (
     error &&
-    /price_target_type|package_id|packages|schema cache/i.test(error.message)
+    /price_target_type|package_id|packages|schema cache|manufacturer_id/i.test(
+      error.message
+    )
   ) {
-    ({ data: prices, error } = await supabase
+    ({ data: rows, error } = await supabase
       .from("purchase_prices")
       .select(
         `
@@ -79,6 +126,66 @@ export default async function PricesPage() {
       )
       .order("created_at", { ascending: false }));
   }
+
+  const listRows: PriceListFilterRow[] = ((rows || []) as Array<
+    Record<string, unknown>
+  >).map((item) => {
+    const targetType =
+      (item.price_target_type as string | null) || "PRODUCT";
+    const product = item.products as ProductRel;
+    const pkg = item.packages as PackageRel;
+    const display = resolveTargetDisplay(targetType, product, pkg);
+    return {
+      id: String(item.id),
+      partnerId: ((item.supplier_id as string | null) || "").trim() || null,
+      manufacturerId: display.manufacturerId,
+      manufacturerName: display.maker === "-" ? "" : display.maker,
+      priceTargetType: targetType,
+      category: display.category,
+      code: display.code,
+      name: display.name,
+      is_active: item.is_active,
+    };
+  });
+
+  const filtered = filterPriceListRows(listRows, query);
+  const visibleIds = new Set(filtered.map((r) => r.id));
+  const visible = ((rows || []) as Array<Record<string, unknown>>).filter(
+    (item) => visibleIds.has(String(item.id))
+  );
+
+  const categories = collectPriceListCategories(
+    listRows,
+    query.manufacturerId || undefined
+  );
+
+  const manufacturerOptions = toOptions(
+    manufacturers as Array<{ id: string; name: string | null }> | null
+  );
+  const supplierOptions = toOptions(
+    (
+      (suppliers || []) as Array<{
+        id: string;
+        name: string | null;
+        is_active: unknown;
+      }>
+    )
+      .filter(
+        (s) =>
+          s.is_active === true ||
+          s.is_active === "true" ||
+          s.is_active == null
+      )
+      .map((s) => ({ id: s.id, name: s.name }))
+  );
+
+  const hasFilters =
+    Boolean(query.q) ||
+    Boolean(query.partnerId) ||
+    Boolean(query.manufacturerId) ||
+    Boolean(query.priceTargetType) ||
+    Boolean(query.category) ||
+    query.status !== "all";
 
   return (
     <>
@@ -109,6 +216,22 @@ export default async function PricesPage() {
       </header>
 
       <main className="p-8">
+        <PriceListSearchForm
+          action="/prices"
+          partnerLabel="仕入先"
+          partnerParamName="supplier_id"
+          q={query.q}
+          partnerId={query.partnerId}
+          manufacturerId={query.manufacturerId}
+          priceTargetType={query.priceTargetType}
+          category={query.category}
+          status={query.status}
+          partners={supplierOptions}
+          manufacturers={manufacturerOptions}
+          categories={categories}
+          resultCount={visible.length}
+        />
+
         <div className="overflow-hidden rounded-xl bg-white shadow-sm">
           <table className="min-w-full">
             <thead className="bg-gray-100">
@@ -130,20 +253,30 @@ export default async function PricesPage() {
             <tbody>
               {error ? (
                 <tr>
-                  <td colSpan={11} className="px-5 py-10 text-center text-red-500">
+                  <td
+                    colSpan={11}
+                    className="px-5 py-10 text-center text-red-500"
+                  >
                     データ取得エラー：{error.message}
                   </td>
                 </tr>
-              ) : prices && prices.length > 0 ? (
-                prices.map((item) => {
+              ) : visible.length > 0 ? (
+                visible.map((item) => {
                   const targetType =
                     (item.price_target_type as string | null) || "PRODUCT";
                   const product = item.products as ProductRel;
                   const pkg = item.packages as PackageRel;
-                  const display = resolveTargetDisplay(targetType, product, pkg);
+                  const display = resolveTargetDisplay(
+                    targetType,
+                    product,
+                    pkg
+                  );
 
                   return (
-                    <tr key={item.id} className="border-t hover:bg-gray-50">
+                    <tr
+                      key={String(item.id)}
+                      className="border-t hover:bg-gray-50"
+                    >
                       <td className="px-5 py-4">
                         <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-700">
                           {priceTargetLabel(targetType)}
@@ -152,18 +285,24 @@ export default async function PricesPage() {
                       <td className="px-5 py-4">{display.maker}</td>
                       <td className="px-5 py-4">{display.category}</td>
                       <td className="px-5 py-4">{display.code}</td>
-                      <td className="px-5 py-4 font-semibold">{display.name}</td>
+                      <td className="px-5 py-4 font-semibold">
+                        {display.name}
+                      </td>
                       <td className="px-5 py-4">
-                        {(item.suppliers as { name: string | null } | null)?.name ||
-                          "-"}
+                        {(item.suppliers as { name: string | null } | null)
+                          ?.name || "-"}
                       </td>
                       <td className="px-5 py-4 font-bold">
                         {item.purchase_price
                           ? `${Number(item.purchase_price).toLocaleString()}円`
                           : "-"}
                       </td>
-                      <td className="px-5 py-4">{item.start_date || "-"}</td>
-                      <td className="px-5 py-4">{item.end_date || "-"}</td>
+                      <td className="px-5 py-4">
+                        {(item.start_date as string | null) || "-"}
+                      </td>
+                      <td className="px-5 py-4">
+                        {(item.end_date as string | null) || "-"}
+                      </td>
                       <td className="px-5 py-4">
                         {item.is_active ? (
                           <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-bold text-green-700">
@@ -176,7 +315,7 @@ export default async function PricesPage() {
                         )}
                       </td>
                       <td className="px-5 py-4 text-center">
-                        <PriceActions id={item.id} />
+                        <PriceActions id={String(item.id)} />
                       </td>
                     </tr>
                   );
@@ -187,7 +326,9 @@ export default async function PricesPage() {
                     colSpan={11}
                     className="px-5 py-10 text-center text-gray-500"
                   >
-                    価格が登録されていません。
+                    {hasFilters
+                      ? "条件に一致する価格がありません。"
+                      : "価格が登録されていません。"}
                   </td>
                 </tr>
               )}
@@ -197,30 +338,4 @@ export default async function PricesPage() {
       </main>
     </>
   );
-}
-
-function resolveTargetDisplay(
-  targetType: string,
-  product: ProductRel,
-  pkg: PackageRel
-) {
-  if (targetType === "PACKAGE") {
-    const capacity =
-      pkg?.capacity != null && pkg.capacity !== ""
-        ? `${pkg.capacity}${pkg.capacity_unit || ""}`
-        : "-";
-    return {
-      maker: pkg?.manufacturers?.name || "-",
-      category: pkg?.system_type || capacity,
-      code: pkg?.package_code || "-",
-      name: pkg?.name || "-",
-    };
-  }
-
-  return {
-    maker: product?.manufacturers?.name || "-",
-    category: product?.category || "-",
-    code: product?.model_no || "-",
-    name: product?.name || "-",
-  };
 }
