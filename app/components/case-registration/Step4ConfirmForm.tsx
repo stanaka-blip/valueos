@@ -1,5 +1,7 @@
 "use client";
 
+import AttachmentQueue from "@/app/components/case-attachments/AttachmentQueue";
+import type { PendingAttachmentDraft } from "@/lib/caseAttachments/clientUpload";
 import type {
   DealerOption,
   PackageOption,
@@ -21,10 +23,16 @@ type Props = {
   dealers: DealerOption[];
   products: ProductOption[];
   packages: PackageOption[];
+  attachmentDrafts: PendingAttachmentDraft[];
+  onAttachmentDraftsChange: (drafts: PendingAttachmentDraft[]) => void;
   submitting: boolean;
+  uploadingAttachments: boolean;
   submitError: string | null;
   onBack: () => void;
   onSubmit: () => void;
+  onRetryFailedUploads?: () => void;
+  onContinueToCase?: () => void;
+  createdCaseId?: string | null;
 };
 
 export default function Step4ConfirmForm({
@@ -34,18 +42,32 @@ export default function Step4ConfirmForm({
   dealers,
   products,
   packages,
+  attachmentDrafts,
+  onAttachmentDraftsChange,
   submitting,
+  uploadingAttachments,
   submitError,
   onBack,
   onSubmit,
+  onRetryFailedUploads,
+  onContinueToCase,
+  createdCaseId,
 }: Props) {
   const dealerName = dealers.find((d) => d.id === caseForm.dealer_id)?.name || "—";
+  const hasFailedUploads = attachmentDrafts.some((d) => d.status === "error");
+  const busy = submitting || uploadingAttachments;
 
   return (
     <div className="space-y-6">
       {submitError ? (
         <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
           {submitError}
+        </div>
+      ) : null}
+
+      {createdCaseId ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+          案件は登録済みです。失敗した添付は再送できます。案件詳細の「資料」タブからも追加できます。
         </div>
       ) : null}
 
@@ -173,23 +195,57 @@ export default function Step4ConfirmForm({
         </p>
       </section>
 
-      <div className="sticky bottom-0 flex justify-between gap-3 bg-gray-100/95 py-3 backdrop-blur">
+      <AttachmentQueue
+        drafts={attachmentDrafts}
+        onChange={onAttachmentDraftsChange}
+        disabled={busy || Boolean(createdCaseId)}
+        title="添付資料（任意）"
+      />
+
+      <div className="sticky bottom-0 flex flex-wrap justify-between gap-3 bg-gray-100/95 py-3 backdrop-blur">
         <button
           type="button"
           onClick={onBack}
-          disabled={submitting}
+          disabled={busy || Boolean(createdCaseId)}
           className="rounded-lg border border-gray-300 bg-white px-5 py-2.5 text-sm disabled:opacity-50"
         >
           戻る
         </button>
-        <button
-          type="button"
-          onClick={onSubmit}
-          disabled={submitting}
-          className="rounded-lg bg-gray-900 px-5 py-2.5 text-sm font-medium text-white disabled:opacity-60"
-        >
-          {submitting ? "登録中..." : "登録する"}
-        </button>
+        <div className="flex flex-wrap gap-2">
+          {hasFailedUploads && onRetryFailedUploads ? (
+            <button
+              type="button"
+              onClick={onRetryFailedUploads}
+              disabled={uploadingAttachments}
+              className="rounded-lg border border-gray-300 bg-white px-5 py-2.5 text-sm disabled:opacity-50"
+            >
+              失敗分を再送
+            </button>
+          ) : null}
+          {createdCaseId && onContinueToCase ? (
+            <button
+              type="button"
+              onClick={onContinueToCase}
+              disabled={uploadingAttachments}
+              className="rounded-lg bg-gray-900 px-5 py-2.5 text-sm font-medium text-white disabled:opacity-60"
+            >
+              案件詳細へ
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onSubmit}
+              disabled={busy}
+              className="rounded-lg bg-gray-900 px-5 py-2.5 text-sm font-medium text-white disabled:opacity-60"
+            >
+              {uploadingAttachments
+                ? "添付アップロード中..."
+                : submitting
+                  ? "登録中..."
+                  : "登録する"}
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -6,7 +6,8 @@ export type CaseDetailTabId =
   | "delivery"
   | "invoice"
   | "payment"
-  | "profit";
+  | "profit"
+  | "documents";
 
 export const CASE_DETAIL_TABS: { id: CaseDetailTabId; label: string }[] = [
   { id: "basic", label: "基本情報" },
@@ -17,6 +18,7 @@ export const CASE_DETAIL_TABS: { id: CaseDetailTabId; label: string }[] = [
   { id: "invoice", label: "請求・入金" },
   { id: "payment", label: "支払" },
   { id: "profit", label: "粗利" },
+  { id: "documents", label: "資料" },
 ];
 
 const CASE_DETAIL_TAB_IDS = new Set<string>(

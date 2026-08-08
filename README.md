@@ -122,6 +122,32 @@ ValueOS の社内業務画面は原則すべて暫定の社内パスワードゲ
 
 ---
 
+## 案件添付資料（Direct-to-Storage）
+
+案件登録ウィザードおよび案件詳細「資料」タブから、ファイルを Supabase Storage へ直接アップロードします。  
+**ファイル本体は Vercel Route Handler を経由しません**（gateway は intent / complete / signed download のみ）。
+
+| 項目 | 値 |
+|---|---|
+| Bucket | `case-attachments`（**private**） |
+| Path | `cases/{case_id}/{attachment_id}/{sanitized_filename}`（server 生成のみ） |
+| 制限 | 1ファイル 20MB / 1案件 20件 / 合計 100MB |
+| 公開 URL | 禁止（短寿命 signed download のみ） |
+
+### 本番適用（コード PR と分離）
+
+1. DB: `supabase/migrations/20260808200000_case_attachments.sql` を人間が適用  
+2. Storage: `docs/case-attachments-storage.md` の手順で bucket 作成  
+
+### 関連テスト
+
+```bash
+npx tsx lib/caseAttachments/validation.test.ts
+node scripts/pr-case-attachments-contract-test.mjs
+```
+
+---
+
 ## Learn More
 
 - [Next.js Documentation](https://nextjs.org/docs)

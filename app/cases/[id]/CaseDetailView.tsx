@@ -10,6 +10,7 @@ import type { WorkflowResult } from "@/lib/workflow";
 import SettlementForm from "./SettlementForm";
 import WorkflowPanel from "./WorkflowPanel";
 import type { SettlementViewData } from "./settlementView";
+import CaseDocumentsPanel from "@/app/components/case-attachments/CaseDocumentsPanel";
 import {
   CASE_DETAIL_TABS,
   resolveCaseDetailTabId,
@@ -508,6 +509,9 @@ export default function CaseDetailView({
                 settlement={settlement}
                 resolveFee={resolveFee}
               />
+            ) : null}
+            {viewMode === "detail" && tab === "documents" ? (
+              <CaseDocumentsPanel caseId={caseData.id} />
             ) : null}
           </div>
         </main>
