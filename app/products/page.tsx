@@ -1,5 +1,14 @@
 import Link from "next/link";
+
 import { supabase } from "@/lib/supabase";
+
+import ProductListSearchForm from "./ProductListSearchForm";
+import {
+  filterProductListRows,
+  parseProductListQuery,
+  sortProductListRows,
+  type ProductListRow,
+} from "./productListQuery";
 
 export const dynamic = "force-dynamic";
 
@@ -15,11 +24,50 @@ function supplierName(
   return row?.name?.trim() || "未設定";
 }
 
-export default async function ProductsPage() {
-  const { data: products, error } = await supabase
-    .from("products")
-    .select(
-      `
+function relationName(
+  value:
+    | { name: string | null }
+    | { name: string | null }[]
+    | null
+    | undefined
+): string {
+  if (!value) return "";
+  const row = Array.isArray(value) ? value[0] : value;
+  return (row?.name || "").trim();
+}
+
+type ProductFetchRow = {
+  id: string;
+  name: string | null;
+  category: string | null;
+  model_no: string | null;
+  capacity: string | null;
+  unit: string | null;
+  is_active: unknown;
+  manufacturer_id: string | null;
+  manufacturers: { name: string | null } | { name: string | null }[] | null;
+  series: { name: string | null } | { name: string | null }[] | null;
+  suppliers: { name: string | null } | { name: string | null }[] | null;
+};
+
+export default async function ProductsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{
+    q?: string;
+    manufacturer_id?: string;
+    category?: string;
+    status?: string;
+  }>;
+}) {
+  const params = await searchParams;
+  const query = parseProductListQuery(params);
+
+  const [{ data: products, error }, { data: manufacturers }] = await Promise.all([
+    supabase
+      .from("products")
+      .select(
+        `
       id,
       name,
       category,
@@ -27,12 +75,60 @@ export default async function ProductsPage() {
       capacity,
       unit,
       is_active,
+      manufacturer_id,
       manufacturers ( name ),
       series:series_id ( name ),
       suppliers:default_supplier_id ( name )
     `
+      )
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("manufacturers")
+      .select("id, name")
+      .order("name", { ascending: true }),
+  ]);
+
+  const rawRows = (products || []) as ProductFetchRow[];
+  const listRows: ProductListRow[] = rawRows.map((item) => ({
+    id: item.id,
+    name: item.name,
+    category: item.category,
+    model_no: item.model_no,
+    is_active: item.is_active,
+    manufacturer_id: item.manufacturer_id,
+    manufacturerName: relationName(item.manufacturers),
+  }));
+
+  const filtered = sortProductListRows(filterProductListRows(listRows, query));
+  const filteredIds = new Set(filtered.map((r) => r.id));
+  const visible = rawRows
+    .filter((row) => filteredIds.has(row.id))
+    .sort((a, b) => {
+      const ai = filtered.findIndex((r) => r.id === a.id);
+      const bi = filtered.findIndex((r) => r.id === b.id);
+      return ai - bi;
+    });
+
+  const categories = Array.from(
+    new Set(
+      rawRows
+        .map((r) => (r.category || "").trim())
+        .filter((c): c is string => Boolean(c))
     )
-    .order("created_at", { ascending: false });
+  ).sort((a, b) => a.localeCompare(b, "ja"));
+
+  const manufacturerOptions = (manufacturers || [])
+    .map((m) => ({
+      id: m.id as string,
+      name: ((m.name as string | null) || "").trim() || "名称未設定",
+    }))
+    .filter((m) => m.id);
+
+  const hasFilters =
+    Boolean(query.q) ||
+    Boolean(query.manufacturerId) ||
+    Boolean(query.category) ||
+    query.status !== "all";
 
   return (
     <>
@@ -55,6 +151,16 @@ export default async function ProductsPage() {
       </header>
 
       <main className="p-8">
+        <ProductListSearchForm
+          q={query.q}
+          manufacturerId={query.manufacturerId}
+          category={query.category}
+          status={query.status}
+          manufacturers={manufacturerOptions}
+          categories={categories}
+          resultCount={visible.length}
+        />
+
         <div className="overflow-hidden rounded-xl bg-white shadow-sm">
           <table className="min-w-full">
             <thead className="bg-gray-100">
@@ -78,33 +184,16 @@ export default async function ProductsPage() {
                     データ取得エラー：{error.message}
                   </td>
                 </tr>
-              ) : products && products.length > 0 ? (
-                products.map((item) => {
-                  const manufacturer = item.manufacturers as
-                    | { name: string | null }
-                    | { name: string | null }[]
-                    | null;
-                  const series = item.series as
-                    | { name: string | null }
-                    | { name: string | null }[]
-                    | null;
-                  const maker = Array.isArray(manufacturer)
-                    ? manufacturer[0]?.name
-                    : manufacturer?.name;
-                  const seriesName = Array.isArray(series)
-                    ? series[0]?.name
-                    : series?.name;
-                  const defaultSupplier = supplierName(
-                    item.suppliers as
-                      | { name: string | null }
-                      | { name: string | null }[]
-                      | null
-                  );
+              ) : visible.length > 0 ? (
+                visible.map((item) => {
+                  const maker = relationName(item.manufacturers) || "-";
+                  const seriesName = relationName(item.series) || "-";
+                  const defaultSupplier = supplierName(item.suppliers);
 
                   return (
                     <tr key={item.id} className="border-t hover:bg-gray-50">
-                      <td className="px-5 py-4 font-semibold">{maker || "-"}</td>
-                      <td className="px-5 py-4">{seriesName || "-"}</td>
+                      <td className="px-5 py-4 font-semibold">{maker}</td>
+                      <td className="px-5 py-4">{seriesName}</td>
                       <td className="px-5 py-4">{item.category || "-"}</td>
                       <td className="px-5 py-4">{item.model_no || "-"}</td>
                       <td className="px-5 py-4 font-semibold">{item.name || "-"}</td>
@@ -145,7 +234,9 @@ export default async function ProductsPage() {
               ) : (
                 <tr>
                   <td colSpan={9} className="px-5 py-10 text-center text-gray-500">
-                    商品が登録されていません。
+                    {hasFilters
+                      ? "条件に一致する商品がありません"
+                      : "商品が登録されていません。"}
                   </td>
                 </tr>
               )}
