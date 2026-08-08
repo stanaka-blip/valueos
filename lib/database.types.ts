@@ -553,6 +553,58 @@ export type Database = {
         Relationships: [];
       };
       /**
+       * 施工店マスタ（20260808120000_create_contractors）。
+       * 案件への FK / 同期は持たない。
+       */
+      contractors: {
+        Row: {
+          id: string;
+          created_at: string;
+          updated_at: string;
+          name: string;
+          postal_code: string | null;
+          address: string | null;
+          phone: string | null;
+          delivery_name: string | null;
+          delivery_address: string | null;
+          delivery_phone: string | null;
+          receiver_name: string | null;
+          memo: string | null;
+          is_active: boolean;
+        };
+        Insert: {
+          id?: string;
+          created_at?: string;
+          updated_at?: string;
+          name: string;
+          postal_code?: string | null;
+          address?: string | null;
+          phone?: string | null;
+          delivery_name?: string | null;
+          delivery_address?: string | null;
+          delivery_phone?: string | null;
+          receiver_name?: string | null;
+          memo?: string | null;
+          is_active?: boolean;
+        };
+        Update: {
+          id?: string;
+          created_at?: string;
+          updated_at?: string;
+          name?: string;
+          postal_code?: string | null;
+          address?: string | null;
+          phone?: string | null;
+          delivery_name?: string | null;
+          delivery_address?: string | null;
+          delivery_phone?: string | null;
+          receiver_name?: string | null;
+          memo?: string | null;
+          is_active?: boolean;
+        };
+        Relationships: [];
+      };
+      /**
        * 請求（ライブスキーマ互換の手生成型）。
        * subtotal_ex_tax / tax_amount は 20260807120000 で追加（NULL可）。
        */
