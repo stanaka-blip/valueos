@@ -151,12 +151,20 @@ export default async function PackagesPage({
               パッケージ構成・保証を管理します
             </p>
           </div>
-          <Link
-            href="/packages/new"
-            className="rounded-lg bg-gray-900 px-5 py-3 text-sm font-bold text-white"
-          >
-            ＋ パッケージ商品登録
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/packages/bulk"
+              className="rounded-lg border border-gray-300 bg-white px-5 py-3 text-sm font-bold text-gray-800"
+            >
+              ＋ パッケージ一括登録
+            </Link>
+            <Link
+              href="/packages/new"
+              className="rounded-lg bg-gray-900 px-5 py-3 text-sm font-bold text-white"
+            >
+              ＋ パッケージ商品登録
+            </Link>
+          </div>
         </div>
       </header>
 
