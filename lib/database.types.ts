@@ -603,6 +603,50 @@ export type Database = {
           },
         ];
       };
+      package_bulk_setup_requests: {
+        Row: {
+          request_id: string;
+          manufacturer_id: string | null;
+          status: string;
+          payload_hash: string;
+          error_code: string | null;
+          error_message: string | null;
+          response: Json | null;
+          created_at: string;
+          completed_at: string | null;
+        };
+        Insert: {
+          request_id: string;
+          manufacturer_id?: string | null;
+          status: string;
+          payload_hash: string;
+          error_code?: string | null;
+          error_message?: string | null;
+          response?: Json | null;
+          created_at?: string;
+          completed_at?: string | null;
+        };
+        Update: {
+          request_id?: string;
+          manufacturer_id?: string | null;
+          status?: string;
+          payload_hash?: string;
+          error_code?: string | null;
+          error_message?: string | null;
+          response?: Json | null;
+          created_at?: string;
+          completed_at?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "package_bulk_setup_requests_manufacturer_id_fkey";
+            columns: ["manufacturer_id"];
+            isOneToOne: false;
+            referencedRelation: "manufacturers";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       case_line_append_requests: {
         Row: {
           request_id: string;
@@ -1004,6 +1048,12 @@ export type Database = {
         Returns: Json;
       };
       create_dealer_sales_prices: {
+        Args: {
+          payload: Json;
+        };
+        Returns: Json;
+      };
+      create_package_bulk_setup: {
         Args: {
           payload: Json;
         };
