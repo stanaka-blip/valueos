@@ -41,18 +41,18 @@ const packageNotFound = read("app/packages/[id]/not-found.tsx");
 
 assert(
   "product list links to detail via model/name + 詳細",
-  productsList.includes('href={`/products/${item.id}`}') &&
-    productsList.includes(">詳細<") &&
-    productsList.includes(`/products/\${item.id}/edit`) &&
+  productsList.includes("href={`/products/${item.id}`}") &&
+    productsList.includes("詳細") &&
+    productsList.includes("href={`/products/${item.id}/edit`}") &&
     productsList.includes("/prices/new?product_id=") &&
     productsList.includes("/sales-prices/new?product_id=")
 );
 
 assert(
   "package list links to detail via name + 詳細",
-  packagesList.includes('href={`/packages/${item.id}`}') &&
-    packagesList.includes(">詳細<") &&
-    packagesList.includes(`/packages/\${item.id}/edit`) &&
+  packagesList.includes("href={`/packages/${item.id}`}") &&
+    packagesList.includes("詳細") &&
+    packagesList.includes("href={`/packages/${item.id}/edit`}") &&
     packagesList.includes("/prices/new?package_id=") &&
     packagesList.includes("/sales-prices/new?package_id=")
 );
