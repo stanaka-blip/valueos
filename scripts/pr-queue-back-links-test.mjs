@@ -60,7 +60,8 @@ assert(
   "invoice detail → /queues/collections",
   invoiceDetail.includes('href="/queues/collections"') &&
     invoiceDetail.includes("回収管理へ戻る") &&
-    invoiceDetail.includes("一覧へ戻る")
+    !invoiceDetail.includes("一覧へ戻る") &&
+    !invoiceDetail.includes("/invoices/${invoice.id}/edit")
 );
 
 assert(

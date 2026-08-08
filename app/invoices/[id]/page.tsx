@@ -153,10 +153,10 @@ export default async function InvoiceDetailPage({
           </div>
 
           <Link
-            href="/invoices"
+            href="/queues/collections"
             className="mt-5 inline-flex rounded-lg border bg-white px-4 py-2 text-sm font-bold text-gray-700"
           >
-            請求一覧へ戻る
+            ← 回収管理へ戻る
           </Link>
         </main>
       </>
@@ -204,20 +204,6 @@ export default async function InvoiceDetailPage({
               className="rounded-lg border bg-white px-4 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50"
             >
               ← 回収管理へ戻る
-            </Link>
-
-            <Link
-              href="/invoices"
-              className="rounded-lg border bg-white px-4 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50"
-            >
-              一覧へ戻る
-            </Link>
-
-            <Link
-              href={`/invoices/${invoice.id}/edit`}
-              className="rounded-lg border bg-white px-4 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50"
-            >
-              編集
             </Link>
 
             <Link
@@ -498,7 +484,7 @@ export default async function InvoiceDetailPage({
               </h2>
 
               <p className="mt-1 text-sm text-gray-500">
-                入金登録・請求情報編集・PDF作成を行います。
+                入金登録・請求書PDF作成を行います。
               </p>
             </div>
 
@@ -513,19 +499,12 @@ export default async function InvoiceDetailPage({
               ) : null}
 
               <Link
-                href={`/invoices/${invoice.id}/edit`}
+                href={`/invoices/${invoice.id}/print`}
+                target="_blank"
                 className="rounded-lg border bg-white px-4 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50"
               >
-                請求情報を編集
+                請求書PDF
               </Link>
-
-              <Link
-  href={`/invoices/${invoice.id}/print`}
-  target="_blank"
-  className="rounded-lg border bg-white px-4 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50"
->
-  請求書PDF
-</Link>
             </div>
           </div>
         </section>
