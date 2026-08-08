@@ -101,7 +101,17 @@ assert(
 assert(
   "orphan cleanup for expired intents",
   core.includes("cleanupExpiredAttachmentIntents") &&
-    core.includes('status: "expired"')
+    core.includes('status: "expired"') &&
+    core.includes("byId?.id || byPath?.id")
+);
+assert(
+  "signed download/deactivate require case_id",
+  core.includes("expectedCaseId: string") &&
+    core.includes("data.case_id !== input.expectedCaseId")
+);
+assert(
+  "complete rechecks case quota",
+  core.includes("complete 時点でも件数・合計を再確認")
 );
 assert(
   "soft-delete only",

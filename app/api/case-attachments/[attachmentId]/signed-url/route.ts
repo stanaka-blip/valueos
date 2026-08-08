@@ -28,7 +28,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     ? auth.body
     : {}) as Record<string, unknown>;
   const expectedCaseId =
-    typeof body.case_id === "string" ? body.case_id : null;
+    typeof body.case_id === "string" ? body.case_id : "";
 
   const result = await createSignedDownloadUrl({
     attachmentId,

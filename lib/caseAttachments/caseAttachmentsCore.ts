@@ -140,7 +140,7 @@ async function loadCaseQuota(
 
 /**
  * 期限切れ pending intent を orphan として検出・best-effort 削除。
- * Storage object があれば remove を試み、intent を expired にする。
+ * 既に case_attachments へ確定済みの path は絶対に消さない。
  */
 export async function cleanupExpiredAttachmentIntents(
   client: SupabaseClient<Database> = getServiceRoleSupabase(),
@@ -150,7 +150,7 @@ export async function cleanupExpiredAttachmentIntents(
   const { data, error } = await client
     .from("case_attachment_upload_intents")
     .select(
-      "id, storage_bucket, storage_path, status, expires_at"
+      "id, attachment_id, storage_bucket, storage_path, status, expires_at"
     )
     .eq("status", "pending")
     .lt("expires_at", nowIso)
@@ -162,6 +162,33 @@ export async function cleanupExpiredAttachmentIntents(
   let cleaned = 0;
 
   for (const row of rows) {
+    const [{ data: byId }, { data: byPath }] = await Promise.all([
+      client
+        .from("case_attachments")
+        .select("id")
+        .eq("id", row.attachment_id)
+        .maybeSingle(),
+      client
+        .from("case_attachments")
+        .select("id")
+        .eq("storage_path", row.storage_path)
+        .maybeSingle(),
+    ]);
+
+    if (byId?.id || byPath?.id) {
+      // complete 後に intent 更新だけ失敗したケース: 物理削除せず completed へ寄せる
+      const { error: syncErr } = await client
+        .from("case_attachment_upload_intents")
+        .update({
+          status: "completed",
+          completed_at: nowIso,
+        })
+        .eq("id", row.id)
+        .eq("status", "pending");
+      if (!syncErr) cleaned += 1;
+      continue;
+    }
+
     try {
       await client.storage
         .from(row.storage_bucket || CASE_ATTACHMENTS_BUCKET)
@@ -376,6 +403,19 @@ export async function completeUploadIntent(input: {
       });
     }
 
+    // complete 時点でも件数・合計を再確認（この intent 自身は pending から除外）
+    const quota = await loadCaseQuota(client, intent.case_id);
+    const quotaErr = validateCaseQuota({
+      activeCount: quota.activeCount,
+      pendingCount: Math.max(0, quota.pendingCount - 1),
+      activeBytes: quota.activeBytes,
+      pendingBytes: Math.max(0, quota.pendingBytes - Number(intent.declared_byte_size)),
+      nextByteSize: Number(intent.declared_byte_size),
+    });
+    if (quotaErr) {
+      return toSafeAttachmentError(quotaErr);
+    }
+
     // Storage object の存在・サイズ確認（パスは intent 由来のみ）
     const objectPath = intent.storage_path;
     const folder = objectPath.includes("/")
@@ -586,8 +626,8 @@ export async function listCaseAttachments(input: {
 
 export async function createSignedDownloadUrl(input: {
   attachmentId: string;
-  /** 呼び出し元が期待する case_id（他案件横断禁止） */
-  expectedCaseId?: string | null;
+  /** 呼び出し元が期待する case_id（必須・他案件横断禁止） */
+  expectedCaseId: string;
   client?: SupabaseClient<Database>;
 }): Promise<Result<SafeSignedUrlSuccess>> {
   try {
@@ -596,6 +636,12 @@ export async function createSignedDownloadUrl(input: {
       return toSafeAttachmentError({
         error_code: "INVALID_ATTACHMENT_ID",
         error_message: "添付が不正です",
+      });
+    }
+    if (!isUuid(input.expectedCaseId)) {
+      return toSafeAttachmentError({
+        error_code: "INVALID_CASE_ID",
+        error_message: "案件が不正です",
       });
     }
 
@@ -619,11 +665,7 @@ export async function createSignedDownloadUrl(input: {
         error_message: "削除済みの添付です",
       });
     }
-    if (
-      input.expectedCaseId &&
-      isUuid(input.expectedCaseId) &&
-      data.case_id !== input.expectedCaseId
-    ) {
+    if (data.case_id !== input.expectedCaseId) {
       return toSafeAttachmentError({
         error_code: "FORBIDDEN",
         error_message: "この案件の添付ではありません",
@@ -665,7 +707,7 @@ export async function createSignedDownloadUrl(input: {
 export async function deactivateAttachment(input: {
   attachmentId: string;
   deletedBySid: string | null;
-  expectedCaseId?: string | null;
+  expectedCaseId: string;
   client?: SupabaseClient<Database>;
 }): Promise<Result<SafeDeactivateSuccess>> {
   try {
@@ -674,6 +716,12 @@ export async function deactivateAttachment(input: {
       return toSafeAttachmentError({
         error_code: "INVALID_ATTACHMENT_ID",
         error_message: "添付が不正です",
+      });
+    }
+    if (!isUuid(input.expectedCaseId)) {
+      return toSafeAttachmentError({
+        error_code: "INVALID_CASE_ID",
+        error_message: "案件が不正です",
       });
     }
 
@@ -689,11 +737,7 @@ export async function deactivateAttachment(input: {
         error_message: "添付が見つかりません",
       });
     }
-    if (
-      input.expectedCaseId &&
-      isUuid(input.expectedCaseId) &&
-      data.case_id !== input.expectedCaseId
-    ) {
+    if (data.case_id !== input.expectedCaseId) {
       return toSafeAttachmentError({
         error_code: "FORBIDDEN",
         error_message: "この案件の添付ではありません",
