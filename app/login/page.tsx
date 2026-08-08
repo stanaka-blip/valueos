@@ -4,12 +4,13 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, Suspense, useState } from "react";
 
 /**
- * 暫定社内ログイン画面。
- * Supabase Auth の代替として恒久化しない。将来の本格 Auth へ置換予定。
+ * 社内ログイン（Supabase Auth email + password）。
+ * 新規会員登録への導線は置かない（invite-only）。
  */
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -26,6 +27,7 @@ function LoginForm() {
           Origin: window.location.origin,
         },
         body: JSON.stringify({
+          email,
           password,
           next: searchParams.get("next") || "/",
         }),
@@ -40,11 +42,14 @@ function LoginForm() {
         setError(data.error_message || "認証に失敗しました");
         return;
       }
-      // login 直後の互換用。再読込・別タブでは GET /api/auth/csrf から再取得すること。
       if (data.csrfToken) {
         sessionStorage.setItem("vos_csrf_token", data.csrfToken);
       }
-      router.replace(typeof data.next === "string" && data.next.startsWith("/") ? data.next : "/");
+      router.replace(
+        typeof data.next === "string" && data.next.startsWith("/")
+          ? data.next
+          : "/"
+      );
       router.refresh();
     } catch {
       setError("認証に失敗しました");
@@ -55,11 +60,23 @@ function LoginForm() {
 
   return (
     <div className="mx-auto mt-16 w-full max-w-md rounded-lg bg-white p-8 shadow">
-      <h1 className="text-xl font-bold text-gray-900">社内ログイン（暫定）</h1>
+      <h1 className="text-xl font-bold text-gray-900">社内ログイン</h1>
       <p className="mt-2 text-sm text-gray-600">
-        社内業務画面用の暫定認証です。Supabase Auth ではありません。
+        社内メンバー用です。アカウントは管理者から招待・作成されます。
       </p>
       <form onSubmit={onSubmit} className="mt-6 space-y-4">
+        <label className="block text-sm font-medium text-gray-700">
+          メールアドレス
+          <input
+            type="email"
+            name="email"
+            autoComplete="username"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="mt-1 w-full rounded border px-3 py-2"
+            required
+          />
+        </label>
         <label className="block text-sm font-medium text-gray-700">
           パスワード
           <input

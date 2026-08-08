@@ -10,6 +10,7 @@ import {
   AuthConfigError,
   deriveCaseLineAppendRequestId,
   isUuid,
+  sessionActorKey,
 } from "@/lib/gateway/authCookie";
 import {
   assertCsrf,
@@ -112,7 +113,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
   let requestId: string;
   try {
-    requestId = deriveCaseLineAppendRequestId(session.sid, idempotencyKey);
+    requestId = deriveCaseLineAppendRequestId(sessionActorKey(session), idempotencyKey);
   } catch (e) {
     if (e instanceof AuthConfigError) {
       return NextResponse.json(

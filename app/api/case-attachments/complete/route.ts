@@ -31,6 +31,8 @@ export async function POST(request: NextRequest) {
   const result = await completeUploadIntent({
     intentId,
     uploadedBySid: auth.session.sid,
+    uploadedByUserId: auth.session.userId,
+    uploadedByLabel: auth.session.displayName,
   });
 
   if (!result.ok) {

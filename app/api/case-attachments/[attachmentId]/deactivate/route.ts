@@ -33,6 +33,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
   const result = await deactivateAttachment({
     attachmentId,
     deletedBySid: auth.session.sid,
+    deletedByUserId: auth.session.userId,
     expectedCaseId,
   });
 

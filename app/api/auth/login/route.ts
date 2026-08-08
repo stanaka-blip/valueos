@@ -1,11 +1,17 @@
 import { NextResponse, type NextRequest } from "next/server";
+
+import { loginWithEmailPassword } from "@/lib/auth/staffAuth";
 import {
   AUTH_COOKIE_NAME,
+  MAX_EMAIL_LENGTH,
   MAX_PASSWORD_LENGTH,
+  SB_ACCESS_COOKIE_NAME,
+  SB_REFRESH_COOKIE_NAME,
   authCookieOptions,
   createStaffSession,
-  isAppPasswordConfigured,
   isAuthSecretConfigured,
+  isLegacyStaffPasswordAllowed,
+  isAppPasswordConfigured,
   sealStaffSession,
   verifyStaffPassword,
 } from "@/lib/gateway/authCookie";
@@ -31,7 +37,9 @@ import { gatewayLog } from "@/lib/gateway/safeDto";
 export const runtime = "nodejs";
 
 /**
- * 暫定社内ログイン。Supabase Auth の代替として恒久化しない。
+ * 社内ログイン（Supabase Auth email+password）。
+ * 成功後に gateway 用 staff session cookie を発行（CSRF 維持）。
+ * ALLOW_LEGACY_STAFF_PASSWORD=true のときのみ共有パスワード緊急経路を許可。
  */
 export async function POST(request: NextRequest) {
   const started = Date.now();
@@ -55,7 +63,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (!isAppPasswordConfigured() || !isAuthSecretConfigured()) {
+  if (!isAuthSecretConfigured()) {
     gatewayLog({
       route: "auth/login",
       error_code: "CONFIG_ERROR",
@@ -90,7 +98,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         ok: false,
-        error_code: globalLimited.error === "RATE_LIMITED" ? "RATE_LIMITED" : "CONFIG_ERROR",
+        error_code:
+          globalLimited.error === "RATE_LIMITED" ? "RATE_LIMITED" : "CONFIG_ERROR",
         error_message:
           globalLimited.error === "RATE_LIMITED"
             ? "しばらく時間をおいて再度お試しください"
@@ -133,27 +142,31 @@ export async function POST(request: NextRequest) {
         ok: false,
         error_code: "BAD_REQUEST",
         error_message:
-          body.reason === "TOO_LARGE" ? "リクエストが大きすぎます" : "不正なリクエストです",
+          body.reason === "TOO_LARGE"
+            ? "リクエストが大きすぎます"
+            : "不正なリクエストです",
       },
       { status: body.reason === "TOO_LARGE" ? 413 : 400 }
     );
   }
 
-  const password =
-    body.value &&
-    typeof body.value === "object" &&
-    typeof (body.value as { password?: unknown }).password === "string"
-      ? (body.value as { password: string }).password
-      : "";
+  const obj =
+    body.value && typeof body.value === "object"
+      ? (body.value as Record<string, unknown>)
+      : {};
+  const email = typeof obj.email === "string" ? obj.email.trim() : "";
+  const password = typeof obj.password === "string" ? obj.password : "";
+  const useLegacy =
+    obj.legacySharedPassword === true && isLegacyStaffPasswordAllowed();
 
-  if (password.length > MAX_PASSWORD_LENGTH) {
+  if (password.length > MAX_PASSWORD_LENGTH || email.length > MAX_EMAIL_LENGTH) {
     return NextResponse.json(
       { ok: false, error_code: "BAD_REQUEST", error_message: "不正なリクエストです" },
       { status: 400 }
     );
   }
 
-  if (!verifyStaffPassword(password)) {
+  async function failUnauthorized() {
     const failHit = await hitRateLimit({
       bucketKey: loginGlobalFailBucket(),
       limit: LOGIN_GLOBAL_FAIL_LIMIT,
@@ -161,7 +174,10 @@ export async function POST(request: NextRequest) {
     });
     gatewayLog({
       route: "auth/login",
-      error_code: failHit.ok === false && failHit.error === "RATE_LIMITED" ? "RATE_LIMITED" : "UNAUTHORIZED",
+      error_code:
+        failHit.ok === false && failHit.error === "RATE_LIMITED"
+          ? "RATE_LIMITED"
+          : "UNAUTHORIZED",
       duration_ms: Date.now() - started,
       ok: false,
     });
@@ -176,12 +192,76 @@ export async function POST(request: NextRequest) {
       );
     }
     return NextResponse.json(
-      { ok: false, error_code: "UNAUTHORIZED", error_message: "認証に失敗しました" },
+      {
+        ok: false,
+        error_code: "UNAUTHORIZED",
+        error_message: "メールアドレスまたはパスワードが正しくありません",
+      },
       { status: 401 }
     );
   }
 
-  const session = createStaffSession();
+  let session = null as ReturnType<typeof createStaffSession>;
+  let accessToken: string | null = null;
+  let refreshToken: string | null = null;
+
+  if (useLegacy) {
+    if (!isAppPasswordConfigured() || !verifyStaffPassword(password)) {
+      return failUnauthorized();
+    }
+    session = createStaffSession({
+      authMode: "legacy_password",
+      userId: null,
+      email: "legacy@internal",
+      displayName: "社内ユーザー（暫定）",
+    });
+  } else {
+    if (!email || !password) {
+      return failUnauthorized();
+    }
+    const authResult = await loginWithEmailPassword({ email, password });
+    if (!authResult.ok) {
+      if (authResult.error.error_code === "CONFIG_ERROR") {
+        return NextResponse.json(
+          {
+            ok: false,
+            error_code: "CONFIG_ERROR",
+            error_message: authResult.error.error_message,
+          },
+          { status: 503 }
+        );
+      }
+      if (
+        authResult.error.error_code === "INACTIVE" ||
+        authResult.error.error_code === "PROFILE_MISSING"
+      ) {
+        gatewayLog({
+          route: "auth/login",
+          error_code: authResult.error.error_code,
+          duration_ms: Date.now() - started,
+          ok: false,
+        });
+        return NextResponse.json(
+          {
+            ok: false,
+            error_code: authResult.error.error_code,
+            error_message: authResult.error.error_message,
+          },
+          { status: 403 }
+        );
+      }
+      return failUnauthorized();
+    }
+    accessToken = authResult.value.accessToken;
+    refreshToken = authResult.value.refreshToken;
+    session = createStaffSession({
+      authMode: "supabase",
+      userId: authResult.value.userId,
+      email: authResult.value.email,
+      displayName: authResult.value.displayName,
+    });
+  }
+
   const sealed = session ? sealStaffSession(session) : null;
   if (!session || !sealed) {
     gatewayLog({
@@ -200,18 +280,24 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const nextPath = safeNextPath(
-    body.value && typeof body.value === "object"
-      ? (body.value as { next?: unknown }).next
-      : undefined
-  );
+  const nextPath = safeNextPath(obj.next);
 
   const res = NextResponse.json({
     ok: true,
     csrfToken: session.csrf,
     next: nextPath,
+    user: {
+      email: session.email,
+      displayName: session.displayName,
+    },
   });
   res.cookies.set(AUTH_COOKIE_NAME, sealed, authCookieOptions());
+  if (accessToken) {
+    res.cookies.set(SB_ACCESS_COOKIE_NAME, accessToken, authCookieOptions());
+  }
+  if (refreshToken) {
+    res.cookies.set(SB_REFRESH_COOKIE_NAME, refreshToken, authCookieOptions());
+  }
 
   gatewayLog({
     route: "auth/login",

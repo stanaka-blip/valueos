@@ -90,29 +90,37 @@ npm run test:workflow    # WorkflowEngine
 
 ---
 
-## 社内認証ゲート（暫定）
+## 社内認証（Supabase Auth）
 
-ValueOS の社内業務画面は原則すべて暫定の社内パスワードゲートで保護されます（`/dealer/*` 含む。販売店専用 Auth 実装までの暫定）。  
+ValueOS の社内業務画面は **Supabase Auth（email + password, invite-only）** で保護します（`/dealer/*` 含む。販売店専用 Auth 実装までの暫定）。  
 `/login` と `POST /api/auth/login` のみ未認証で利用できます。`/login` にサイドバーは表示しません。  
-**Supabase Auth の代替として恒久化しない**想定です。service role key をブラウザへ置かないでください。
+公開の新規会員登録画面はありません。service role key をブラウザへ置かないでください。
+
+ログイン成功後も、既存の **Origin / CSRF / signed staff cookie / service_role gateway** は維持します。
+
+運用手順（本番 Auth 設定は PR と分離）: [`docs/staff-supabase-auth.md`](docs/staff-supabase-auth.md)
 
 ### Vercel に設定する環境変数（値はリポジトリへ入れない）
 
 | 変数名 | 用途 | 生成条件 |
 |---|---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | 既存クライアント用 | Supabase プロジェクト URL |
-| `SUPABASE_SERVICE_ROLE_KEY` | サーバーのみ RPC 実行 | Supabase の service_role（`NEXT_PUBLIC_` にしない） |
-| `INTERNAL_APP_PASSWORD` | 暫定社内ログイン | 十分な長さの共有パスフレーズ |
-| `INTERNAL_AUTH_SECRET` | cookie 署名 | **32文字以上**のランダム秘密（例: `openssl rand -base64 48`） |
+| `NEXT_PUBLIC_SUPABASE_URL` | Auth / 既存クライアント | Supabase プロジェクト URL |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Auth signIn（publishable） | Supabase publishable/anon key |
+| `SUPABASE_SERVICE_ROLE_KEY` | サーバーのみ RPC / profiles | Supabase の service_role（`NEXT_PUBLIC_` にしない） |
+| `INTERNAL_AUTH_SECRET` | staff cookie 署名 | **32文字以上**のランダム秘密（例: `openssl rand -base64 48`） |
 | `INTERNAL_APP_ORIGIN` | POST Origin 完全一致 | 例形式: `https://your-app.vercel.app`（末尾スラッシュなし・1値のみ） |
+| `ALLOW_LEGACY_STAFF_PASSWORD` | 緊急時のみ共有パスワード経路 | 通常は未設定。必要なときだけ `true` |
+| `INTERNAL_APP_PASSWORD` | legacy 共有パスワード | Auth 移行完了後に削除予定 |
 
 - Production / Preview で Origin が異なる場合は**環境ごとに明示した別値**を設定する（曖昧な複数許可はしない）。
 - CSRF は `GET /api/auth/csrf` で再取得する（HttpOnly session 検証後に `csrfToken` のみ返す）。
+- ログイン中ユーザーは `GET /api/auth/me` / サイドバーに表示。
 
 追加 Migration（人間が適用）:
 
 - `supabase/migrations/20260727010000_gateway_rate_limits.sql`
 - `supabase/migrations/20260727010100_gateway_rate_limit_cleanup.sql`
+- `supabase/migrations/20260808220000_staff_profiles_and_attachment_actors.sql`（staff_profiles + 添付 user_id）
 
 レート制限の古い bucket 掃除:
 

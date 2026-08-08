@@ -1,18 +1,30 @@
 /**
- * 暫定社内ゲート用の署名付き cookie。
- * Supabase Auth の代替として恒久化しないこと。将来は本格 Auth へ置換する。
+ * ValueOS 社内 gateway 用の署名付き cookie。
+ * Supabase Auth で本人確認したあと、CSRF / Origin 防衛のため本 cookie を発行する。
  */
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
 export const AUTH_COOKIE_NAME = "vos_staff_session";
 export const CSRF_HEADER_NAME = "x-csrf-token";
+/** Supabase Auth access/refresh（httpOnly）。service_role ではない。 */
+export const SB_ACCESS_COOKIE_NAME = "vos_sb_access_token";
+export const SB_REFRESH_COOKIE_NAME = "vos_sb_refresh_token";
 export const SESSION_TTL_SECONDS = 12 * 60 * 60;
 export const MAX_PASSWORD_LENGTH = 500;
+export const MAX_EMAIL_LENGTH = 320;
+
+export type StaffAuthMode = "supabase" | "legacy_password";
 
 export type StaffSession = {
+  /** 冪等・レート制限用。Auth ログイン時は userId と同値。legacy はランダム。 */
   sid: string;
   csrf: string;
   exp: number;
+  /** Supabase Auth user id（uuid）。legacy は null */
+  userId: string | null;
+  email: string | null;
+  displayName: string | null;
+  authMode: StaffAuthMode;
 };
 
 export class AuthConfigError extends Error {
@@ -35,6 +47,11 @@ export function isAuthSecretConfigured(): boolean {
 export function isAppPasswordConfigured(): boolean {
   const expected = process.env.INTERNAL_APP_PASSWORD;
   return typeof expected === "string" && expected.length > 0;
+}
+
+/** 共有パスワード緊急経路。明示 flag があるときのみ。 */
+export function isLegacyStaffPasswordAllowed(): boolean {
+  return process.env.ALLOW_LEGACY_STAFF_PASSWORD === "true";
 }
 
 function b64urlEncode(buf: Buffer | string): string {
@@ -71,12 +88,37 @@ export function verifyStaffPassword(password: string): boolean {
   return safeEqualStr(password, expected);
 }
 
-export function createStaffSession(): StaffSession | null {
+/** 冪等キー派生・レート制限に使う安定 actor id */
+export function sessionActorKey(session: StaffSession): string {
+  if (session.userId && isUuid(session.userId)) return session.userId;
+  return session.sid;
+}
+
+export function createStaffSession(input?: {
+  userId?: string | null;
+  email?: string | null;
+  displayName?: string | null;
+  authMode?: StaffAuthMode;
+}): StaffSession | null {
   if (!getAuthSecret()) return null;
+  const authMode = input?.authMode ?? "legacy_password";
+  const userId =
+    typeof input?.userId === "string" && isUuid(input.userId)
+      ? input.userId
+      : null;
+  const sid =
+    authMode === "supabase" && userId
+      ? userId
+      : randomBytes(16).toString("hex");
   return {
-    sid: randomBytes(16).toString("hex"),
+    sid,
     csrf: randomBytes(32).toString("base64url"),
     exp: Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS,
+    userId,
+    email: typeof input?.email === "string" ? input.email : null,
+    displayName:
+      typeof input?.displayName === "string" ? input.displayName : null,
+    authMode,
   };
 }
 
@@ -88,7 +130,9 @@ export function sealStaffSession(session: StaffSession): string | null {
   return `${payloadB64}.${sig}`;
 }
 
-export function unsealStaffSession(token: string | undefined | null): StaffSession | null {
+export function unsealStaffSession(
+  token: string | undefined | null
+): StaffSession | null {
   if (!token) return null;
   const secret = getAuthSecret();
   if (!secret) return null;
@@ -114,17 +158,38 @@ export function unsealStaffSession(token: string | undefined | null): StaffSessi
   if (
     !parsed ||
     typeof parsed !== "object" ||
-    typeof (parsed as StaffSession).sid !== "string" ||
-    typeof (parsed as StaffSession).csrf !== "string" ||
-    typeof (parsed as StaffSession).exp !== "number"
+    typeof (parsed as { sid?: unknown }).sid !== "string" ||
+    typeof (parsed as { csrf?: unknown }).csrf !== "string" ||
+    typeof (parsed as { exp?: unknown }).exp !== "number"
   ) {
     return null;
   }
 
-  const session = parsed as StaffSession;
-  if (!session.sid || !session.csrf) return null;
-  if (session.exp <= Math.floor(Date.now() / 1000)) return null;
-  return session;
+  const obj = parsed as Record<string, unknown>;
+  if (!obj.sid || !obj.csrf) return null;
+  if ((obj.exp as number) <= Math.floor(Date.now() / 1000)) return null;
+
+  const userId =
+    typeof obj.userId === "string" && isUuid(obj.userId) ? obj.userId : null;
+  const email = typeof obj.email === "string" ? obj.email : null;
+  const displayName =
+    typeof obj.displayName === "string" ? obj.displayName : null;
+  const authMode: StaffAuthMode =
+    obj.authMode === "supabase" || obj.authMode === "legacy_password"
+      ? obj.authMode
+      : userId
+        ? "supabase"
+        : "legacy_password";
+
+  return {
+    sid: obj.sid as string,
+    csrf: obj.csrf as string,
+    exp: obj.exp as number,
+    userId,
+    email,
+    displayName,
+    authMode,
+  };
 }
 
 export function authCookieOptions() {
@@ -157,90 +222,86 @@ function deriveNamespacedRequestId(
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
-/** 案件登録用。サーバー派生 request_id。secret 欠落時は固定値フォールバックせず失敗。 */
+/**
+ * v2: actor を userId（なければ sid）に変更したため namespace を bump。
+ * v1 との request_id 衝突を避ける。
+ */
 export function deriveRequestId(sessionId: string, idempotencyKey: string): string {
-  return deriveNamespacedRequestId("case-reg:v1", sessionId, idempotencyKey);
+  return deriveNamespacedRequestId("case-reg:v2", sessionId, idempotencyKey);
 }
 
-/** 案件明細追記用。登録用 deriveRequestId とは名前空間を分離。 */
 export function deriveCaseLineAppendRequestId(
   sessionId: string,
   idempotencyKey: string
 ): string {
   return deriveNamespacedRequestId(
-    "case-line-append:v1",
+    "case-line-append:v2",
     sessionId,
     idempotencyKey
   );
 }
 
-/** 仕入発注一括作成用。他 gateway の request_id 名前空間と分離。 */
 export function derivePurchaseOrderCreateRequestId(
   sessionId: string,
   idempotencyKey: string
 ): string {
   return deriveNamespacedRequestId(
-    "purchase-order-create:v1",
+    "purchase-order-create:v2",
     sessionId,
     idempotencyKey
   );
 }
 
-/** 商品セットアップ用。他 gateway の request_id 名前空間と分離。 */
 export function deriveProductSetupRequestId(
   sessionId: string,
   idempotencyKey: string
 ): string {
   return deriveNamespacedRequestId(
-    "product-setup:v1",
+    "product-setup:v2",
     sessionId,
     idempotencyKey
   );
 }
 
-/** 既存商品への価格一括追加用。新規商品セットアップと名前空間を分離。 */
 export function deriveExistingProductPriceSetupRequestId(
   sessionId: string,
   idempotencyKey: string
 ): string {
   return deriveNamespacedRequestId(
-    "existing-product-price-setup:v1",
+    "existing-product-price-setup:v2",
     sessionId,
     idempotencyKey
   );
 }
 
-/** 仕入先起点仕入価格一括登録用。他 gateway と名前空間を分離。 */
 export function deriveSupplierPurchasePriceBulkRequestId(
   sessionId: string,
   idempotencyKey: string
 ): string {
   return deriveNamespacedRequestId(
-    "supplier-purchase-price-bulk:v1",
+    "supplier-purchase-price-bulk:v2",
     sessionId,
     idempotencyKey
   );
 }
 
-/** 販売店起点販売価格一括登録用。仕入価格一括と名前空間を分離。 */
 export function deriveDealerSalesPriceBulkRequestId(
   sessionId: string,
   idempotencyKey: string
 ): string {
   return deriveNamespacedRequestId(
-    "dealer-sales-price-bulk:v1",
+    "dealer-sales-price-bulk:v2",
     sessionId,
     idempotencyKey
   );
 }
 
-/** パッケージ一括登録用。他 gateway と名前空間を分離。 */
 export function derivePackageBulkSetupRequestId(
   sessionId: string,
   idempotencyKey: string
 ): string {
   return deriveNamespacedRequestId(
-    "package-bulk-setup:v1",
+    "package-bulk-setup:v2",
     sessionId,
     idempotencyKey
   );

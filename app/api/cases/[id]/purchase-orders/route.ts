@@ -9,6 +9,7 @@ import {
   AuthConfigError,
   derivePurchaseOrderCreateRequestId,
   isUuid,
+  sessionActorKey,
 } from "@/lib/gateway/authCookie";
 import {
   assertCsrf,
@@ -111,7 +112,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
   let requestId: string;
   try {
-    requestId = derivePurchaseOrderCreateRequestId(session.sid, idempotencyKey);
+    requestId = derivePurchaseOrderCreateRequestId(sessionActorKey(session), idempotencyKey);
   } catch (e) {
     if (e instanceof AuthConfigError) {
       return NextResponse.json(
