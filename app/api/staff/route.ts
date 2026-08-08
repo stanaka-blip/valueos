@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
     email: typeof body.email === "string" ? body.email : "",
     displayName: typeof body.display_name === "string" ? body.display_name : "",
     isAdmin: body.is_admin === true,
-    redirectTo: origin ? `${origin}/login` : null,
+    redirectTo: origin ? `${origin}/auth/set-password` : null,
   });
 
   if (!result.ok) {

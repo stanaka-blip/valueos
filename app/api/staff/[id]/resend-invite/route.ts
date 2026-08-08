@@ -22,7 +22,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
   const result = await resendStaffInvite({
     targetUserId: id,
-    redirectTo: origin ? `${origin}/login` : null,
+    redirectTo: origin ? `${origin}/auth/set-password` : null,
   });
 
   if (!result.ok) {
