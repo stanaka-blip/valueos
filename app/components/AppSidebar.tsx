@@ -300,7 +300,6 @@ const navGroups: NavGroup[] = [
         label: "商品",
         items: [
           { name: "商品一覧", href: "/products", icon: <IconBox /> },
-          { name: "商品セットアップ", href: "/products/setup", icon: <IconBox /> },
           { name: "パッケージ商品一覧", href: "/packages", icon: <IconPackage /> },
           { name: "仕入価格", href: "/prices", icon: <IconTag /> },
           { name: "販売価格", href: "/sales-prices", icon: <IconPrice /> },
