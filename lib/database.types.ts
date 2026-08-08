@@ -773,6 +773,134 @@ export type Database = {
         Relationships: [];
       };
       /**
+       * 案件添付資料 metadata（20260808200000_case_attachments）。
+       * ファイル本体は Storage bucket case-attachments（private）。
+       */
+      case_attachments: {
+        Row: {
+          id: string;
+          case_id: string;
+          attachment_type: string;
+          original_filename: string;
+          content_type: string;
+          byte_size: number;
+          storage_bucket: string;
+          storage_path: string;
+          uploaded_by_sid: string | null;
+          uploaded_by_label: string;
+          is_active: boolean;
+          deleted_at: string | null;
+          deleted_by_sid: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          case_id: string;
+          attachment_type: string;
+          original_filename: string;
+          content_type: string;
+          byte_size: number;
+          storage_bucket?: string;
+          storage_path: string;
+          uploaded_by_sid?: string | null;
+          uploaded_by_label?: string;
+          is_active?: boolean;
+          deleted_at?: string | null;
+          deleted_by_sid?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          case_id?: string;
+          attachment_type?: string;
+          original_filename?: string;
+          content_type?: string;
+          byte_size?: number;
+          storage_bucket?: string;
+          storage_path?: string;
+          uploaded_by_sid?: string | null;
+          uploaded_by_label?: string;
+          is_active?: boolean;
+          deleted_at?: string | null;
+          deleted_by_sid?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "case_attachments_case_id_fkey";
+            columns: ["case_id"];
+            isOneToOne: false;
+            referencedRelation: "cases";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      case_attachment_upload_intents: {
+        Row: {
+          id: string;
+          attachment_id: string;
+          case_id: string;
+          attachment_type: string;
+          original_filename: string;
+          content_type: string;
+          declared_byte_size: number;
+          storage_bucket: string;
+          storage_path: string;
+          status: string;
+          uploaded_by_sid: string | null;
+          expires_at: string;
+          completed_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          attachment_id: string;
+          case_id: string;
+          attachment_type: string;
+          original_filename: string;
+          content_type: string;
+          declared_byte_size: number;
+          storage_bucket?: string;
+          storage_path: string;
+          status?: string;
+          uploaded_by_sid?: string | null;
+          expires_at: string;
+          completed_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          attachment_id?: string;
+          case_id?: string;
+          attachment_type?: string;
+          original_filename?: string;
+          content_type?: string;
+          declared_byte_size?: number;
+          storage_bucket?: string;
+          storage_path?: string;
+          status?: string;
+          uploaded_by_sid?: string | null;
+          expires_at?: string;
+          completed_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "case_attachment_upload_intents_case_id_fkey";
+            columns: ["case_id"];
+            isOneToOne: false;
+            referencedRelation: "cases";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      /**
        * 施工店マスタ（20260808120000_create_contractors）。
        * 案件への FK / 同期は持たない。
        */

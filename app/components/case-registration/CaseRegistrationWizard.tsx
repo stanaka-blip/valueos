@@ -17,6 +17,10 @@ import Step2LinesForm from "./Step2LinesForm";
 import Step3SettlementForm from "./Step3SettlementForm";
 import Step4ConfirmForm from "./Step4ConfirmForm";
 import StepChrome from "./StepChrome";
+import {
+  type PendingAttachmentDraft,
+  uploadPendingDrafts,
+} from "@/lib/caseAttachments/clientUpload";
 import { createIdempotencyKey, submitCaseRegistration } from "./submitCaseRegistration";
 import {
   createEmptyLine,
@@ -60,9 +64,47 @@ export default function CaseRegistrationWizard() {
   const [step3Errors, setStep3Errors] = useState<SettlementErrors>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [attachmentDrafts, setAttachmentDrafts] = useState<
+    PendingAttachmentDraft[]
+  >([]);
+  const [uploadingAttachments, setUploadingAttachments] = useState(false);
+  const [createdCaseId, setCreatedCaseId] = useState<string | null>(null);
 
   const idempotencyKeyRef = useRef<string | null>(null);
   const fingerprintForKeyRef = useRef<string>("");
+
+  function goToCaseDocuments(caseId: string) {
+    router.replace(`/cases/${caseId}?tab=documents`);
+    router.refresh();
+  }
+
+  async function runAttachmentUploads(
+    caseId: string,
+    drafts: PendingAttachmentDraft[]
+  ) {
+    if (drafts.length === 0) {
+      goToCaseDocuments(caseId);
+      return;
+    }
+    setUploadingAttachments(true);
+    try {
+      const next = await uploadPendingDrafts({
+        caseId,
+        drafts,
+        onUpdate: setAttachmentDrafts,
+      });
+      const failed = next.filter((d) => d.status === "error");
+      if (failed.length === 0) {
+        goToCaseDocuments(caseId);
+        return;
+      }
+      setSubmitError(
+        `${failed.length}件の添付アップロードに失敗しました。再送するか、案件詳細の資料タブから追加してください。`
+      );
+    } finally {
+      setUploadingAttachments(false);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -134,7 +176,7 @@ export default function CaseRegistrationWizard() {
   }
 
   async function handleSubmit() {
-    if (submitting) return;
+    if (submitting || uploadingAttachments || createdCaseId) return;
     const e1 = validateStep1(caseForm);
     const e2 = validateStep2(lines, { enforceDefaultSupplier: true });
     const e3 = validateStep3(settlement);
@@ -164,13 +206,25 @@ export default function CaseRegistrationWizard() {
         setSubmitting(false);
         return;
       }
-      // 成功後は submitting を解除せず二重送信を防ぐ
-      router.replace(`/cases/${result.case_id}`);
-      router.refresh();
+      // 案件登録成功後は submitting を解除せず二重送信を防ぐ
+      setCreatedCaseId(result.case_id);
+      await runAttachmentUploads(result.case_id, attachmentDrafts);
     } catch {
       setSubmitError("登録を完了できませんでした");
       setSubmitting(false);
     }
+  }
+
+  async function handleRetryFailedUploads() {
+    if (!createdCaseId || uploadingAttachments) return;
+    setSubmitError(null);
+    const reset = attachmentDrafts.map((d) =>
+      d.status === "error" || d.status === "queued"
+        ? { ...d, status: "queued" as const, progress: 0, errorMessage: undefined }
+        : d
+    );
+    setAttachmentDrafts(reset);
+    await runAttachmentUploads(createdCaseId, reset);
   }
 
   return (
@@ -235,10 +289,18 @@ export default function CaseRegistrationWizard() {
           dealers={dealers}
           products={products}
           packages={packages}
+          attachmentDrafts={attachmentDrafts}
+          onAttachmentDraftsChange={setAttachmentDrafts}
           submitting={submitting}
+          uploadingAttachments={uploadingAttachments}
           submitError={submitError}
+          createdCaseId={createdCaseId}
           onBack={() => setStep(3)}
           onSubmit={handleSubmit}
+          onRetryFailedUploads={() => void handleRetryFailedUploads()}
+          onContinueToCase={() => {
+            if (createdCaseId) goToCaseDocuments(createdCaseId);
+          }}
         />
       ) : null}
     </div>
