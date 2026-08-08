@@ -111,13 +111,6 @@ process.stdout.write(behavior.stdout || "");
 process.stderr.write(behavior.stderr || "");
 assert("autofill behavior exit 0", behavior.status === 0, `status=${behavior.status}`);
 
-const step1Reg = spawnSync(
-  "node",
-  ["scripts/pr-case-registration-step1-simplify-test.mjs"],
-  { cwd: ROOT, encoding: "utf8", env: { ...process.env, SKIP_HEAVY: "1" } }
-);
-// step1 simplify runs tsc/build itself; run behavior-only path via direct behavior + our own tsc/build below
-// Prefer running the light behavior script that step1 simplify embeds:
 const step1Behavior = spawnSync(
   "npx",
   ["tsx", "scripts/pr-case-registration-step1-simplify-behavior.mts"],
