@@ -13,6 +13,7 @@ import { formatDate, formatYen } from "@/app/orders/orderUtils";
 import { toCompanySettingsDto } from "@/lib/companyInfo/companySettingsDto";
 import { getCompanySettingsAdmin } from "@/lib/companyInfo/getCompanySettingsAdmin";
 import type { PrintCompanyInfo } from "@/lib/companyInfo/printCompanyInfo";
+import { resolveInvoicePrintTaxDisplay } from "@/lib/invoices/invoicePrintTaxDisplay";
 
 import { supabase } from "@/lib/supabase";
 
@@ -40,6 +41,8 @@ type Invoice = {
   invoice_date: string | null;
   due_date: string | null;
   invoice_amount: number | string | null;
+  subtotal_ex_tax: number | string | null;
+  tax_amount: number | string | null;
   memo: string | null;
   cases: CaseData | CaseData[] | null;
 };
@@ -61,6 +64,8 @@ export default async function InvoicePrintPage({
         invoice_date,
         due_date,
         invoice_amount,
+        subtotal_ex_tax,
+        tax_amount,
         memo,
         cases (
           id,
@@ -106,14 +111,19 @@ export default async function InvoicePrintPage({
   }
   const company: PrintCompanyInfo = toCompanySettingsDto(companyResult.data);
 
-  const invoiceAmount = toNumber(invoice.invoice_amount);
-
   /*
-   * 請求金額を税込総額として扱い、
-   * 10%対象の税抜・消費税を逆算表示する（既存ロジック）。
+   * 税込は invoices.invoice_amount を正式値として維持。
+   * 税抜・消費税は PR #92 スナップショット優先。
+   * どちらか NULL（既存・手入力）のときのみ floor(invoice_amount / 1.1) にフォールバック。
    */
-  const subtotal = Math.floor(invoiceAmount / 1.1);
-  const taxAmount = invoiceAmount - subtotal;
+  const taxDisplay = resolveInvoicePrintTaxDisplay({
+    invoiceAmount: invoice.invoice_amount,
+    subtotalExTax: invoice.subtotal_ex_tax,
+    taxAmount: invoice.tax_amount,
+  });
+  const invoiceAmount = taxDisplay.invoiceAmountInclusive;
+  const subtotal = taxDisplay.subtotalExTax;
+  const taxAmount = taxDisplay.taxAmount;
 
   const invoiceMemo = (invoice.memo || "").trim();
 

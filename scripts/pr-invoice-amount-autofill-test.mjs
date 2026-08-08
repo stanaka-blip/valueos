@@ -70,10 +70,13 @@ assert(
 );
 
 assert(
-  "no print page changes in this PR scope files exist unchanged expectation",
+  "print still supports legacy floor(/1.1) fallback path",
   read("app/invoices/[id]/print/page.tsx").includes(
-    "Math.floor(invoiceAmount / 1.1)"
-  )
+    "floor(invoice_amount / 1.1)"
+  ) &&
+    read("lib/invoices/invoicePrintTaxDisplay.ts").includes(
+      "Math.floor(invoiceAmountInclusive / 1.1)"
+    )
 );
 
 const porcelain = spawnSync("git", ["status", "--porcelain"], {
@@ -82,12 +85,11 @@ const porcelain = spawnSync("git", ["status", "--porcelain"], {
 }).stdout || "";
 
 assert(
-  "no migration / RPC / workflow / dealer / print edits",
+  "no migration / RPC / workflow / dealer edits",
   !/supabase\/migrations\//.test(porcelain) &&
     !/WorkflowEngine/.test(porcelain) &&
     !/settlementRules/.test(porcelain) &&
     !/app\/dealer\//.test(porcelain) &&
-    !/app\/invoices\/\[id\]\/print\//.test(porcelain) &&
     !/create_case_registration/.test(porcelain)
 );
 

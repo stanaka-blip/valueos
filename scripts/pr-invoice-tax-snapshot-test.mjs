@@ -67,8 +67,12 @@ assert(
 );
 
 assert(
-  "print logic unchanged (still floor / 1.1)",
-  printPage.includes("Math.floor(invoiceAmount / 1.1)")
+  "print keeps legacy floor(/1.1) fallback for NULL snapshot",
+  printPage.includes("resolveInvoicePrintTaxDisplay") &&
+    printPage.includes("floor(invoice_amount / 1.1)") &&
+    read("lib/invoices/invoicePrintTaxDisplay.ts").includes(
+      "Math.floor(invoiceAmountInclusive / 1.1)"
+    )
 );
 
 const porcelain = spawnSync("git", ["status", "--porcelain"], {
@@ -77,12 +81,11 @@ const porcelain = spawnSync("git", ["status", "--porcelain"], {
 }).stdout || "";
 
 assert(
-  "no workflow / dealer / order / payment / print edits",
+  "no workflow / dealer / order / payment edits",
   !/WorkflowEngine/.test(porcelain) &&
     !/settlementRules/.test(porcelain) &&
     !/app\/dealer\//.test(porcelain) &&
     !/app\/orders\//.test(porcelain) &&
-    !/app\/invoices\/\[id\]\/print\//.test(porcelain) &&
     !/app\/invoices\/\[id\]\/payments\//.test(porcelain)
 );
 
