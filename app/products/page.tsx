@@ -161,12 +161,20 @@ export default async function ProductsPage({
             </p>
           </div>
 
-          <Link
-            href="/products/new"
-            className="rounded-lg bg-gray-900 px-5 py-3 text-sm font-bold text-white"
-          >
-            ＋ 商品登録
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/products/setup"
+              className="rounded-lg bg-gray-900 px-5 py-3 text-sm font-bold text-white"
+            >
+              ＋ 商品セットアップ
+            </Link>
+            <Link
+              href="/products/new"
+              className="rounded-lg border border-gray-300 px-5 py-3 text-sm font-medium text-gray-700"
+            >
+              商品のみ登録
+            </Link>
+          </div>
         </div>
       </header>
 

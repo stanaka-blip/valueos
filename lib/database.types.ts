@@ -427,6 +427,50 @@ export type Database = {
           },
         ];
       };
+      product_setup_requests: {
+        Row: {
+          request_id: string;
+          product_id: string | null;
+          status: string;
+          payload_hash: string;
+          error_code: string | null;
+          error_message: string | null;
+          response: Json | null;
+          created_at: string;
+          completed_at: string | null;
+        };
+        Insert: {
+          request_id: string;
+          product_id?: string | null;
+          status: string;
+          payload_hash: string;
+          error_code?: string | null;
+          error_message?: string | null;
+          response?: Json | null;
+          created_at?: string;
+          completed_at?: string | null;
+        };
+        Update: {
+          request_id?: string;
+          product_id?: string | null;
+          status?: string;
+          payload_hash?: string;
+          error_code?: string | null;
+          error_message?: string | null;
+          response?: Json | null;
+          created_at?: string;
+          completed_at?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "product_setup_requests_product_id_fkey";
+            columns: ["product_id"];
+            isOneToOne: false;
+            referencedRelation: "products";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       case_line_append_requests: {
         Row: {
           request_id: string;
@@ -804,6 +848,12 @@ export type Database = {
         Returns: Json;
       };
       create_purchase_orders: {
+        Args: {
+          payload: Json;
+        };
+        Returns: Json;
+      };
+      create_product_setup: {
         Args: {
           payload: Json;
         };
