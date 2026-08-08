@@ -8,6 +8,7 @@ import { parseCaseExtras } from "@/app/admin/orders/parseCaseExtras";
 import { PrintCompanyFooter } from "@/app/components/print/CompanyPrintBlocks";
 import { fetchCompanySettingsForPrint } from "@/lib/companyInfo/fetchCompanySettingsForPrint";
 import type { PrintCompanyInfo } from "@/lib/companyInfo/printCompanyInfo";
+import { buildOrderPrintTaxDisplay } from "@/lib/orders/orderPrintTaxDisplay";
 import { supabase } from "@/lib/supabase";
 import { listOrderItemsByOrderId } from "@/lib/repositories/orderItems";
 import type { OrderItemRow } from "@/lib/database.types";
@@ -201,10 +202,12 @@ export default function OrderPrintPage() {
     );
   }
 
-  const total =
+  // 税抜小計: 明細ありは明細合計、なしは orders.order_amount（既存フォールバック）
+  const subtotalExTax =
     items.length > 0
       ? items.reduce((sum, item) => sum + toNumber(item.amount), 0)
       : toNumber(order.order_amount);
+  const taxDisplay = buildOrderPrintTaxDisplay(subtotalExTax);
 
   const deliveryAddress =
     (caseRow?.delivery_address || "").trim() ||
@@ -302,8 +305,8 @@ export default function OrderPrintPage() {
                 <th>型番</th>
                 <th>商品名</th>
                 <th className="order-print-num">数量</th>
-                <th className="order-print-num">単価</th>
-                <th className="order-print-num">金額</th>
+                <th className="order-print-num">単価（税抜）</th>
+                <th className="order-print-num">金額（税抜）</th>
                 <th>備考</th>
               </tr>
             </thead>
@@ -342,10 +345,30 @@ export default function OrderPrintPage() {
         <section className="order-print-total-wrap">
           <div className="order-print-total">
             <div className="order-print-total-rule" aria-hidden="true" />
-            <p className="order-print-total-label">発注合計</p>
-            <p className="order-print-total-amount tabular-nums">
-              {formatYen(total)}
-            </p>
+            <div className="order-print-total-rows">
+              <div className="order-print-total-row">
+                <span className="order-print-total-label">
+                  発注小計（税抜）
+                </span>
+                <span className="order-print-total-value tabular-nums">
+                  {formatYen(taxDisplay.subtotalExTax)}
+                </span>
+              </div>
+              <div className="order-print-total-row">
+                <span className="order-print-total-label">消費税（10%）</span>
+                <span className="order-print-total-value tabular-nums">
+                  {formatYen(taxDisplay.taxAmount)}
+                </span>
+              </div>
+              <div className="order-print-total-row order-print-total-row-emphasis">
+                <span className="order-print-total-label-emphasis">
+                  発注合計（税込）
+                </span>
+                <span className="order-print-total-amount tabular-nums">
+                  {formatYen(taxDisplay.totalInTax)}
+                </span>
+              </div>
+            </div>
             <div className="order-print-total-rule" aria-hidden="true" />
           </div>
         </section>
@@ -536,7 +559,7 @@ export default function OrderPrintPage() {
         }
 
         .order-print-total {
-          min-width: 240px;
+          min-width: 280px;
           text-align: right;
         }
 
@@ -544,15 +567,47 @@ export default function OrderPrintPage() {
           border-top: 1px solid #9ca3af;
         }
 
+        .order-print-total-rows {
+          margin: 14px 0;
+          display: grid;
+          gap: 8px;
+        }
+
+        .order-print-total-row {
+          display: grid;
+          grid-template-columns: 1fr auto;
+          gap: 16px;
+          align-items: baseline;
+        }
+
         .order-print-total-label {
-          margin: 14px 0 6px;
           font-size: 10pt;
+          font-weight: 500;
+          color: #4b5563;
+          text-align: left;
+        }
+
+        .order-print-total-value {
+          font-size: 11pt;
           font-weight: 600;
-          color: #374151;
+          color: #111827;
+        }
+
+        .order-print-total-row-emphasis {
+          margin-top: 4px;
+          padding-top: 8px;
+          border-top: 1px solid #d1d5db;
+        }
+
+        .order-print-total-label-emphasis {
+          font-size: 11pt;
+          font-weight: 700;
+          color: #111827;
+          text-align: left;
         }
 
         .order-print-total-amount {
-          margin: 0 0 14px;
+          margin: 0;
           font-size: 20pt;
           font-weight: 700;
           color: #111827;
