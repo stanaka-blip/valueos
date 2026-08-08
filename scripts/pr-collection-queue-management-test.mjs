@@ -22,6 +22,7 @@ function read(rel) {
 }
 
 const page = read("app/queues/collections/page.tsx");
+const client = read("app/queues/collections/CollectionsQueueClient.tsx");
 const logic = read("lib/queues/collectionQueue.ts");
 const loader = read("lib/queues/loadCollectionQueue.ts");
 const sidebar = read("app/components/AppSidebar.tsx");
@@ -29,14 +30,16 @@ const sidebar = read("app/components/AppSidebar.tsx");
 assert("queue page loads collection queue", page.includes("loadCollectionQueue"));
 assert(
   "queue columns present",
-  page.includes("案件番号") &&
-    page.includes("顧客名") &&
-    page.includes("販売店") &&
-    page.includes("決済条件") &&
-    page.includes("金額") &&
-    page.includes("状態") &&
-    page.includes("次の対応") &&
-    page.includes("期限")
+  client.includes("案件番号") &&
+    client.includes("顧客名") &&
+    client.includes("販売店") &&
+    client.includes("決済条件") &&
+    client.includes("請求額") &&
+    client.includes("入金済額") &&
+    client.includes("残額") &&
+    client.includes("状態") &&
+    client.includes("次の対応") &&
+    client.includes("支払期限")
 );
 assert(
   "reuses existing payment / workflow helpers",

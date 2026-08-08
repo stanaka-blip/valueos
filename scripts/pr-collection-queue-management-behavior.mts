@@ -6,9 +6,11 @@ import assert from "node:assert/strict";
 
 import {
   buildCollectionQueueRow,
+  buildCollectionQueueSummary,
   isAdvancePaymentComplete,
   isCardSettlementComplete,
   isLoanApprovalComplete,
+  resolveCollectionUiCategory,
   sortCollectionQueueRows,
   unpaidActiveInvoicesForCollection,
 } from "../lib/queues/collectionQueue.ts";
@@ -492,6 +494,222 @@ check("回収完了案件を除外（決済未設定も対象外）", () => {
       settlement_type: null,
     }),
     null
+  );
+});
+
+check("UI分類: 請求待ち/入金待ち/一部入金/期限超過/カード/3社間", () => {
+  assert.equal(resolveCollectionUiCategory("請求待ち"), "invoice_pending");
+  assert.equal(resolveCollectionUiCategory("未入金"), "payment_waiting");
+  assert.equal(resolveCollectionUiCategory("入金待ち"), "payment_waiting");
+  assert.equal(resolveCollectionUiCategory("一部入金"), "partial_payment");
+  assert.equal(resolveCollectionUiCategory("期限超過"), "overdue");
+  assert.equal(
+    resolveCollectionUiCategory("カード決済待ち"),
+    "settlement_review"
+  );
+  assert.equal(
+    resolveCollectionUiCategory("審査承認待ち"),
+    "settlement_review"
+  );
+
+  const invoicePending = buildCollectionQueueRow({
+    ...base,
+    settlement_type: "前金",
+    deposit_amount: 100000,
+  });
+  assert.equal(invoicePending?.uiCategory, "invoice_pending");
+  assert.equal(invoicePending?.ctaLabel, "請求書を作成");
+
+  const waiting = buildCollectionQueueRow({
+    ...base,
+    settlement_type: "前金",
+    deposit_amount: 100000,
+    invoices: [{ id: "i1", status: "請求済", invoice_amount: 100000 }],
+  });
+  assert.equal(waiting?.uiCategory, "payment_waiting");
+  assert.equal(waiting?.displayStateLabel, "入金待ち");
+  assert.equal(waiting?.ctaLabel, "入金登録");
+  assert.equal(waiting?.invoiceAmount, 100000);
+  assert.equal(waiting?.confirmedPaidAmount, 0);
+  assert.equal(waiting?.remainingAmount, 100000);
+
+  const partial = buildCollectionQueueRow({
+    ...base,
+    settlement_type: "売掛",
+    orders: [{ id: "o1", status: "納品済", delivered_date: "2026-07-10" }],
+    invoices: [
+      {
+        id: "i1",
+        status: "請求済",
+        invoice_amount: 200000,
+        due_date: "2026-08-31",
+      },
+    ],
+    payments: [
+      { id: "p1", status: "入金確認済", payment_amount: 50000, invoice_id: "i1" },
+    ],
+  });
+  assert.equal(partial?.uiCategory, "partial_payment");
+  assert.equal(partial?.ctaLabel, "追加入金");
+  assert.equal(partial?.remainingAmount, 150000);
+
+  const overdue = buildCollectionQueueRow({
+    ...base,
+    settlement_type: "売掛",
+    orders: [{ id: "o1", status: "納品済", delivered_date: "2026-05-10" }],
+    invoices: [
+      {
+        id: "i1",
+        status: "請求済",
+        invoice_amount: 100000,
+        due_date: "2026-06-30",
+      },
+    ],
+  });
+  assert.equal(overdue?.uiCategory, "overdue");
+  assert.equal(overdue?.ctaLabel, "入金登録");
+
+  const card = buildCollectionQueueRow({
+    ...base,
+    settlement_type: "カード",
+    card_status: "未決済",
+  });
+  assert.equal(card?.uiCategory, "settlement_review");
+  assert.equal(card?.invoiceAmount, null);
+  assert.equal(card?.ctaLabel, "案件詳細");
+
+  const loan = buildCollectionQueueRow({
+    ...base,
+    settlement_type: "3社間決済",
+    loan_status: "申請中",
+  });
+  assert.equal(loan?.uiCategory, "settlement_review");
+  assert.equal(loan?.remainingAmount, null);
+});
+
+check("サマリー件数と残額集計", () => {
+  const rows = [
+    buildCollectionQueueRow({
+      ...base,
+      id: "a",
+      case_no: "A",
+      settlement_type: "前金",
+      deposit_amount: 100000,
+    })!,
+    buildCollectionQueueRow({
+      ...base,
+      id: "b",
+      case_no: "B",
+      settlement_type: "売掛",
+      orders: [{ id: "o1", status: "納品済", delivered_date: "2026-07-10" }],
+      invoices: [
+        {
+          id: "i1",
+          status: "請求済",
+          invoice_amount: 200000,
+          due_date: "2026-08-31",
+        },
+      ],
+    })!,
+    buildCollectionQueueRow({
+      ...base,
+      id: "c",
+      case_no: "C",
+      settlement_type: "売掛",
+      orders: [{ id: "o1", status: "納品済", delivered_date: "2026-07-10" }],
+      invoices: [
+        {
+          id: "i1",
+          status: "請求済",
+          invoice_amount: 100000,
+          due_date: "2026-08-31",
+        },
+      ],
+      payments: [
+        {
+          id: "p1",
+          status: "入金確認済",
+          payment_amount: 40000,
+          invoice_id: "i1",
+        },
+      ],
+    })!,
+    buildCollectionQueueRow({
+      ...base,
+      id: "d",
+      case_no: "D",
+      settlement_type: "売掛",
+      orders: [{ id: "o1", status: "納品済", delivered_date: "2026-05-10" }],
+      invoices: [
+        {
+          id: "i1",
+          status: "請求済",
+          invoice_amount: 80000,
+          due_date: "2026-06-30",
+        },
+      ],
+    })!,
+    buildCollectionQueueRow({
+      ...base,
+      id: "e",
+      case_no: "E",
+      settlement_type: "カード",
+      card_status: "未決済",
+    })!,
+  ];
+
+  const summary = buildCollectionQueueSummary(rows);
+  assert.equal(summary.invoicePendingCount, 1);
+  assert.equal(summary.paymentWaitingCount, 1);
+  assert.equal(summary.paymentWaitingRemaining, 200000);
+  assert.equal(summary.partialPaymentCount, 1);
+  assert.equal(summary.partialPaymentRemaining, 60000);
+  assert.equal(summary.overdueCount, 1);
+  assert.equal(summary.overdueRemaining, 80000);
+  assert.equal(summary.settlementReviewCount, 1);
+});
+
+check("並び: UIカテゴリ優先（期限超過→請求待ち→一部入金→入金待ち→決済審査）", () => {
+  const sorted = sortCollectionQueueRows([
+    {
+      isOverdue: false,
+      dueDate: null,
+      orderReceivedDate: "2026-01-01",
+      caseNo: "settle",
+      uiCategory: "settlement_review" as const,
+    },
+    {
+      isOverdue: false,
+      dueDate: "2026-08-20",
+      orderReceivedDate: "2026-01-01",
+      caseNo: "wait",
+      uiCategory: "payment_waiting" as const,
+    },
+    {
+      isOverdue: false,
+      dueDate: "2026-08-10",
+      orderReceivedDate: "2026-01-01",
+      caseNo: "partial",
+      uiCategory: "partial_payment" as const,
+    },
+    {
+      isOverdue: false,
+      dueDate: "2026-08-05",
+      orderReceivedDate: "2026-01-01",
+      caseNo: "invoice",
+      uiCategory: "invoice_pending" as const,
+    },
+    {
+      isOverdue: true,
+      dueDate: "2026-07-01",
+      orderReceivedDate: "2026-01-01",
+      caseNo: "over",
+      uiCategory: "overdue" as const,
+    },
+  ]);
+  assert.deepEqual(
+    sorted.map((r) => r.caseNo),
+    ["over", "invoice", "partial", "wait", "settle"]
   );
 });
 

@@ -63,22 +63,51 @@ export type CollectionQueueCaseInput = {
   today?: string;
 };
 
+/** UI分類（DBステータスではない。既存 stateLabel からの表示マッピング） */
+export type CollectionUiCategory =
+  | "invoice_pending"
+  | "payment_waiting"
+  | "partial_payment"
+  | "overdue"
+  | "settlement_review";
+
 export type CollectionQueueRow = {
   id: string;
   caseNo: string;
   customerName: string;
   dealerName: string;
   settlementType: string;
+  /** 決済区分ごとの既存金額（前金=必要入金額 等）。一覧の請求額列とは別 */
   amountLabel: string | null;
   amount: number | null;
   stateLabel: string;
+  /** 一覧「状態」列の表示文言 */
+  displayStateLabel: string;
+  uiCategory: CollectionUiCategory;
+  /** 有効請求の合計。カード/3社間/請求なしは null */
+  invoiceAmount: number | null;
+  confirmedPaidAmount: number | null;
+  remainingAmount: number | null;
   nextAction: string;
   dueDate: string | null;
   isOverdue: boolean;
   orderReceivedDate: string | null;
   detailHref: string;
   secondaryHref: string | null;
+  /** PR #95 のリンク文言（ロジック側）。画面 CTA は ctaLabel を優先 */
   secondaryLabel: string | null;
+  ctaLabel: string | null;
+};
+
+export type CollectionQueueSummary = {
+  invoicePendingCount: number;
+  paymentWaitingCount: number;
+  paymentWaitingRemaining: number;
+  partialPaymentCount: number;
+  partialPaymentRemaining: number;
+  overdueCount: number;
+  overdueRemaining: number;
+  settlementReviewCount: number;
 };
 
 function toNumber(value: number | string | null | undefined): number {
@@ -135,6 +164,146 @@ export function resolveCollectionPaymentSecondary(
     secondaryLabel: "請求・入金",
   };
 }
+
+/** 既存 stateLabel → UIカテゴリ（除外判定は変えない） */
+export function resolveCollectionUiCategory(
+  stateLabel: string
+): CollectionUiCategory {
+  switch (stateLabel) {
+    case "請求待ち":
+      return "invoice_pending";
+    case "期限超過":
+      return "overdue";
+    case "一部入金":
+      return "partial_payment";
+    case "カード決済待ち":
+    case "審査承認待ち":
+      return "settlement_review";
+    case "入金待ち":
+    case "未入金":
+      return "payment_waiting";
+    default:
+      return "payment_waiting";
+  }
+}
+
+export function resolveCollectionDisplayStateLabel(
+  stateLabel: string,
+  uiCategory: CollectionUiCategory
+): string {
+  if (uiCategory === "payment_waiting") return "入金待ち";
+  if (uiCategory === "settlement_review") {
+    return stateLabel;
+  }
+  if (uiCategory === "invoice_pending") return "請求待ち";
+  if (uiCategory === "partial_payment") return "一部入金";
+  if (uiCategory === "overdue") return "期限超過";
+  return stateLabel;
+}
+
+/** CTA表示文言。href は secondaryHref（PR #95）のまま */
+export function resolveCollectionCtaLabel(
+  secondaryLabel: string | null,
+  uiCategory: CollectionUiCategory
+): string | null {
+  if (!secondaryLabel) return null;
+  if (uiCategory === "invoice_pending") return "請求書を作成";
+  if (uiCategory === "partial_payment") return "追加入金";
+  return secondaryLabel;
+}
+
+/**
+ * 一覧・サマリー用の請求金額。
+ * 前金の deposit / カード・3社間は推測せず null（—）。
+ */
+export function resolveCollectionInvoiceMoney(
+  input: Pick<CollectionQueueCaseInput, "invoices" | "payments">,
+  settlementType: string
+): {
+  invoiceAmount: number | null;
+  confirmedPaidAmount: number | null;
+  remainingAmount: number | null;
+} {
+  if (settlementType === "カード" || settlementType === "3社間決済") {
+    return {
+      invoiceAmount: null,
+      confirmedPaidAmount: null,
+      remainingAmount: null,
+    };
+  }
+
+  const invoices = activeInvoicesForCollection(input.invoices);
+  if (invoices.length === 0) {
+    return {
+      invoiceAmount: null,
+      confirmedPaidAmount: null,
+      remainingAmount: null,
+    };
+  }
+
+  const invoiceAmount = invoices.reduce(
+    (sum, inv) => sum + Math.max(0, toNumber(inv.invoice_amount)),
+    0
+  );
+  const confirmedPaidAmount = sumConfirmedPaidAmount(
+    paymentInputs(input.payments)
+  );
+  const remainingAmount = Math.max(0, invoiceAmount - confirmedPaidAmount);
+  return { invoiceAmount, confirmedPaidAmount, remainingAmount };
+}
+
+export function buildCollectionQueueSummary(
+  rows: ReadonlyArray<
+    Pick<CollectionQueueRow, "uiCategory" | "remainingAmount">
+  >
+): CollectionQueueSummary {
+  const summary: CollectionQueueSummary = {
+    invoicePendingCount: 0,
+    paymentWaitingCount: 0,
+    paymentWaitingRemaining: 0,
+    partialPaymentCount: 0,
+    partialPaymentRemaining: 0,
+    overdueCount: 0,
+    overdueRemaining: 0,
+    settlementReviewCount: 0,
+  };
+
+  for (const row of rows) {
+    const remaining = row.remainingAmount ?? 0;
+    switch (row.uiCategory) {
+      case "invoice_pending":
+        summary.invoicePendingCount += 1;
+        break;
+      case "payment_waiting":
+        summary.paymentWaitingCount += 1;
+        summary.paymentWaitingRemaining += remaining;
+        break;
+      case "partial_payment":
+        summary.partialPaymentCount += 1;
+        summary.partialPaymentRemaining += remaining;
+        break;
+      case "overdue":
+        summary.overdueCount += 1;
+        summary.overdueRemaining += remaining;
+        break;
+      case "settlement_review":
+        summary.settlementReviewCount += 1;
+        break;
+      default:
+        break;
+    }
+  }
+
+  return summary;
+}
+
+const UI_CATEGORY_RANK: Record<CollectionUiCategory, number> = {
+  overdue: 0,
+  invoice_pending: 1,
+  partial_payment: 2,
+  payment_waiting: 3,
+  settlement_review: 4,
+};
 
 /** 前金完了: isPaymentConfirmedFromBilling と同趣旨 */
 export function isAdvancePaymentComplete(input: {
@@ -387,6 +556,8 @@ function baseRow(
     secondaryLabel: string | null;
   }
 ): CollectionQueueRow {
+  const uiCategory = resolveCollectionUiCategory(fields.stateLabel);
+  const money = resolveCollectionInvoiceMoney(input, fields.settlementType);
   return {
     id: input.id,
     caseNo: input.case_no || "—",
@@ -396,6 +567,14 @@ function baseRow(
     amountLabel: fields.amountLabel,
     amount: fields.amount,
     stateLabel: fields.stateLabel,
+    displayStateLabel: resolveCollectionDisplayStateLabel(
+      fields.stateLabel,
+      uiCategory
+    ),
+    uiCategory,
+    invoiceAmount: money.invoiceAmount,
+    confirmedPaidAmount: money.confirmedPaidAmount,
+    remainingAmount: money.remainingAmount,
     nextAction: fields.nextAction,
     dueDate: fields.dueDate,
     isOverdue: fields.isOverdue,
@@ -403,6 +582,7 @@ function baseRow(
     detailHref: `/cases/${input.id}`,
     secondaryHref: fields.secondaryHref,
     secondaryLabel: fields.secondaryLabel,
+    ctaLabel: resolveCollectionCtaLabel(fields.secondaryLabel, uiCategory),
   };
 }
 
@@ -438,11 +618,10 @@ function dateSortKey(value: string | null | undefined): number {
 }
 
 /**
- * 1. 期限超過
- * 2. 対応期限が近い順
- * 3. 期限未設定は後
- * 4. 受付日が古い順
- * 5. 案件番号順
+ * 1. UIカテゴリ（期限超過 → 請求待ち → 一部入金 → 入金待ち → 決済・審査待ち）
+ * 2. 同カテゴリ内: 期限超過フラグ（legacy）/ 対応期限が近い順 / 期限未設定は後
+ * 3. 受付日が古い順
+ * 4. 案件番号順
  */
 export function sortCollectionQueueRows<
   T extends {
@@ -450,12 +629,30 @@ export function sortCollectionQueueRows<
     dueDate: string | null;
     orderReceivedDate: string | null;
     caseNo: string;
+    uiCategory?: CollectionUiCategory;
   },
 >(rows: T[]): T[] {
   return [...rows].sort((a, b) => {
-    if (a.isOverdue !== b.isOverdue) {
-      return a.isOverdue ? -1 : 1;
+    const aRank =
+      a.uiCategory != null
+        ? UI_CATEGORY_RANK[a.uiCategory]
+        : a.isOverdue
+          ? 0
+          : 1;
+    const bRank =
+      b.uiCategory != null
+        ? UI_CATEGORY_RANK[b.uiCategory]
+        : b.isOverdue
+          ? 0
+          : 1;
+    if (aRank !== bRank) return aRank - bRank;
+
+    if (a.uiCategory == null && b.uiCategory == null) {
+      if (a.isOverdue !== b.isOverdue) {
+        return a.isOverdue ? -1 : 1;
+      }
     }
+
     const d = dateSortKey(a.dueDate) - dateSortKey(b.dueDate);
     if (d !== 0) return d;
     const r =

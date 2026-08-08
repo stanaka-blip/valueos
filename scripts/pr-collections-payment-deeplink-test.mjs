@@ -52,9 +52,11 @@ assert(
     !logic.includes('secondaryHref: "/payments"') &&
     !logic.includes('"入金管理"')
 );
+const client = read("app/queues/collections/CollectionsQueueClient.tsx");
 assert(
-  "collections page still renders secondaryHref",
-  page.includes("row.secondaryHref") && page.includes("row.secondaryLabel")
+  "collections client still renders secondaryHref CTA",
+  client.includes("row.secondaryHref") &&
+    (client.includes("row.ctaLabel") || client.includes("row.secondaryLabel"))
 );
 assert(
   "case detail supports tab=invoice",
