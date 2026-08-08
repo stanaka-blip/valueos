@@ -515,6 +515,50 @@ export type Database = {
           },
         ];
       };
+      supplier_purchase_price_bulk_requests: {
+        Row: {
+          request_id: string;
+          supplier_id: string | null;
+          status: string;
+          payload_hash: string;
+          error_code: string | null;
+          error_message: string | null;
+          response: Json | null;
+          created_at: string;
+          completed_at: string | null;
+        };
+        Insert: {
+          request_id: string;
+          supplier_id?: string | null;
+          status: string;
+          payload_hash: string;
+          error_code?: string | null;
+          error_message?: string | null;
+          response?: Json | null;
+          created_at?: string;
+          completed_at?: string | null;
+        };
+        Update: {
+          request_id?: string;
+          supplier_id?: string | null;
+          status?: string;
+          payload_hash?: string;
+          error_code?: string | null;
+          error_message?: string | null;
+          response?: Json | null;
+          created_at?: string;
+          completed_at?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "supplier_purchase_price_bulk_requests_supplier_id_fkey";
+            columns: ["supplier_id"];
+            isOneToOne: false;
+            referencedRelation: "suppliers";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       case_line_append_requests: {
         Row: {
           request_id: string;
@@ -904,6 +948,12 @@ export type Database = {
         Returns: Json;
       };
       create_existing_product_price_setup: {
+        Args: {
+          payload: Json;
+        };
+        Returns: Json;
+      };
+      create_supplier_purchase_prices: {
         Args: {
           payload: Json;
         };
