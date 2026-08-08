@@ -365,14 +365,17 @@ export async function fetchListCurrentPurchaseUnitPrices(
     return { unitPriceByTargetId: new Map(), error: error.message };
   }
 
-  const candidates: ListPurchasePriceCandidate[] = (data || []).map((row) => ({
-    targetId: (row[idColumn] as string | null) || "",
-    supplierId: (row.supplier_id as string | null) || "",
-    purchase_price: row.purchase_price,
-    start_date: (row.start_date as string | null) || null,
-    end_date: (row.end_date as string | null) || null,
-    is_active: row.is_active,
-  }));
+  const candidates: ListPurchasePriceCandidate[] = (data || []).map((row) => {
+    const record = row as Record<string, unknown>;
+    return {
+      targetId: (record[idColumn] as string | null) || "",
+      supplierId: (record.supplier_id as string | null) || "",
+      purchase_price: record.purchase_price,
+      start_date: (record.start_date as string | null) || null,
+      end_date: (record.end_date as string | null) || null,
+      is_active: record.is_active,
+    };
+  });
 
   const unitPriceByTargetId = new Map<string, number>();
   for (const targetId of targetIds) {

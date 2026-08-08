@@ -57,7 +57,6 @@ assert(
     purchaseLib.includes("pickActivePurchaseUnitForTarget") &&
     purchaseLib.includes("matchesActivePurchaseWindow") &&
     purchaseLib.includes('.eq("is_active", true)') &&
-    purchaseLib.includes(".lte(\"start_date\", asOfDate)") ||
     purchaseLib.includes('.lte("start_date", asOfDate)')
 );
 
