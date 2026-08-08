@@ -10,6 +10,7 @@ import {
   isCardSettlementComplete,
   isLoanApprovalComplete,
   sortCollectionQueueRows,
+  unpaidActiveInvoicesForCollection,
 } from "../lib/queues/collectionQueue.ts";
 
 let failed = 0;
@@ -99,6 +100,8 @@ check("前金: 未入金を表示", () => {
   assert.ok(row);
   assert.equal(row!.stateLabel, "未入金");
   assert.equal(row!.nextAction, "入金確認");
+  assert.equal(row!.secondaryHref, "/invoices/i1/payments/new");
+  assert.equal(row!.secondaryLabel, "入金登録");
 });
 
 check("前金: 一部入金を表示", () => {
@@ -114,6 +117,8 @@ check("前金: 一部入金を表示", () => {
   assert.ok(row);
   assert.equal(row!.stateLabel, "一部入金");
   assert.equal(row!.nextAction, "残額確認");
+  assert.equal(row!.secondaryHref, "/invoices/i1/payments/new");
+  assert.equal(row!.secondaryLabel, "入金登録");
 });
 
 check("前金: 全額入金済みを除外", () => {
@@ -180,6 +185,8 @@ check("売掛: 請求済み・未入金を表示", () => {
   assert.ok(row);
   assert.equal(row!.stateLabel, "入金待ち");
   assert.equal(row!.amount, 200000);
+  assert.equal(row!.secondaryHref, "/invoices/i1/payments/new");
+  assert.equal(row!.secondaryLabel, "入金登録");
 });
 
 check("売掛: 一部入金を表示", () => {
@@ -203,6 +210,101 @@ check("売掛: 一部入金を表示", () => {
   });
   assert.ok(row);
   assert.equal(row!.stateLabel, "一部入金");
+  assert.equal(row!.secondaryHref, "/invoices/i1/payments/new");
+  assert.equal(row!.secondaryLabel, "入金登録");
+});
+
+check("未収請求1件 → 入金登録へ直接", () => {
+  const row = buildCollectionQueueRow({
+    ...base,
+    settlement_type: "売掛",
+    orders: [{ id: "o1", status: "納品済", delivered_date: "2026-07-10" }],
+    invoices: [
+      {
+        id: "inv-only",
+        status: "請求済",
+        invoice_amount: 100000,
+        due_date: "2026-08-31",
+      },
+      {
+        id: "inv-paid",
+        status: "請求済",
+        invoice_amount: 50000,
+        due_date: "2026-08-31",
+      },
+      {
+        id: "inv-cancel",
+        status: "取消",
+        invoice_amount: 99999,
+        due_date: "2026-08-31",
+      },
+    ],
+    payments: [
+      {
+        id: "p-paid",
+        status: "入金確認済",
+        payment_amount: 50000,
+        invoice_id: "inv-paid",
+      },
+    ],
+  });
+  assert.ok(row);
+  assert.equal(row!.secondaryHref, "/invoices/inv-only/payments/new");
+  assert.equal(row!.secondaryLabel, "入金登録");
+});
+
+check("未収請求複数 → 請求・入金タブ", () => {
+  const row = buildCollectionQueueRow({
+    ...base,
+    settlement_type: "売掛",
+    orders: [{ id: "o1", status: "納品済", delivered_date: "2026-07-10" }],
+    invoices: [
+      {
+        id: "i1",
+        status: "請求済",
+        invoice_amount: 100000,
+        due_date: "2026-08-31",
+      },
+      {
+        id: "i2",
+        status: "請求済",
+        invoice_amount: 80000,
+        due_date: "2026-09-30",
+      },
+    ],
+  });
+  assert.ok(row);
+  assert.equal(row!.secondaryHref, "/cases/c1?tab=invoice");
+  assert.equal(row!.secondaryLabel, "請求・入金");
+});
+
+check("取消・入金済は未収に数えない / 一部入金は未収", () => {
+  const unpaid = unpaidActiveInvoicesForCollection(
+    [
+      { id: "a", status: "取消", invoice_amount: 1000 },
+      { id: "b", status: "請求済", invoice_amount: 100000 },
+      { id: "c", status: "請求済", invoice_amount: 50000 },
+      { id: "d", status: "請求済", invoice_amount: 20000 },
+    ],
+    [
+      {
+        id: "p1",
+        status: "入金確認済",
+        payment_amount: 100000,
+        invoice_id: "b",
+      },
+      {
+        id: "p2",
+        status: "入金確認済",
+        payment_amount: 10000,
+        invoice_id: "c",
+      },
+    ]
+  );
+  assert.deepEqual(
+    unpaid.map((i) => i.id),
+    ["c", "d"]
+  );
 });
 
 check("売掛: 全額入金済みを除外", () => {
