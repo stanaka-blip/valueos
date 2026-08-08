@@ -395,12 +395,20 @@ export default function NewPaymentPage({
               {dealer?.name || "-"}
             </p>
           </div>
-          <Link
-            href={`/invoices/${invoice.id}`}
-            className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50"
-          >
-            請求詳細へ戻る
-          </Link>
+          <div className="flex flex-wrap gap-3">
+            <Link
+              href="/queues/collections"
+              className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50"
+            >
+              ← 回収管理へ戻る
+            </Link>
+            <Link
+              href={`/invoices/${invoice.id}`}
+              className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50"
+            >
+              請求詳細へ戻る
+            </Link>
+          </div>
         </div>
 
         <section className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
