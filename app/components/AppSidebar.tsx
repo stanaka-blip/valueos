@@ -10,6 +10,7 @@ const CSRF_HEADER_NAME = "x-csrf-token";
 type StaffMe = {
   displayName: string | null;
   email: string | null;
+  isAdmin: boolean;
 };
 
 type NavItem = {
@@ -253,6 +254,19 @@ function IconBuilding() {
   );
 }
 
+function IconUsers() {
+  return (
+    <svg className={iconClass} viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M16 11a3 3 0 1 0-3-3 3 3 0 0 0 3 3ZM8 12a3 3 0 1 0-3-3 3 3 0 0 0 3 3ZM8 14c-2.7 0-5 1.3-5 3v1h10v-1c0-1.7-2.3-3-5-3Zm8-.5c-.3 0-.7 0-1 .1 1.2.8 2 2 2 3.4V18h5v-1c0-1.6-2.1-3.5-6-3.5Z"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function IconContractor() {
   return (
     <svg className={iconClass} viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -325,6 +339,12 @@ const navGroups: NavGroup[] = [
   },
 ];
 
+const staffAdminNavItem: NavItem = {
+  name: "ユーザー管理",
+  href: "/staff",
+  icon: <IconUsers />,
+};
+
 function isActive(pathname: string, item: NavItem): boolean {
   if (item.exact) return pathname === item.href;
   return pathname === item.href || pathname.startsWith(`${item.href}/`);
@@ -380,7 +400,11 @@ export default function AppSidebar() {
         });
         const data = (await res.json().catch(() => ({}))) as {
           ok?: boolean;
-          user?: { displayName?: string | null; email?: string | null };
+          user?: {
+            displayName?: string | null;
+            email?: string | null;
+            isAdmin?: boolean;
+          };
           error_code?: string;
         };
         if (cancelled) return;
@@ -397,6 +421,7 @@ export default function AppSidebar() {
         setMe({
           displayName: data.user?.displayName ?? null,
           email: data.user?.email ?? null,
+          isAdmin: data.user?.isAdmin === true,
         });
       } catch {
         // ignore transient errors
@@ -473,14 +498,19 @@ export default function AppSidebar() {
           <NavLink item={dashboardItem} pathname={pathname} />
         </div>
 
-        {navGroups.map((group) => (
+        {navGroups.map((group) => {
+          const entries =
+            group.label === "設定" && me?.isAdmin
+              ? [...group.entries, staffAdminNavItem]
+              : group.entries;
+          return (
           <div key={group.label}>
             <div className="mb-1.5 px-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
               {group.label}
             </div>
-            {group.entries.length > 0 ? (
+            {entries.length > 0 ? (
               <ul className="space-y-0.5">
-                {group.entries.map((entry) => {
+                {entries.map((entry) => {
                   if (isSubgroup(entry)) {
                     return (
                       <li key={entry.label} className="pt-1">
@@ -516,7 +546,8 @@ export default function AppSidebar() {
               </ul>
             ) : null}
           </div>
-        ))}
+          );
+        })}
       </nav>
 
       <div className="space-y-2 border-t border-gray-700 p-3">
