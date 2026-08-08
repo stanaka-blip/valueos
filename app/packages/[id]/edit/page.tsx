@@ -3,7 +3,6 @@
 import { FormEvent, use, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import MasterPricePanels from "@/app/components/prices/MasterPricePanels";
 import { supabase } from "@/lib/supabase";
 
 type Manufacturer = { id: string; name: string | null };
@@ -179,7 +178,7 @@ export default function EditPackagePage({
     }
 
     setSaving(false);
-    router.push("/packages");
+    router.push(`/packages/${id}`);
     router.refresh();
   }
 
@@ -360,7 +359,7 @@ export default function EditPackagePage({
           <div className="flex gap-3 border-t pt-6">
             <button
               type="button"
-              onClick={() => router.push("/packages")}
+              onClick={() => router.push(`/packages/${id}`)}
               className="rounded-lg border px-6 py-3 text-sm font-bold"
             >
               キャンセル
@@ -374,15 +373,6 @@ export default function EditPackagePage({
             </button>
           </div>
         </form>
-
-        <MasterPricePanels
-          targetType="PACKAGE"
-          packageId={id}
-          defaultSupplierId={form.default_supplier_id}
-          defaultSupplierName={
-            suppliers.find((s) => s.id === form.default_supplier_id)?.name || ""
-          }
-        />
       </main>
     </>
   );

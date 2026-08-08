@@ -195,8 +195,22 @@ export default async function ProductsPage({
                       <td className="px-5 py-4 font-semibold">{maker}</td>
                       <td className="px-5 py-4">{seriesName}</td>
                       <td className="px-5 py-4">{item.category || "-"}</td>
-                      <td className="px-5 py-4">{item.model_no || "-"}</td>
-                      <td className="px-5 py-4 font-semibold">{item.name || "-"}</td>
+                      <td className="px-5 py-4">
+                        <Link
+                          href={`/products/${item.id}`}
+                          className="font-semibold text-gray-900 underline-offset-2 hover:underline"
+                        >
+                          {item.model_no || "-"}
+                        </Link>
+                      </td>
+                      <td className="px-5 py-4">
+                        <Link
+                          href={`/products/${item.id}`}
+                          className="font-semibold text-gray-900 underline-offset-2 hover:underline"
+                        >
+                          {item.name || "-"}
+                        </Link>
+                      </td>
                       <td className="px-5 py-4">
                         {item.capacity
                           ? `${item.capacity}${item.unit ? item.unit : ""}`
@@ -222,6 +236,12 @@ export default async function ProductsPage({
                       </td>
                       <td className="px-5 py-4 text-center">
                         <div className="flex flex-wrap items-center justify-center gap-2">
+                          <Link
+                            href={`/products/${item.id}`}
+                            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-bold text-gray-800"
+                          >
+                            詳細
+                          </Link>
                           <Link
                             href={`/products/${item.id}/edit`}
                             className="rounded-lg bg-gray-900 px-3 py-2 text-xs font-bold text-white"
