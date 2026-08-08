@@ -58,12 +58,19 @@ function LoginForm() {
     }
   }
 
+  const passwordSetNotice = searchParams.get("notice") === "password_set";
+
   return (
     <div className="mx-auto mt-16 w-full max-w-md rounded-lg bg-white p-8 shadow">
       <h1 className="text-xl font-bold text-gray-900">社内ログイン</h1>
       <p className="mt-2 text-sm text-gray-600">
         社内メンバー用です。アカウントは管理者から招待・作成されます。
       </p>
+      {passwordSetNotice ? (
+        <p className="mt-3 rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+          パスワードを設定しました。メールアドレスとパスワードでログインしてください。
+        </p>
+      ) : null}
       <form onSubmit={onSubmit} className="mt-6 space-y-4">
         <label className="block text-sm font-medium text-gray-700">
           メールアドレス

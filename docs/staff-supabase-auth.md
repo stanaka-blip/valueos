@@ -12,17 +12,34 @@ Supabase Dashboard → Authentication → Providers / Settings:
 
 アプリに「新規会員登録」画面は無い。
 
-## 2. 社内ユーザーを作成 / 招待
+## 2. Site URL / Redirect URLs（Production 前提）
+
+Dashboard → Authentication → URL Configuration:
+
+| 項目 | 値 |
+|---|---|
+| **Site URL** | `https://valueos-rose.vercel.app` |
+| **Redirect URLs** | `https://valueos-rose.vercel.app/auth/set-password` を含める。Preview 利用時は `https://*-*.vercel.app/auth/set-password` 等を追加 |
+
+招待・recovery の `redirectTo` はアプリ側で  
+`{INTERNAL_APP_ORIGIN}/auth/set-password`  
+（Production では `https://valueos-rose.vercel.app/auth/set-password`）を渡す。
+
+公開セルフ signup 画面は追加しない（invite-only 維持）。
+
+## 3. 社内ユーザーを作成 / 招待
 
 Dashboard → Authentication → Users:
 
-1. **Add user** または **Invite user**
+1. **Invite user**（推奨）または Add user
 2. メールアドレスを入力
-3. パスワードを設定（または招待メールから設定）
+3. 招待メールのリンク → `/auth/set-password` で初回パスワード設定 → `/login` でログイン
 
-または Admin API（service_role・サーバーのみ）で `inviteUserByEmail`。
+または Admin API（service_role・サーバーのみ）で `inviteUserByEmail`（`redirectTo` に set-password URL）。
 
-## 3. staff_profiles に display_name を設定
+期限切れ / 不正なリンクでは「招待リンクの有効期限が切れています」を表示する。
+
+## 4. staff_profiles に display_name を設定
 
 Migration `20260808220000_staff_profiles_and_attachment_actors.sql` 適用後:
 
@@ -42,14 +59,16 @@ SET display_name = EXCLUDED.display_name,
 - `email` は `auth.users` が正式値（profiles には保存しない）
 - `is_active = false` にすると ValueOS 利用不可
 
-## 4. 初回ログイン確認
+## 5. 初回ログイン確認
 
-1. `/login` でメール + パスワード
-2. サイドバーに「ログイン中：表示名 / email」が出ること
-3. ログアウトできること
-4. inactive ユーザーはログインできない / 利用できないこと
+1. 招待メール → `/auth/set-password` でパスワード設定
+2. `/login` でメール + 設定したパスワード
+3. サイドバーに「ログイン中：表示名 / email」が出ること
+4. ログアウトできること
+5. inactive ユーザーはログインできない / 利用できないこと
+6. 期限切れリンクで有効期限メッセージが出ること
 
-## 5. Vercel 環境変数
+## 6. Vercel 環境変数
 
 | 変数 | 用途 |
 |---|---|
@@ -63,7 +82,7 @@ SET display_name = EXCLUDED.display_name,
 
 `SUPABASE_SERVICE_ROLE_KEY` を `NEXT_PUBLIC_` にしないこと。
 
-## 6. 共有パスワード移行
+## 7. 共有パスワード移行
 
 1. Auth + profiles で社内メンバーがログインできることを確認
 2. `ALLOW_LEGACY_STAFF_PASSWORD` を未設定 / false にする
