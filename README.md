@@ -93,7 +93,7 @@ npm run test:workflow    # WorkflowEngine
 ## 社内認証（Supabase Auth）
 
 ValueOS の社内業務画面は **Supabase Auth（email + password, invite-only）** で保護します（`/dealer/*` 含む。販売店専用 Auth 実装までの暫定）。  
-`/login` と `POST /api/auth/login` のみ未認証で利用できます。`/login` にサイドバーは表示しません。  
+未認証で利用できるのは `/login`・`/auth/set-password`（招待/recovery の初回パスワード設定）・`POST /api/auth/login` のみです。  
 公開の新規会員登録画面はありません。service role key をブラウザへ置かないでください。
 
 ログイン成功後も、既存の **Origin / CSRF / signed staff cookie / service_role gateway** は維持します。

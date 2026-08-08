@@ -10,6 +10,13 @@ import { AUTH_COOKIE_NAME, unsealStaffSession } from "@/lib/gateway/authCookie";
 
 function isPublicPath(pathname: string): boolean {
   if (pathname === "/login" || pathname.startsWith("/login/")) return true;
+  // invite / recovery コールバック（staff cookie 不要・パスワード設定のみ）
+  if (
+    pathname === "/auth/set-password" ||
+    pathname.startsWith("/auth/set-password/")
+  ) {
+    return true;
+  }
   if (pathname === "/api/auth/login") return true;
   return false;
 }

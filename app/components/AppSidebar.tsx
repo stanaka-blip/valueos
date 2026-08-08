@@ -363,7 +363,10 @@ export default function AppSidebar() {
   const [loggingOut, setLoggingOut] = useState(false);
   const [me, setMe] = useState<StaffMe | null>(null);
   const hideSidebar =
-    pathname === "/login" || pathname.startsWith("/login/");
+    pathname === "/login" ||
+    pathname.startsWith("/login/") ||
+    pathname === "/auth/set-password" ||
+    pathname.startsWith("/auth/set-password/");
 
   useEffect(() => {
     if (hideSidebar) return;
@@ -404,7 +407,7 @@ export default function AppSidebar() {
     };
   }, [hideSidebar]);
 
-  // /login ではサイドバーを出さない（認証前の業務ナビ誘導を防ぐ）
+  // /login・招待パスワード設定ではサイドバーを出さない（認証前の業務ナビ誘導を防ぐ）
   if (hideSidebar) {
     return null;
   }
