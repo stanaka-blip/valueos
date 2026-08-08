@@ -200,6 +200,13 @@ export default async function InvoiceDetailPage({
 
           <div className="flex flex-wrap gap-3">
             <Link
+              href="/queues/collections"
+              className="rounded-lg border bg-white px-4 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50"
+            >
+              ← 回収管理へ戻る
+            </Link>
+
+            <Link
               href="/invoices"
               className="rounded-lg border bg-white px-4 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50"
             >

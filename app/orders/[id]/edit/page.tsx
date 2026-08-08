@@ -453,7 +453,13 @@ export default function EditOrderPage() {
       </header>
 
       <main className="space-y-6 p-4 md:p-8">
-        <div>
+        <div className="flex flex-wrap gap-3">
+          <Link
+            href="/queues/deliveries"
+            className="inline-flex rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50"
+          >
+            ← 納品管理へ戻る
+          </Link>
           <Link
             href={`/orders/${orderId}`}
             className="inline-flex rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50"

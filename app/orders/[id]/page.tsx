@@ -208,6 +208,12 @@ export default async function OrderDetailPage({
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
+            <Link
+              href="/queues/orders"
+              className="rounded-lg border bg-white px-4 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50"
+            >
+              ← 発注管理へ戻る
+            </Link>
             {caseData?.id ? (
               <Link
                 href={`/cases/${caseData.id}`}
