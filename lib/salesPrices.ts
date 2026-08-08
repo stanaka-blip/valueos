@@ -49,6 +49,101 @@ export function roundMoneyTotal(unitPrice: number, quantity: number): number {
   return Math.round(unitPrice * quantity);
 }
 
+export type SalesPriceBatchResult = {
+  unitPriceByProductId: Map<string, number>;
+  missingProductIds: string[];
+  error: string | null;
+};
+
+/**
+ * 複数商品の有効販売単価を一括取得（PRODUCT のみ）。
+ * 判定は fetchActiveSalesPrice / create_case_registration と同じ条件。
+ * 同一 product_id が複数行ある場合は start_date 降順で先頭を採用。
+ */
+export async function fetchActiveSalesUnitPrices(
+  client: SupabaseClient,
+  params: {
+    productIds: string[];
+    dealerId: string;
+    asOfDate?: string;
+  }
+): Promise<SalesPriceBatchResult> {
+  const uniqueIds = Array.from(
+    new Set(params.productIds.filter((id) => Boolean(id)))
+  );
+
+  if (uniqueIds.length === 0 || !params.dealerId) {
+    return {
+      unitPriceByProductId: new Map(),
+      missingProductIds: uniqueIds,
+      error: null,
+    };
+  }
+
+  const asOfDate = params.asOfDate || getTodayDateString();
+
+  const withTargetType = await client
+    .from("sales_prices")
+    .select("product_id, sales_price, start_date")
+    .in("product_id", uniqueIds)
+    .eq("dealer_id", params.dealerId)
+    .eq("price_target_type", "PRODUCT")
+    .eq("is_active", true)
+    .lte("start_date", asOfDate)
+    .or(`end_date.is.null,end_date.gte.${asOfDate}`)
+    .order("start_date", { ascending: false });
+
+  let data = withTargetType.data;
+  let error = withTargetType.error;
+
+  if (
+    error &&
+    /price_target_type|column .* does not exist/i.test(error.message)
+  ) {
+    const legacy = await client
+      .from("sales_prices")
+      .select("product_id, sales_price, start_date")
+      .in("product_id", uniqueIds)
+      .eq("dealer_id", params.dealerId)
+      .eq("is_active", true)
+      .lte("start_date", asOfDate)
+      .or(`end_date.is.null,end_date.gte.${asOfDate}`)
+      .order("start_date", { ascending: false });
+    data = legacy.data;
+    error = legacy.error;
+  }
+
+  if (error) {
+    return {
+      unitPriceByProductId: new Map(),
+      missingProductIds: uniqueIds,
+      error: error.message,
+    };
+  }
+
+  const unitPriceByProductId = new Map<string, number>();
+  for (const row of data || []) {
+    const productId = row.product_id as string | null;
+    if (!productId || unitPriceByProductId.has(productId)) {
+      continue;
+    }
+    const unitPrice = toUnitPrice(row.sales_price);
+    if (unitPrice > 0) {
+      unitPriceByProductId.set(productId, unitPrice);
+    }
+  }
+
+  const missingProductIds = uniqueIds.filter(
+    (id) => !unitPriceByProductId.has(id)
+  );
+
+  return {
+    unitPriceByProductId,
+    missingProductIds,
+    error: null,
+  };
+}
+
 /** 有効な販売単価を1件取得（マスタID付き） */
 export async function fetchActiveSalesPrice(
   client: SupabaseClient,

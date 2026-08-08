@@ -559,6 +559,50 @@ export type Database = {
           },
         ];
       };
+      dealer_sales_price_bulk_requests: {
+        Row: {
+          request_id: string;
+          dealer_id: string | null;
+          status: string;
+          payload_hash: string;
+          error_code: string | null;
+          error_message: string | null;
+          response: Json | null;
+          created_at: string;
+          completed_at: string | null;
+        };
+        Insert: {
+          request_id: string;
+          dealer_id?: string | null;
+          status: string;
+          payload_hash: string;
+          error_code?: string | null;
+          error_message?: string | null;
+          response?: Json | null;
+          created_at?: string;
+          completed_at?: string | null;
+        };
+        Update: {
+          request_id?: string;
+          dealer_id?: string | null;
+          status?: string;
+          payload_hash?: string;
+          error_code?: string | null;
+          error_message?: string | null;
+          response?: Json | null;
+          created_at?: string;
+          completed_at?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "dealer_sales_price_bulk_requests_dealer_id_fkey";
+            columns: ["dealer_id"];
+            isOneToOne: false;
+            referencedRelation: "dealers";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       case_line_append_requests: {
         Row: {
           request_id: string;
@@ -954,6 +998,12 @@ export type Database = {
         Returns: Json;
       };
       create_supplier_purchase_prices: {
+        Args: {
+          payload: Json;
+        };
+        Returns: Json;
+      };
+      create_dealer_sales_prices: {
         Args: {
           payload: Json;
         };
