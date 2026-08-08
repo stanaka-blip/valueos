@@ -43,6 +43,7 @@ export type CaseFormState = {
   construction_desired_date: string;
   assigned_user: string;
   delivery_same_as_site: boolean;
+  delivery_name: string;
   delivery_address: string;
   delivery_phone: string;
   receiver_name: string;
@@ -95,6 +96,7 @@ export function createInitialCaseForm(): CaseFormState {
     construction_desired_date: "",
     assigned_user: "",
     delivery_same_as_site: true,
+    delivery_name: "",
     delivery_address: "",
     delivery_phone: "",
     receiver_name: "",

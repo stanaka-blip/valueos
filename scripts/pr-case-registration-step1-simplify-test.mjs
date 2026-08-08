@@ -47,6 +47,7 @@ assert(
     step1Src.includes("工事希望日") &&
     step1Src.includes("販売店担当者") &&
     step1Src.includes("納品先は設置先住所と同じ") &&
+    step1Src.includes("納品先名称") &&
     step1Src.includes("納品先住所") &&
     step1Src.includes("納品先電話番号") &&
     step1Src.includes("荷受け担当者")
@@ -61,6 +62,7 @@ assert(
 assert(
   "new form fields in types",
   typesSrc.includes("contractor_name") &&
+    typesSrc.includes("delivery_name") &&
     typesSrc.includes("delivery_phone") &&
     !typesSrc.includes("order_type:") &&
     !typesSrc.includes("case_no:")
@@ -70,6 +72,7 @@ assert(
   "labeled memo/construction_detail serialization",
   extrasSrc.includes("【荷受け電話番号】") &&
     extrasSrc.includes("【荷受け担当者】") &&
+    extrasSrc.includes("納品先名称") &&
     extrasSrc.includes("【施工店名】") &&
     extrasSrc.includes("upsertLabeledMemoFields") &&
     validationSrc.includes("buildCaseRegistrationMemo")

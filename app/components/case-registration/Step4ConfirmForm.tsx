@@ -88,6 +88,10 @@ export default function Step4ConfirmForm({
             <dt className="text-gray-500">設置先</dt>
             <dd>{caseForm.site_address}</dd>
           </div>
+          <div>
+            <dt className="text-gray-500">納品先名称</dt>
+            <dd>{caseForm.delivery_name || "—"}</dd>
+          </div>
           <div className="sm:col-span-2">
             <dt className="text-gray-500">納品先</dt>
             <dd>{resolvedDeliveryAddress(caseForm) || "—"}</dd>

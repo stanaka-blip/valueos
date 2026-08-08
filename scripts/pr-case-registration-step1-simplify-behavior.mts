@@ -80,6 +80,14 @@ assert.equal(
   "【荷受け担当者】佐藤\n【荷受け電話番号】03-0000-0000"
 );
 assert.equal(
+  buildCaseRegistrationMemo({
+    delivery_name: "倉庫A",
+    receiver_name: "佐藤",
+    delivery_phone: "03-0000-0000",
+  }),
+  "【納品先名称】倉庫A\n【荷受け担当者】佐藤\n【荷受け電話番号】03-0000-0000"
+);
+assert.equal(
   buildCaseRegistrationConstructionDetail({ contractor_name: "ABC工務店" }),
   "【施工店名】ABC工務店"
 );

@@ -24,6 +24,15 @@ export type SupplierOption = {
   name: string;
 };
 
+export type ContractorOption = {
+  id: string;
+  name: string;
+  delivery_name: string | null;
+  delivery_address: string | null;
+  delivery_phone: string | null;
+  receiver_name: string | null;
+};
+
 const ERR = "マスタの取得に失敗しました";
 
 function isActiveFlag(value: unknown): boolean {
@@ -132,6 +141,36 @@ export async function fetchActiveSuppliers(): Promise<{
         .map((s) => ({
           id: s.id as string,
           name: (s.name as string | null) || "名称未設定",
+        })),
+      errorMessage: null,
+    };
+  } catch {
+    return { data: [], errorMessage: ERR };
+  }
+}
+
+export async function fetchActiveContractors(): Promise<{
+  data: ContractorOption[];
+  errorMessage: string | null;
+}> {
+  try {
+    const { data, error } = await supabase
+      .from("contractors")
+      .select(
+        "id, name, delivery_name, delivery_address, delivery_phone, receiver_name, is_active"
+      )
+      .order("name", { ascending: true });
+    if (error) return { data: [], errorMessage: ERR };
+    return {
+      data: (data || [])
+        .filter((c) => isActiveFlag(c.is_active))
+        .map((c) => ({
+          id: c.id as string,
+          name: (c.name as string | null) || "名称未設定",
+          delivery_name: (c.delivery_name as string | null) || null,
+          delivery_address: (c.delivery_address as string | null) || null,
+          delivery_phone: (c.delivery_phone as string | null) || null,
+          receiver_name: (c.receiver_name as string | null) || null,
         })),
       errorMessage: null,
     };

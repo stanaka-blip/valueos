@@ -1,6 +1,8 @@
 "use client";
 
-import type { DealerOption } from "./masters";
+import { useState } from "react";
+import { applyContractorToCaseForm } from "./applyContractorToCaseForm";
+import type { ContractorOption, DealerOption } from "./masters";
 import type { CaseFormErrors, CaseFormState } from "./types";
 
 const inputClass =
@@ -9,6 +11,7 @@ const inputClass =
 type Props = {
   caseForm: CaseFormState;
   dealers: DealerOption[];
+  contractors: ContractorOption[];
   errors: CaseFormErrors;
   onChange: (next: CaseFormState) => void;
   onNext: () => void;
@@ -17,12 +20,24 @@ type Props = {
 export default function Step1CaseForm({
   caseForm,
   dealers,
+  contractors,
   errors,
   onChange,
   onNext,
 }: Props) {
+  /** UI のみの選択状態（案件へマスタIDは保存しない） */
+  const [selectedContractorId, setSelectedContractorId] = useState("");
+
   function set<K extends keyof CaseFormState>(key: K, value: CaseFormState[K]) {
     onChange({ ...caseForm, [key]: value });
+  }
+
+  function handleContractorSelect(contractorId: string) {
+    setSelectedContractorId(contractorId);
+    if (!contractorId) return;
+    const contractor = contractors.find((c) => c.id === contractorId);
+    if (!contractor) return;
+    onChange(applyContractorToCaseForm(caseForm, contractor));
   }
 
   return (
@@ -91,6 +106,25 @@ export default function Step1CaseForm({
         </label>
 
         <label className="block text-sm font-medium text-gray-700 md:col-span-2">
+          施工店（マスタから選択）
+          <select
+            className={inputClass}
+            value={selectedContractorId}
+            onChange={(e) => handleContractorSelect(e.target.value)}
+          >
+            <option value="">手入力する（マスタ未選択）</option>
+            {contractors.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-xs font-normal text-gray-500">
+            選択すると施工店名・納品先・荷受け担当者をコピーします。設置先住所は変更しません。コピー後は各項目を手修正できます。
+          </p>
+        </label>
+
+        <label className="block text-sm font-medium text-gray-700 md:col-span-2">
           施工店名
           <input
             className={inputClass}
@@ -153,6 +187,15 @@ export default function Step1CaseForm({
             }
           />
           納品先は設置先住所と同じ
+        </label>
+
+        <label className="block text-sm font-medium text-gray-700 md:col-span-2">
+          納品先名称
+          <input
+            className={inputClass}
+            value={caseForm.delivery_name}
+            onChange={(e) => set("delivery_name", e.target.value)}
+          />
         </label>
 
         {!caseForm.delivery_same_as_site ? (

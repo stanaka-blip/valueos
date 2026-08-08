@@ -1,6 +1,10 @@
 /** cases.memo / cases.construction_detail の【ラベル】形式（dealer / parseCaseExtras と互換） */
 
-const REGISTRATION_MEMO_LABELS = ["荷受け担当者", "荷受け電話番号"] as const;
+const REGISTRATION_MEMO_LABELS = [
+  "納品先名称",
+  "荷受け担当者",
+  "荷受け電話番号",
+] as const;
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -31,10 +35,12 @@ export function upsertLabeledMemoFields(
 }
 
 export function buildCaseRegistrationMemo(params: {
+  delivery_name?: string;
   receiver_name: string;
   delivery_phone: string;
 }): string | null {
   return upsertLabeledMemoFields(null, {
+    納品先名称: params.delivery_name || "",
     荷受け担当者: params.receiver_name,
     荷受け電話番号: params.delivery_phone,
   });
