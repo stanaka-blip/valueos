@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import PriceTargetPrefillBanner from "@/app/components/prices/PriceTargetPrefillBanner";
@@ -50,6 +50,28 @@ function manufacturerName(relation: ManufacturerRelation): string {
 }
 
 export default function NewSalesPricePage() {
+  return (
+    <Suspense
+      fallback={
+        <>
+          <header className="border-b bg-white px-8 py-5">
+            <h1 className="text-2xl font-bold text-gray-900">販売価格登録</h1>
+            <p className="text-sm text-gray-500">読み込み中...</p>
+          </header>
+          <main className="p-8">
+            <div className="rounded-xl bg-white p-8 text-center shadow-sm">
+              <p className="text-sm text-gray-500">読み込み中...</p>
+            </div>
+          </main>
+        </>
+      }
+    >
+      <NewSalesPricePageInner />
+    </Suspense>
+  );
+}
+
+function NewSalesPricePageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const prefill = parsePriceNewPrefill({

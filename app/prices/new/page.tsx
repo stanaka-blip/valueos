@@ -4,6 +4,7 @@ import {
   ChangeEvent,
   FormEvent,
   ReactNode,
+  Suspense,
   useEffect,
   useState,
 } from "react";
@@ -66,6 +67,28 @@ type PriceForm = {
 };
 
 export default function NewPricePage() {
+  return (
+    <Suspense
+      fallback={
+        <>
+          <PageHeader
+            title="価格登録"
+            description="商品・パッケージ・仕入先情報を読み込んでいます。"
+          />
+          <main className="p-4 md:p-8">
+            <div className="rounded-xl bg-white p-8 text-center shadow-sm">
+              <p className="text-sm text-gray-500">読み込み中...</p>
+            </div>
+          </main>
+        </>
+      }
+    >
+      <NewPricePageInner />
+    </Suspense>
+  );
+}
+
+function NewPricePageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const prefill = parsePriceNewPrefill({
