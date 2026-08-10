@@ -5,14 +5,11 @@ import {
   InvoiceIssuerBlock,
   PrintCompanyFooter,
 } from "@/app/components/print/CompanyPrintBlocks";
-import {
-  summarizeCaseModelNumbers,
-  type CaseListLineInput,
-} from "@/app/cases/caseListLineSummary";
 import { formatDate, formatYen } from "@/app/orders/orderUtils";
 import { toCompanySettingsDto } from "@/lib/companyInfo/companySettingsDto";
 import { getCompanySettingsAdmin } from "@/lib/companyInfo/getCompanySettingsAdmin";
 import type { PrintCompanyInfo } from "@/lib/companyInfo/printCompanyInfo";
+import type { InvoiceLineItemRow } from "@/lib/invoices/invoiceLineItems";
 import { resolveInvoicePrintTaxDisplay } from "@/lib/invoices/invoicePrintTaxDisplay";
 
 import { supabase } from "@/lib/supabase";
@@ -128,11 +125,30 @@ export default async function InvoicePrintPage({
   const invoiceMemo = (invoice.memo || "").trim();
 
   /*
-   * 請求時点の明細スナップショットはない。
-   * 金額は invoices.invoice_amount を正式値とし、
-   * 摘要だけ案件明細の型番を集計表示する（案件一覧と同じ解決規則）。
+   * 明細スナップショットがあれば行表示。
+   * 過去 invoice（明細0件）はヘッダ金額を維持し、曖昧な「他N件」集約は使わない。
    */
-  const lineSummary = await resolveInvoiceModelSummary(caseData?.id || null);
+  const { data: lineRows } = await supabase
+    .from("invoice_line_items")
+    .select(
+      `
+        id,
+        sort_order,
+        line_kind,
+        description,
+        quantity,
+        unit,
+        unit_price_ex_tax,
+        amount_ex_tax,
+        tax_rate,
+        memo
+      `
+    )
+    .eq("invoice_id", invoice.id)
+    .order("sort_order", { ascending: true });
+
+  const lineItems = (lineRows || []) as InvoiceLineItemRow[];
+  const hasLineItems = lineItems.length > 0;
 
   return (
     <>
@@ -201,27 +217,66 @@ export default async function InvoicePrintPage({
           </div>
         </section>
 
+        <section className="order-print-case-meta">
+          <div className="order-print-fields">
+            <FieldRow label="案件番号" value={caseData?.case_no} />
+            <FieldRow label="顧客名" value={caseData?.customer_name} />
+          </div>
+        </section>
+
         <section className="order-print-lines">
           <table className="order-print-table w-full border-collapse">
             <thead>
               <tr>
-                <th>請求日</th>
-                <th>案件番号</th>
-                <th>顧客名</th>
-                <th>摘要</th>
+                <th>品名/摘要</th>
+                <th className="order-print-num">数量</th>
+                <th>単位</th>
+                <th className="order-print-num">単価</th>
                 <th className="order-print-num">金額</th>
               </tr>
             </thead>
             <tbody>
-              <tr className="order-print-row">
-                <td>{formatDate(invoice.invoice_date)}</td>
-                <td>{displayText(caseData?.case_no)}</td>
-                <td>{displayText(caseData?.customer_name)}</td>
-                <td className="order-print-summary">{lineSummary}</td>
-                <td className="order-print-num tabular-nums">
-                  {formatYen(invoiceAmount)}
-                </td>
-              </tr>
+              {hasLineItems ? (
+                lineItems.map((line) => {
+                  const lineMemo = (line.memo || "").trim();
+                  return (
+                    <tr key={line.id} className="order-print-row">
+                      <td className="order-print-summary">
+                        {displayText(line.description)}
+                        {lineMemo ? (
+                          <div className="order-print-line-memo">
+                            備考: {lineMemo}
+                          </div>
+                        ) : null}
+                      </td>
+                      <td className="order-print-num tabular-nums">
+                        {formatQuantity(line.quantity)}
+                      </td>
+                      <td>{displayText(line.unit)}</td>
+                      <td className="order-print-num tabular-nums">
+                        {formatYen(toNumber(line.unit_price_ex_tax))}
+                      </td>
+                      <td className="order-print-num tabular-nums">
+                        {formatYen(toNumber(line.amount_ex_tax))}
+                      </td>
+                    </tr>
+                  );
+                })
+              ) : (
+                <tr className="order-print-row">
+                  <td className="order-print-summary">
+                    請求（明細スナップショットなし）
+                  </td>
+                  <td className="order-print-num tabular-nums">1</td>
+                  <td>式</td>
+                  <td className="order-print-num tabular-nums">
+                    {formatYen(subtotal)}
+                  </td>
+                  <td className="order-print-num tabular-nums">
+                    {formatYen(subtotal)}
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </section>
@@ -363,6 +418,16 @@ export default async function InvoicePrintPage({
           font-size: 10.5pt;
           color: #111827;
           word-break: break-word;
+        }
+
+        .order-print-case-meta {
+          margin-top: 24px;
+        }
+
+        .order-print-line-memo {
+          margin-top: 4px;
+          font-size: 9pt;
+          color: #6b7280;
         }
 
         .order-print-amount-summary {
@@ -641,47 +706,8 @@ function toNumber(value: number | string | null | undefined): number {
   return Number.isFinite(numberValue) ? numberValue : 0;
 }
 
-/**
- * 案件明細から型番摘要を解決する。
- * PRODUCT: products.model_no
- * PACKAGE: case_package_items.model_no_snapshot → products.model_no
- * 商品名・パッケージ名にはフォールバックしない。
- * 取得失敗・型番なしは「—」。
- */
-async function resolveInvoiceModelSummary(
-  caseId: string | null
-): Promise<string> {
-  if (!caseId) {
-    return "—";
-  }
-
-  const { data, error } = await supabase
-    .from("case_products")
-    .select(
-      `
-      line_type,
-      products (
-        model_no
-      ),
-      case_packages (
-        case_package_items (
-          product_id,
-          model_no_snapshot,
-          is_selected,
-          is_hidden,
-          products (
-            model_no
-          )
-        )
-      )
-    `
-    )
-    .eq("case_id", caseId)
-    .order("created_at", { ascending: true });
-
-  if (error || !data) {
-    return "—";
-  }
-
-  return summarizeCaseModelNumbers(data as CaseListLineInput[]);
+function formatQuantity(value: number | string | null | undefined): string {
+  const n = toNumber(value);
+  if (Number.isInteger(n)) return String(n);
+  return String(n);
 }

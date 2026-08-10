@@ -13,8 +13,8 @@ import {
 } from "react";
 
 import { fetchCaseWorkflowForCasePage } from "@/app/cases/[id]/fetchCaseWorkflow";
+import InvoiceLineEditor from "@/components/invoices/InvoiceLineEditor";
 import {
-  UNSET_PRICE_LABEL,
   UNSET_PRICE_WARNING,
   buildInvoiceAmountAutofill,
   resolveLineFromLookup,
@@ -22,6 +22,13 @@ import {
   type InvoiceLineForAutofill,
   type ResolvedInvoiceLinePrice,
 } from "@/lib/invoices/invoiceAmountAutofill";
+import {
+  buildAutofillCompatFromLineDrafts,
+  buildInvoiceLineDraftsFromCaseSeeds,
+  buildInvoiceTotalsFromLines,
+  validateAndBuildInvoiceLineInserts,
+  type InvoiceLineDraft,
+} from "@/lib/invoices/invoiceLineItems";
 import { buildInvoiceTaxSnapshotForSave } from "@/lib/invoices/invoiceTaxSnapshot";
 import type { PriceTargetType } from "@/lib/prices/targetType";
 import { fetchActiveSalesPrice } from "@/lib/salesPrices";
@@ -59,6 +66,7 @@ type CaseData = {
 type ProductRelation = {
   name: string | null;
   model_no: string | null;
+  unit: string | null;
 };
 
 type PackageRelation = {
@@ -107,7 +115,7 @@ export default function NewInvoicePage() {
 
   const [caseData, setCaseData] = useState<CaseData | null>(null);
   const [caseProducts, setCaseProducts] = useState<CaseProduct[]>([]);
-  const [priceLines, setPriceLines] = useState<ResolvedInvoiceLinePrice[]>([]);
+  const [lineDrafts, setLineDrafts] = useState<InvoiceLineDraft[]>([]);
   const [autofill, setAutofill] =
     useState<InvoiceAmountAutofillResult | null>(null);
   /** 請求金額をユーザーが手動変更したら true。再計算で上書きしない */
@@ -205,7 +213,8 @@ export default function NewInvoicePage() {
             quantity,
             products (
               name,
-              model_no
+              model_no,
+              unit
             ),
             packages (
               name
@@ -242,13 +251,41 @@ export default function NewInvoicePage() {
         asOfDate,
       });
       const autofillResult = buildInvoiceAmountAutofill(resolvedLines);
-      setPriceLines(resolvedLines);
       setAutofill(autofillResult);
 
+      const draftSeeds = normalizedProducts.map((caseProduct) => {
+        const lineType = normalizeCaseLineType(caseProduct.line_type);
+        const product = getSingleRelation(caseProduct.products);
+        const pkg = getSingleRelation(caseProduct.packages);
+        const priced = resolvedLines.find((line) => line.id === caseProduct.id);
+        return {
+          caseProductId: caseProduct.id,
+          lineType,
+          productId: caseProduct.product_id,
+          packageId: caseProduct.package_id,
+          description:
+            lineType === "PACKAGE"
+              ? pkg?.name || "パッケージ"
+              : product?.name || product?.model_no || "商品",
+          quantity: toNumber(caseProduct.quantity),
+          unit:
+            lineType === "PACKAGE"
+              ? "式"
+              : product?.unit || "台",
+          unitPriceExTax:
+            priced?.status === "priced" ? priced.unitPriceExTax : null,
+        };
+      });
+      const initialDrafts = buildInvoiceLineDraftsFromCaseSeeds(draftSeeds);
+      setLineDrafts(initialDrafts);
+
+      const lineTotals = buildAutofillCompatFromLineDrafts(initialDrafts);
       const suggestedInclusive =
-        autofillResult.invoiceAmountInclusive != null
-          ? String(autofillResult.invoiceAmountInclusive)
-          : "";
+        lineTotals.invoiceAmountInclusive != null
+          ? String(lineTotals.invoiceAmountInclusive)
+          : autofillResult.invoiceAmountInclusive != null
+            ? String(autofillResult.invoiceAmountInclusive)
+            : "";
 
       const workflowLoad =
         await fetchCaseWorkflowForCasePage(resolvedCaseId);
@@ -317,6 +354,30 @@ export default function NewInvoicePage() {
       [name]: value,
     }));
   }
+
+  function handleLineDraftsChange(next: InvoiceLineDraft[]) {
+    setLineDrafts(next);
+    if (invoiceAmountTouchedRef.current) {
+      return;
+    }
+    const totals = buildInvoiceTotalsFromLines(next);
+    if (totals.invoiceAmountInclusive > 0) {
+      setForm((current) => ({
+        ...current,
+        invoice_amount: String(totals.invoiceAmountInclusive),
+      }));
+    } else {
+      setForm((current) => ({
+        ...current,
+        invoice_amount: "",
+      }));
+    }
+  }
+
+  const lineTotalsPreview = useMemo(
+    () => buildAutofillCompatFromLineDrafts(lineDrafts),
+    [lineDrafts]
+  );
 
   async function handleSubmit(
     event: FormEvent<HTMLFormElement>
@@ -387,6 +448,12 @@ export default function NewInvoicePage() {
       return;
     }
 
+    const lineValidation = validateAndBuildInvoiceLineInserts(lineDrafts);
+    if (!lineValidation.ok) {
+      setSubmitError(lineValidation.error_message);
+      return;
+    }
+
     setSubmitting(true);
 
     /*
@@ -425,13 +492,21 @@ export default function NewInvoicePage() {
     /*
      * caseData.idはSupabaseから取得した本物のUUIDです。
      * 税スナップショット:
-     * - 自動入力のまま未編集 → subtotal_ex_tax / tax_amount / invoice_amount を保存
+     * - 明細合計から自動入力のまま未編集 → subtotal_ex_tax / tax_amount / invoice_amount を保存
      * - 手入力 → invoice_amount のみ（税抜・税額は逆算せず NULL）
      */
+    const lineAutofill = buildAutofillCompatFromLineDrafts(lineDrafts);
     const taxSnapshot = buildInvoiceTaxSnapshotForSave({
       invoiceAmountTouched: invoiceAmountTouchedRef.current,
       invoiceAmount,
-      autofill,
+      autofill:
+        lineAutofill.invoiceAmountInclusive != null
+          ? {
+              subtotalExTax: lineAutofill.subtotalExTax,
+              tax: lineAutofill.tax,
+              invoiceAmountInclusive: lineAutofill.invoiceAmountInclusive,
+            }
+          : autofill,
     });
 
     const { data: insertedInvoice, error: invoiceError } =
@@ -460,6 +535,36 @@ export default function NewInvoicePage() {
           "登録結果を取得できませんでした"
         }`
       );
+      setSubmitting(false);
+      return;
+    }
+
+    const lineInserts = lineValidation.lines.map((line) => ({
+      ...line,
+      invoice_id: insertedInvoice.id,
+    }));
+
+    const { error: lineItemsError } = await supabase
+      .from("invoice_line_items")
+      .insert(lineInserts);
+
+    if (lineItemsError) {
+      console.error("請求明細登録エラー:", lineItemsError);
+      // ヘッダのみ残ると明細なし請求になるため、補償削除する
+      const { error: rollbackError } = await supabase
+        .from("invoices")
+        .delete()
+        .eq("id", insertedInvoice.id);
+      if (rollbackError) {
+        console.error("請求ヘッダ補償削除エラー:", rollbackError);
+        setSubmitError(
+          `明細の保存に失敗し、請求ヘッダの取消にも失敗しました。請求詳細を確認してください。\n明細: ${lineItemsError.message}\n取消: ${rollbackError.message}`
+        );
+      } else {
+        setSubmitError(
+          `明細の保存に失敗したため、請求は登録されていません：${lineItemsError.message}`
+        );
+      }
       setSubmitting(false);
       return;
     }
@@ -618,93 +723,45 @@ export default function NewInvoicePage() {
 
         <section className="rounded-xl bg-white p-5 shadow-sm md:p-6">
           <h2 className="mb-5 text-lg font-bold text-gray-900">
-            請求商品
+            請求明細
           </h2>
 
-          {caseProducts.length > 0 ? (
-            <div className="space-y-3">
-              {autofill?.hasUnsetPrices ? (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-                  {UNSET_PRICE_WARNING}
-                </div>
-              ) : null}
-
-              {caseProducts.map((caseProduct, index) => {
-                const product = getSingleRelation(
-                  caseProduct.products
-                );
-                const pkg = getSingleRelation(caseProduct.packages);
-                const priced = priceLines.find(
-                  (line) => line.id === caseProduct.id
-                );
-                const lineType = normalizeCaseLineType(
-                  caseProduct.line_type
-                );
-                const title =
-                  lineType === "PACKAGE"
-                    ? pkg?.name || product?.name || "パッケージ"
-                    : product?.name;
-                const modelOrType =
-                  lineType === "PACKAGE"
-                    ? "パッケージ"
-                    : product?.model_no;
-
-                return (
-                  <div
-                    key={caseProduct.id}
-                    className="rounded-lg border border-gray-200 p-4"
-                  >
-                    <div className="grid gap-4 md:grid-cols-4">
-                      <Info
-                        label={`${lineType === "PACKAGE" ? "パッケージ" : "商品"} ${index + 1}`}
-                        value={title}
-                      />
-
-                      <Info
-                        label={lineType === "PACKAGE" ? "種別" : "品番"}
-                        value={modelOrType}
-                      />
-
-                      <Info
-                        label="数量"
-                        value={String(
-                          caseProduct.quantity ?? "-"
-                        )}
-                      />
-
-                      <Info
-                        label="販売金額（税抜）"
-                        value={formatResolvedLineAmount(priced)}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-
-              <div className="rounded-lg bg-gray-50 p-4 space-y-2">
-                <p className="text-xs font-bold text-gray-500">
-                  販売合計（税抜・価格取得済みのみ）
-                </p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {formatCurrency(autofill?.subtotalExTax ?? 0)}
-                </p>
-                {autofill && autofill.pricedCount > 0 ? (
-                  <p className="text-xs text-gray-500">
-                    消費税（10%・切捨）{" "}
-                    {formatCurrency(autofill.tax)}
-                    {" / "}
-                    税込見込み{" "}
-                    {formatCurrency(autofill.invoiceAmountInclusive)}
-                  </p>
-                ) : null}
-              </div>
+          {autofill?.hasUnsetPrices ? (
+            <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              {UNSET_PRICE_WARNING}
             </div>
-          ) : (
-            <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-800">
-              この案件には商品が登録されていません。
-              請求金額を手入力してください。
+          ) : null}
+
+          {caseProducts.length === 0 && lineDrafts.length === 0 ? (
+            <div className="mb-4 rounded-lg border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-800">
+              この案件には商品・パッケージが登録されていません。
+              任意明細を追加するか、請求金額を手入力してください。
             </div>
-          )}
+          ) : null}
+
+          <InvoiceLineEditor
+            lines={lineDrafts}
+            onChange={handleLineDraftsChange}
+            disabled={submitting}
+          />
+
+          <div className="mt-4 rounded-lg bg-gray-50 p-4 space-y-2">
+            <p className="text-xs font-bold text-gray-500">
+              明細合計（税抜・請求対象のみ）
+            </p>
+            <p className="text-2xl font-bold text-gray-900">
+              {formatCurrency(lineTotalsPreview.subtotalExTax)}
+            </p>
+            {lineTotalsPreview.pricedCount > 0 ? (
+              <p className="text-xs text-gray-500">
+                消費税（10%・切捨）{" "}
+                {formatCurrency(lineTotalsPreview.tax)}
+                {" / "}
+                税込見込み{" "}
+                {formatCurrency(lineTotalsPreview.invoiceAmountInclusive)}
+              </p>
+            ) : null}
+          </div>
         </section>
 
         <form
@@ -827,13 +884,13 @@ export default function NewInvoicePage() {
               label="請求金額"
               required
               description={
-                autofill?.invoiceAmountInclusive != null &&
+                lineTotalsPreview.invoiceAmountInclusive != null &&
                 !invoiceAmountTouched
-                  ? `販売価格マスタの税抜合計 ${formatCurrency(
-                      autofill.subtotalExTax
+                  ? `請求明細の税抜合計 ${formatCurrency(
+                      lineTotalsPreview.subtotalExTax
                     )} に消費税（切捨）を加算した税込 ${formatCurrency(
-                      autofill.invoiceAmountInclusive
-                    )} を初期入力しています。変更後は自動では上書きしません。`
+                      lineTotalsPreview.invoiceAmountInclusive
+                    )} を初期入力しています。明細変更で再計算されます。請求金額を直接変更後は自動では上書きしません。`
                   : invoiceAmountTouched
                     ? "請求金額は手入力値を優先しています。"
                     : "請求金額を入力してください。"
@@ -1075,19 +1132,6 @@ async function resolveSalesPricesForCaseProducts(input: {
       });
     })
   );
-}
-
-function formatResolvedLineAmount(
-  line: ResolvedInvoiceLinePrice | undefined
-): string {
-  if (!line) return "-";
-  if (line.status === "priced" && line.lineTotalExTax != null) {
-    return formatCurrency(line.lineTotalExTax);
-  }
-  if (line.status === "error") {
-    return line.errorMessage || UNSET_PRICE_LABEL;
-  }
-  return UNSET_PRICE_LABEL;
 }
 
 function toNumber(

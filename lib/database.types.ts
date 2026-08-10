@@ -1351,6 +1351,72 @@ export type Database = {
         Relationships: [];
       };
       /**
+       * 請求明細スナップショット（20260810140000）。
+       * product / package / custom。パッケージ内商品は展開しない。
+       */
+      invoice_line_items: {
+        Row: {
+          id: string;
+          created_at: string;
+          invoice_id: string;
+          sort_order: number;
+          line_kind: string;
+          description: string;
+          quantity: number;
+          unit: string | null;
+          unit_price_ex_tax: number;
+          amount_ex_tax: number;
+          tax_rate: number;
+          memo: string | null;
+          case_product_id: string | null;
+          source_product_id: string | null;
+          source_package_id: string | null;
+        };
+        Insert: {
+          id?: string;
+          created_at?: string;
+          invoice_id: string;
+          sort_order?: number;
+          line_kind: string;
+          description: string;
+          quantity?: number;
+          unit?: string | null;
+          unit_price_ex_tax?: number;
+          amount_ex_tax?: number;
+          tax_rate?: number;
+          memo?: string | null;
+          case_product_id?: string | null;
+          source_product_id?: string | null;
+          source_package_id?: string | null;
+        };
+        Update: {
+          id?: string;
+          created_at?: string;
+          invoice_id?: string;
+          sort_order?: number;
+          line_kind?: string;
+          description?: string;
+          quantity?: number;
+          unit?: string | null;
+          unit_price_ex_tax?: number;
+          amount_ex_tax?: number;
+          tax_rate?: number;
+          memo?: string | null;
+          case_product_id?: string | null;
+          source_product_id?: string | null;
+          source_package_id?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "invoice_line_items_invoice_id_fkey";
+            columns: ["invoice_id"];
+            isOneToOne: false;
+            referencedRelation: "invoices";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      /**
        * 請求（ライブスキーマ互換の手生成型）。
        * subtotal_ex_tax / tax_amount は 20260807120000 で追加（NULL可）。
        */
