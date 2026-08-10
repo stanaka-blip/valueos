@@ -88,7 +88,7 @@ export default function EditDealerPage({
       return;
     }
 
-    router.push("/dealers");
+    router.push(`/dealers/${id}`);
     router.refresh();
   }
 

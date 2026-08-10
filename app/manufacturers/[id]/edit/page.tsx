@@ -68,7 +68,7 @@ export default function EditManufacturerPage({
       alert("更新に失敗しました：" + error.message);
       return;
     }
-    router.push("/manufacturers");
+    router.push(`/manufacturers/${id}`);
     router.refresh();
   }
 

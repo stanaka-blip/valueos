@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import MasterListRowActions from "@/app/components/masters/MasterListRowActions";
 import { supabase } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
@@ -38,7 +39,6 @@ export default async function ContractorsPage() {
               施工店の所在地・標準納品先・荷受け担当者を管理します
             </p>
           </div>
-
           <Link
             href="/contractors/new"
             className="rounded-lg bg-gray-900 px-5 py-3 text-sm font-bold text-white"
@@ -85,7 +85,12 @@ export default async function ContractorsPage() {
                       className="border-b last:border-b-0 hover:bg-gray-50"
                     >
                       <td className="whitespace-nowrap px-5 py-4 font-semibold text-gray-900">
-                        {displayText(row.name)}
+                        <Link
+                          href={`/contractors/${row.id}`}
+                          className="underline-offset-2 hover:underline"
+                        >
+                          {displayText(row.name)}
+                        </Link>
                       </td>
                       <td className="max-w-[220px] px-5 py-4 text-gray-700">
                         <span className="line-clamp-2">
@@ -113,12 +118,15 @@ export default async function ContractorsPage() {
                         </span>
                       </td>
                       <td className="whitespace-nowrap px-5 py-4 text-center">
-                        <Link
-                          href={`/contractors/${row.id}/edit`}
-                          className="rounded-lg bg-gray-900 px-3 py-2 text-xs font-bold text-white hover:bg-gray-700"
-                        >
-                          編集
-                        </Link>
+                        <MasterListRowActions
+                          label={row.name || "施工店"}
+                          items={[
+                            {
+                              label: "編集",
+                              href: `/contractors/${row.id}/edit`,
+                            },
+                          ]}
+                        />
                       </td>
                     </tr>
                   );

@@ -1,4 +1,6 @@
 import Link from "next/link";
+
+import MasterListRowActions from "@/app/components/masters/MasterListRowActions";
 import { supabase } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
@@ -14,14 +16,9 @@ export default async function ManufacturersPage() {
       <header className="border-b bg-white px-8 py-5">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">
-              メーカー一覧
-            </h1>
-            <p className="text-sm text-gray-500">
-              メーカー情報を管理します
-            </p>
+            <h1 className="text-2xl font-bold text-gray-900">メーカー一覧</h1>
+            <p className="text-sm text-gray-500">メーカー情報を管理します</p>
           </div>
-
           <Link
             href="/manufacturers/new"
             className="rounded-lg bg-gray-900 px-5 py-3 text-sm font-bold text-white"
@@ -44,7 +41,6 @@ export default async function ManufacturersPage() {
                 <th className="px-5 py-4 text-center">操作</th>
               </tr>
             </thead>
-
             <tbody>
               {error ? (
                 <tr>
@@ -57,26 +53,18 @@ export default async function ManufacturersPage() {
                 </tr>
               ) : manufacturers && manufacturers.length > 0 ? (
                 manufacturers.map((item) => (
-                  <tr
-                    key={item.id}
-                    className="border-t hover:bg-gray-50"
-                  >
+                  <tr key={item.id} className="border-t hover:bg-gray-50">
                     <td className="px-5 py-4 font-semibold">
-                      {item.name}
+                      <Link
+                        href={`/manufacturers/${item.id}`}
+                        className="underline-offset-2 hover:underline"
+                      >
+                        {item.name}
+                      </Link>
                     </td>
-
-                    <td className="px-5 py-4">
-                      {item.contact_name || "-"}
-                    </td>
-
-                    <td className="px-5 py-4">
-                      {item.phone || "-"}
-                    </td>
-
-                    <td className="px-5 py-4">
-                      {item.email || "-"}
-                    </td>
-
+                    <td className="px-5 py-4">{item.contact_name || "-"}</td>
+                    <td className="px-5 py-4">{item.phone || "-"}</td>
+                    <td className="px-5 py-4">{item.email || "-"}</td>
                     <td className="px-5 py-4">
                       {item.is_active ? (
                         <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-bold text-green-700">
@@ -88,14 +76,16 @@ export default async function ManufacturersPage() {
                         </span>
                       )}
                     </td>
-
                     <td className="px-5 py-4 text-center">
-                      <Link
-                        href={`/manufacturers/${item.id}/edit`}
-                        className="rounded-lg bg-gray-900 px-3 py-2 text-xs font-bold text-white hover:bg-gray-700"
-                      >
-                        編集
-                      </Link>
+                      <MasterListRowActions
+                        label={item.name || "メーカー"}
+                        items={[
+                          {
+                            label: "編集",
+                            href: `/manufacturers/${item.id}/edit`,
+                          },
+                        ]}
+                      />
                     </td>
                   </tr>
                 ))
