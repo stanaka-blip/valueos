@@ -45,6 +45,34 @@ async function countEq(
   return count ?? 0;
 }
 
+/** Migration 未適用などでテーブルが無い場合は 0（削除判定を止めない） */
+async function countEqOptionalTable(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  db: any,
+  table: string,
+  column: string,
+  id: string
+): Promise<number> {
+  try {
+    return await countEq(db, table, column, id);
+  } catch (e) {
+    const message = String(
+      (e as { message?: string } | null)?.message || e || ""
+    ).toLowerCase();
+    const code = String((e as { code?: string } | null)?.code || "");
+    if (
+      code === "42P01" ||
+      code === "PGRST205" ||
+      message.includes("does not exist") ||
+      message.includes("could not find the table") ||
+      message.includes("schema cache")
+    ) {
+      return 0;
+    }
+    throw e;
+  }
+}
+
 function inUse(label: string): MasterDeleteResult {
   return {
     ok: false,
@@ -78,6 +106,13 @@ export async function deleteDealerMaster(
     }
     if ((await countEq(db, "sales_prices", "dealer_id", id)) > 0) {
       return inUse("販売価格");
+    }
+    // 3社間: dealer_settlements.dealer_id ON DELETE RESTRICT（Migration 未適用時は skip）
+    if (
+      (await countEqOptionalTable(db, "dealer_settlements", "dealer_id", id)) >
+      0
+    ) {
+      return inUse("仕切清算");
     }
 
     const { error: delError } = await db.from("dealers").delete().eq("id", id);

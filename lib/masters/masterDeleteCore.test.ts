@@ -114,11 +114,29 @@ async function main() {
       dealers: [{ id: "d3" }],
       cases: [],
       sales_prices: [],
+      dealer_settlements: [],
     });
     const result = await deleteDealerMaster("d3", client as never);
     assert.equal(result.ok, true);
     assert.deepEqual(client.deleted, [{ table: "dealers", id: "d3" }]);
     console.log("OK dealer unused delete");
+  }
+
+  {
+    const client = createFakeClient({
+      dealers: [{ id: "d4" }],
+      cases: [],
+      sales_prices: [],
+      dealer_settlements: [{ id: "ds1", dealer_id: "d4" }],
+    });
+    const result = await deleteDealerMaster("d4", client as never);
+    assert.equal(result.ok, false);
+    if (!result.ok) {
+      assert.equal(result.error_code, "IN_USE");
+      assert.match(result.error_message, /仕切清算/);
+    }
+    assert.equal(client.deleted.length, 0);
+    console.log("OK dealer in use by dealer_settlements");
   }
 
   {
