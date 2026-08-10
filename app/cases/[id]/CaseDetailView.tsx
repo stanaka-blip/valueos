@@ -7,7 +7,10 @@ import StatusSelect from "../StatusSelect";
 import TaskStatusSelect from "../../tasks/TaskStatusSelect";
 import type { WorkflowResult } from "@/lib/workflow";
 
+import type { ThreePartyMoneyView } from "@/lib/threeParty/loadThreePartyMoneyAdmin";
+
 import SettlementForm from "./SettlementForm";
+import ThreePartyMoneyPanels from "./ThreePartyMoneyPanels";
 import WorkflowPanel from "./WorkflowPanel";
 import type { SettlementViewData } from "./settlementView";
 import CaseDocumentsPanel from "@/app/components/case-attachments/CaseDocumentsPanel";
@@ -67,6 +70,7 @@ export type OrderLineRow = {
 export type OrderRow = {
   id: string;
   orderNo: string;
+  supplierId: string | null;
   supplierName: string;
   orderDate: string | null;
   expectedDeliveryDate: string | null;
@@ -114,6 +118,8 @@ type CaseDetailViewProps = {
   settlement: SettlementViewData | null;
   workflow: WorkflowResult;
   dealerPaymentType?: string;
+  dealerId?: string | null;
+  threePartyMoney?: ThreePartyMoneyView;
   /** URL ?tab= などからの初期タブ（未指定時は基本情報） */
   initialTab?: CaseDetailTabId;
   errors: {
@@ -149,6 +155,12 @@ function display(value: string | null | undefined): string {
   return v || "—";
 }
 
+const EMPTY_THREE_PARTY: ThreePartyMoneyView = {
+  financeReceipts: [],
+  dealerSettlements: [],
+  supplierPayments: [],
+};
+
 export default function CaseDetailView({
   caseData,
   products,
@@ -159,6 +171,8 @@ export default function CaseDetailView({
   settlement,
   workflow,
   dealerPaymentType,
+  dealerId = null,
+  threePartyMoney = EMPTY_THREE_PARTY,
   initialTab = "basic",
   errors,
 }: CaseDetailViewProps) {
@@ -478,6 +492,10 @@ export default function CaseDetailView({
                 settlement={settlement}
                 loadError={errors.settlement}
                 dealerPaymentType={dealerPaymentType}
+                dealerId={dealerId}
+                invoices={invoices}
+                orders={orders}
+                threePartyMoney={threePartyMoney}
               />
             ) : null}
             {viewMode === "detail" && tab === "purchase" ? (
@@ -498,10 +516,23 @@ export default function CaseDetailView({
                 totals={totals}
                 invoiceError={errors.invoices}
                 paymentError={errors.payments}
+                settlementType={settlement?.settlementType || ""}
+                dealerId={dealerId}
+                orders={orders}
+                threePartyMoney={threePartyMoney}
+                financeCompanyDefault={settlement?.financeCompany || ""}
               />
             ) : null}
             {viewMode === "detail" && tab === "payment" ? (
-              <PaymentTab orders={orders} />
+              <PaymentTab
+                caseId={caseData.id}
+                orders={orders}
+                dealerId={dealerId}
+                invoices={invoices}
+                threePartyMoney={threePartyMoney}
+                financeCompanyDefault={settlement?.financeCompany || ""}
+                settlementType={settlement?.settlementType || ""}
+              />
             ) : null}
             {viewMode === "detail" && tab === "profit" ? (
               <ProfitTab
@@ -981,15 +1012,31 @@ function SettlementTab({
   settlement,
   loadError,
   dealerPaymentType,
+  dealerId,
+  invoices,
+  orders,
+  threePartyMoney,
 }: {
   caseId: string;
   settlement: SettlementViewData | null;
   loadError?: string;
   dealerPaymentType?: string;
+  dealerId?: string | null;
+  invoices: InvoiceRow[];
+  orders: OrderRow[];
+  threePartyMoney: ThreePartyMoneyView;
 }) {
   const type = settlement?.settlementType || "";
   const isSansha = type === "3社間決済";
   const isCard = type === "カード";
+  const panelProps = {
+    caseId,
+    dealerId: dealerId || null,
+    financeCompanyDefault: settlement?.financeCompany || "",
+    invoices,
+    orders,
+    money: threePartyMoney,
+  };
 
   return (
     <Section title="決済" description="決済フローと入金・請求の条件">
@@ -1051,6 +1098,13 @@ function SettlementTab({
         loadError={loadError}
         dealerPaymentType={dealerPaymentType}
       />
+
+      {isSansha ? (
+        <>
+          <ThreePartyMoneyPanels {...panelProps} section="finance" />
+          <ThreePartyMoneyPanels {...panelProps} section="dealer" />
+        </>
+      ) : null}
     </Section>
   );
 }
@@ -1339,6 +1393,11 @@ function InvoiceReceiptTab({
   totals,
   invoiceError,
   paymentError,
+  settlementType,
+  dealerId,
+  orders,
+  threePartyMoney,
+  financeCompanyDefault,
 }: {
   caseId: string;
   invoices: InvoiceRow[];
@@ -1346,6 +1405,11 @@ function InvoiceReceiptTab({
   totals: { invoiceAmount: number; paidIn: number; unpaid: number };
   invoiceError?: string;
   paymentError?: string;
+  settlementType: string;
+  dealerId?: string | null;
+  orders: OrderRow[];
+  threePartyMoney: ThreePartyMoneyView;
+  financeCompanyDefault: string;
 }) {
   const invoiceNoById = useMemo(() => {
     const map = new Map<string, string>();
@@ -1593,18 +1657,47 @@ function InvoiceReceiptTab({
           </div>
         ) : null}
       </div>
+
+      {settlementType === "3社間決済" ? (
+        <ThreePartyMoneyPanels
+          caseId={caseId}
+          dealerId={dealerId || null}
+          financeCompanyDefault={financeCompanyDefault}
+          invoices={invoices}
+          orders={orders}
+          money={threePartyMoney}
+          section="dealer"
+        />
+      ) : null}
     </Section>
   );
 }
 
-function PaymentTab({ orders }: { orders: OrderRow[] }) {
+function PaymentTab({
+  caseId,
+  orders,
+  dealerId,
+  invoices,
+  threePartyMoney,
+  financeCompanyDefault,
+  settlementType,
+}: {
+  caseId: string;
+  orders: OrderRow[];
+  dealerId?: string | null;
+  invoices: InvoiceRow[];
+  threePartyMoney: ThreePartyMoneyView;
+  financeCompanyDefault: string;
+  settlementType: string;
+}) {
   const summary = summarizePayments(orders);
   const activeOrders = orders.filter(
     (order) => order.status !== "キャンセル" && order.status !== "取消"
   );
+  const isSansha = settlementType === "3社間決済";
 
   return (
-    <Section title="支払" description="仕入先への支払目安（発注ベース）">
+    <Section title="支払" description="仕入先への支払管理">
       <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
         <MiniStat label="支払対象合計" value={formatYen(summary.targetAmount)} />
         <MiniStat
@@ -1617,57 +1710,43 @@ function PaymentTab({ orders }: { orders: OrderRow[] }) {
         />
       </div>
 
-      {activeOrders.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-gray-200 bg-[#f7f7f5] px-4 py-8 text-center">
-          <p className="text-sm text-gray-500">支払対象の発注はまだありません。</p>
-        </div>
+      {isSansha ? (
+        <ThreePartyMoneyPanels
+          caseId={caseId}
+          dealerId={dealerId || null}
+          financeCompanyDefault={financeCompanyDefault}
+          invoices={invoices}
+          orders={orders}
+          money={threePartyMoney}
+          section="supplier"
+        />
       ) : (
-        <div className="space-y-3">
+        <p className="text-sm text-gray-500">
+          3社間決済の案件では、ここで仕入先支払（予定・支払済・取消・訂正）を管理できます。
+        </p>
+      )}
+
+      {activeOrders.length > 0 ? (
+        <div className="mt-8 space-y-3 border-t border-gray-100 pt-6">
+          <h3 className="text-sm font-semibold text-gray-900">発注一覧（参考）</h3>
           {activeOrders.map((order) => {
             const deliveryStatus = getDeliveryStatus(order);
-            const paymentLabel =
-              deliveryStatus === "納品済" ? "支払準備OK" : "支払待ち（納品前）";
-
             return (
               <div
                 key={order.id}
                 className="rounded-lg border border-gray-200 p-4"
               >
-                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                   <Field label="仕入先" value={order.supplierName} />
                   <Field label="発注番号" value={order.orderNo} />
                   <Field label="発注金額" value={formatYen(order.orderAmount)} />
-                  <div>
-                    <p className="text-xs font-medium text-gray-400">発注状況</p>
-                    <div className="mt-1.5">
-                      <OrderStatusBadge status={order.status} />
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-xs font-medium text-gray-400">支払目安</p>
-                    <div className="mt-1.5">
-                      <PaymentReadyBadge ready={deliveryStatus === "納品済"} />
-                    </div>
-                    <p className="mt-1 text-xs text-gray-400">{paymentLabel}</p>
-                  </div>
-                </div>
-                <div className="mt-4 flex flex-wrap justify-end gap-2 border-t border-gray-100 pt-4">
-                  <Link
-                    href={`/orders/${order.id}`}
-                    className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50"
-                  >
-                    発注詳細
-                  </Link>
+                  <Field label="納品" value={deliveryStatus} />
                 </div>
               </div>
             );
           })}
         </div>
-      )}
-
-      <p className="mt-4 text-xs text-gray-400">
-        supplier_payments 連携前のため、発注金額を支払目安として表示しています。実績登録は後続で追加します。
-      </p>
+      ) : null}
     </Section>
   );
 }

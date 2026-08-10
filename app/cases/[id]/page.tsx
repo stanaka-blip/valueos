@@ -16,6 +16,7 @@ import { resolveCaseDetailTabId } from "./caseDetailTabs";
 import { toCaseProductDisplayRow } from "./productDisplay";
 import { toSettlementViewData } from "./settlementView";
 import { getCaseSettlementByCaseIdAdmin } from "@/lib/caseSettlements/getCaseSettlementAdmin";
+import { loadThreePartyMoneyByCaseIdAdmin } from "@/lib/threeParty/loadThreePartyMoneyAdmin";
 import { buildWorkflowContext } from "@/lib/workflow/buildContext";
 import { evaluateWorkflow } from "@/lib/workflow/WorkflowEngine";
 
@@ -87,6 +88,7 @@ export default async function CaseDetailPage({
     { data: invoicesData, error: invoicesError },
     { data: paymentsData, error: paymentsError },
     settlementResult,
+    threePartyMoney,
   ] = await Promise.all([
     supabase
       .from("cases")
@@ -158,6 +160,7 @@ export default async function CaseDetailPage({
         `
         id,
         order_no,
+        supplier_id,
         order_date,
         expected_delivery_date,
         delivered_date,
@@ -207,6 +210,7 @@ export default async function CaseDetailPage({
       .order("payment_date", { ascending: false }),
 
     getCaseSettlementByCaseIdAdmin(id),
+    loadThreePartyMoneyByCaseIdAdmin(id),
   ]);
 
   if (caseError || !caseData) {
@@ -298,6 +302,7 @@ export default async function CaseDetailPage({
     return {
       id: row.id as string,
       orderNo: (row.order_no as string) || "",
+      supplierId: (row.supplier_id as string) || null,
       supplierName: supplier?.name || "",
       orderDate: (row.order_date as string) || null,
       expectedDeliveryDate: (row.expected_delivery_date as string) || null,
@@ -431,6 +436,8 @@ export default async function CaseDetailPage({
       settlement={settlement}
       workflow={workflow}
       dealerPaymentType={dealer?.payment_type || undefined}
+      dealerId={(caseData.dealer_id as string) || null}
+      threePartyMoney={threePartyMoney}
       initialTab={resolveCaseDetailTabId(tabParam)}
       errors={{
         products: caseProductsError?.message,
