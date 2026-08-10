@@ -202,16 +202,29 @@ WHERE table_schema = 'public'
   )
 ORDER BY table_name, grantee, privilege_type;
 
--- service_role 必須権限（各テーブル SELECT,INSERT,UPDATE）
+-- service_role 必須権限（各テーブル SELECT,INSERT,UPDATE / DELETE なし）
 SELECT
   t.table_name,
-  bool_and(g.privilege_type = 'SELECT') FILTER (WHERE g.privilege_type = 'SELECT')
-    IS TRUE AS has_select,
-  bool_and(g.privilege_type = 'INSERT') FILTER (WHERE g.privilege_type = 'INSERT')
-    IS TRUE AS has_insert,
-  bool_and(g.privilege_type = 'UPDATE') FILTER (WHERE g.privilege_type = 'UPDATE')
-    IS TRUE AS has_update,
-  bool_or(g.privilege_type = 'DELETE') AS has_delete
+  EXISTS (
+    SELECT 1 FROM information_schema.role_table_grants g
+    WHERE g.table_schema = 'public' AND g.table_name = t.table_name
+      AND g.grantee = 'service_role' AND g.privilege_type = 'SELECT'
+  ) AS has_select,
+  EXISTS (
+    SELECT 1 FROM information_schema.role_table_grants g
+    WHERE g.table_schema = 'public' AND g.table_name = t.table_name
+      AND g.grantee = 'service_role' AND g.privilege_type = 'INSERT'
+  ) AS has_insert,
+  EXISTS (
+    SELECT 1 FROM information_schema.role_table_grants g
+    WHERE g.table_schema = 'public' AND g.table_name = t.table_name
+      AND g.grantee = 'service_role' AND g.privilege_type = 'UPDATE'
+  ) AS has_update,
+  EXISTS (
+    SELECT 1 FROM information_schema.role_table_grants g
+    WHERE g.table_schema = 'public' AND g.table_name = t.table_name
+      AND g.grantee = 'service_role' AND g.privilege_type = 'DELETE'
+  ) AS has_delete
 FROM (
   VALUES
     ('finance_receipts'),
@@ -221,11 +234,6 @@ FROM (
     ('three_party_money_requests'),
     ('product_bulk_setup_requests')
 ) AS t(table_name)
-LEFT JOIN information_schema.role_table_grants g
-  ON g.table_schema = 'public'
- AND g.table_name = t.table_name
- AND g.grantee = 'service_role'
-GROUP BY t.table_name
 ORDER BY t.table_name;
 
 -- ---------------------------------------------------------------------------
