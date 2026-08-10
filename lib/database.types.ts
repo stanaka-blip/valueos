@@ -153,6 +153,60 @@ export type Database = {
         ];
       };
       /**
+       * 3社間金銭 API 冪等 ledger（20260810160000）。
+       * service_role のみ。
+       */
+      three_party_money_requests: {
+        Row: {
+          request_id: string;
+          action: string;
+          case_id: string | null;
+          resource_id: string | null;
+          status: string;
+          payload_hash: string;
+          error_code: string | null;
+          error_message: string | null;
+          response: Json | null;
+          created_at: string;
+          completed_at: string | null;
+        };
+        Insert: {
+          request_id: string;
+          action: string;
+          case_id?: string | null;
+          resource_id?: string | null;
+          status: string;
+          payload_hash: string;
+          error_code?: string | null;
+          error_message?: string | null;
+          response?: Json | null;
+          created_at?: string;
+          completed_at?: string | null;
+        };
+        Update: {
+          request_id?: string;
+          action?: string;
+          case_id?: string | null;
+          resource_id?: string | null;
+          status?: string;
+          payload_hash?: string;
+          error_code?: string | null;
+          error_message?: string | null;
+          response?: Json | null;
+          created_at?: string;
+          completed_at?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "three_party_money_requests_case_id_fkey";
+            columns: ["case_id"];
+            isOneToOne: false;
+            referencedRelation: "cases";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      /**
        * 信販入金（20260810150000）。既存 payments とは独立。
        * 書込は service_role / gateway のみ。
        */
@@ -1526,6 +1580,12 @@ export type Database = {
         Returns: Json;
       };
       create_package_bulk_setup: {
+        Args: {
+          payload: Json;
+        };
+        Returns: Json;
+      };
+      execute_three_party_money: {
         Args: {
           payload: Json;
         };
