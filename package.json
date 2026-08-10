@@ -10,6 +10,7 @@
     "test:workflow": "tsx lib/workflow/WorkflowEngine.test.ts",
     "test:payments": "tsx lib/payments/invoicePaymentStatus.test.ts",
     "test:three-party": "tsx lib/threeParty/dealerSettlementCalc.test.ts && tsx lib/threeParty/moneyEventStatus.test.ts && tsx lib/threeParty/moneyActionsLogic.test.ts && tsx lib/threeParty/moneyActionPaths.test.ts && tsx lib/threeParty/dealerSettlementPrintModel.test.ts && tsx lib/threeParty/threePartyUiContract.test.ts",
+    "test:invoice-lines": "tsx lib/invoices/invoiceLineItems.test.ts",
     "test:dashboard": "tsx lib/dashboard/period.test.ts && tsx lib/dashboard/salesByOrderReceived.test.ts",
     "test:auth-invite": "tsx lib/auth/inviteSession.test.ts",
     "test:master-delete": "tsx lib/masters/masterDeleteCore.test.ts",
