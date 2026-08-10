@@ -33,7 +33,8 @@ CREATE TABLE IF NOT EXISTS public.finance_receipts (
   memo text NULL,
   cancelled_at timestamptz NULL,
   cancel_reason text NULL,
-  corrects_id uuid NULL REFERENCES public.finance_receipts (id) ON DELETE SET NULL,
+  -- 訂正チェーンを物理DELETEで切れないよう RESTRICT（取消で履歴保持）
+  corrects_id uuid NULL REFERENCES public.finance_receipts (id) ON DELETE RESTRICT,
   CONSTRAINT finance_receipts_status_chk CHECK (
     status IN ('予定', '入金済', '取消')
   ),
@@ -93,8 +94,9 @@ CREATE TABLE IF NOT EXISTS public.dealer_settlements (
   dealer_id uuid NOT NULL REFERENCES public.dealers (id) ON DELETE RESTRICT,
   statement_no text NULL,
   issue_date date NULL,
-  finance_receipt_id uuid NULL REFERENCES public.finance_receipts (id) ON DELETE SET NULL,
-  invoice_id uuid NULL REFERENCES public.invoices (id) ON DELETE SET NULL,
+  -- 参照先の物理DELETEを拒否し、取消/履歴保持を強制する
+  finance_receipt_id uuid NULL REFERENCES public.finance_receipts (id) ON DELETE RESTRICT,
+  invoice_id uuid NULL REFERENCES public.invoices (id) ON DELETE RESTRICT,
   credit_received_amount numeric NOT NULL DEFAULT 0,
   ve_share_amount numeric NOT NULL DEFAULT 0,
   adjustment_total_amount numeric NOT NULL DEFAULT 0,
@@ -108,7 +110,7 @@ CREATE TABLE IF NOT EXISTS public.dealer_settlements (
   memo text NULL,
   cancelled_at timestamptz NULL,
   cancel_reason text NULL,
-  corrects_id uuid NULL REFERENCES public.dealer_settlements (id) ON DELETE SET NULL,
+  corrects_id uuid NULL REFERENCES public.dealer_settlements (id) ON DELETE RESTRICT,
   CONSTRAINT dealer_settlements_status_chk CHECK (
     status IN ('下書き', '確定', '支払済', '取消')
   ),
@@ -188,6 +190,8 @@ CREATE TABLE IF NOT EXISTS public.dealer_settlement_lines (
       'other'
     )
   ),
+  -- 調整額は控除を正数で保持（負数で payout を水増ししない）
+  CONSTRAINT dealer_settlement_lines_amount_nonneg_chk CHECK (amount >= 0),
   CONSTRAINT dealer_settlement_lines_description_nonempty_chk CHECK (
     char_length(btrim(description)) > 0
   )
@@ -223,7 +227,7 @@ CREATE TABLE IF NOT EXISTS public.supplier_payments (
   memo text NULL,
   cancelled_at timestamptz NULL,
   cancel_reason text NULL,
-  corrects_id uuid NULL REFERENCES public.supplier_payments (id) ON DELETE SET NULL,
+  corrects_id uuid NULL REFERENCES public.supplier_payments (id) ON DELETE RESTRICT,
   CONSTRAINT supplier_payments_status_chk CHECK (
     status IN ('予定', '支払済', '取消')
   ),
@@ -301,13 +305,14 @@ BEGIN
     REVOKE ALL ON TABLE public.supplier_payments FROM authenticated;
   END IF;
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
-    GRANT SELECT, INSERT, UPDATE, DELETE
+    -- DELETE 権限を与えない（取消/訂正で履歴を残す。物理DELETEで帳尻を合わせない）
+    GRANT SELECT, INSERT, UPDATE
       ON TABLE public.finance_receipts TO service_role;
-    GRANT SELECT, INSERT, UPDATE, DELETE
+    GRANT SELECT, INSERT, UPDATE
       ON TABLE public.dealer_settlements TO service_role;
-    GRANT SELECT, INSERT, UPDATE, DELETE
+    GRANT SELECT, INSERT, UPDATE
       ON TABLE public.dealer_settlement_lines TO service_role;
-    GRANT SELECT, INSERT, UPDATE, DELETE
+    GRANT SELECT, INSERT, UPDATE
       ON TABLE public.supplier_payments TO service_role;
   END IF;
 END $$;
