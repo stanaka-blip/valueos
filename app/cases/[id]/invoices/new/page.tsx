@@ -550,9 +550,23 @@ export default function NewInvoicePage() {
 
     if (lineItemsError) {
       console.error("請求明細登録エラー:", lineItemsError);
-      window.alert(
-        `請求ヘッダは登録されましたが、明細の保存に失敗しました。\n${lineItemsError.message}\n請求詳細で内容を確認してください。`
-      );
+      // ヘッダのみ残ると明細なし請求になるため、補償削除する
+      const { error: rollbackError } = await supabase
+        .from("invoices")
+        .delete()
+        .eq("id", insertedInvoice.id);
+      if (rollbackError) {
+        console.error("請求ヘッダ補償削除エラー:", rollbackError);
+        setSubmitError(
+          `明細の保存に失敗し、請求ヘッダの取消にも失敗しました。請求詳細を確認してください。\n明細: ${lineItemsError.message}\n取消: ${rollbackError.message}`
+        );
+      } else {
+        setSubmitError(
+          `明細の保存に失敗したため、請求は登録されていません：${lineItemsError.message}`
+        );
+      }
+      setSubmitting(false);
+      return;
     }
 
     const nextCaseStatus =
