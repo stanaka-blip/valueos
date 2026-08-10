@@ -168,13 +168,13 @@ export default async function ProductsPage({
               href="/products/setup"
               className="rounded-lg bg-gray-900 px-5 py-3 text-sm font-bold text-white"
             >
-              ＋ 商品セットアップ
+              ＋ 商品セットアップ（一括）
             </Link>
             <Link
               href="/products/new"
               className="rounded-lg border border-gray-300 px-5 py-3 text-sm font-medium text-gray-700"
             >
-              商品のみ登録
+              1件登録
             </Link>
           </div>
         </div>
