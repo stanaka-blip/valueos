@@ -152,6 +152,310 @@ export type Database = {
           },
         ];
       };
+      /**
+       * 信販入金（20260810150000）。既存 payments とは独立。
+       * 書込は service_role / gateway のみ。
+       */
+      finance_receipts: {
+        Row: {
+          id: string;
+          created_at: string;
+          updated_at: string;
+          case_id: string;
+          finance_company: string;
+          scheduled_date: string | null;
+          scheduled_amount: number;
+          actual_date: string | null;
+          actual_amount: number | null;
+          status: string;
+          memo: string | null;
+          cancelled_at: string | null;
+          cancel_reason: string | null;
+          corrects_id: string | null;
+        };
+        Insert: {
+          id?: string;
+          created_at?: string;
+          updated_at?: string;
+          case_id: string;
+          finance_company: string;
+          scheduled_date?: string | null;
+          scheduled_amount?: number;
+          actual_date?: string | null;
+          actual_amount?: number | null;
+          status?: string;
+          memo?: string | null;
+          cancelled_at?: string | null;
+          cancel_reason?: string | null;
+          corrects_id?: string | null;
+        };
+        Update: {
+          id?: string;
+          created_at?: string;
+          updated_at?: string;
+          case_id?: string;
+          finance_company?: string;
+          scheduled_date?: string | null;
+          scheduled_amount?: number;
+          actual_date?: string | null;
+          actual_amount?: number | null;
+          status?: string;
+          memo?: string | null;
+          cancelled_at?: string | null;
+          cancel_reason?: string | null;
+          corrects_id?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "finance_receipts_case_id_fkey";
+            columns: ["case_id"];
+            isOneToOne: false;
+            referencedRelation: "cases";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "finance_receipts_corrects_id_fkey";
+            columns: ["corrects_id"];
+            isOneToOne: false;
+            referencedRelation: "finance_receipts";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      /**
+       * 仕切清算書ヘッダ兼販売店支払（20260810150000）。
+       * 確定金額は snapshot。既存 invoices とは別書類。
+       */
+      dealer_settlements: {
+        Row: {
+          id: string;
+          created_at: string;
+          updated_at: string;
+          case_id: string;
+          dealer_id: string;
+          statement_no: string | null;
+          issue_date: string | null;
+          finance_receipt_id: string | null;
+          invoice_id: string | null;
+          credit_received_amount: number;
+          ve_share_amount: number;
+          adjustment_total_amount: number;
+          payout_amount: number;
+          scheduled_payout_date: string | null;
+          actual_payout_date: string | null;
+          actual_payout_amount: number | null;
+          contract_date: string | null;
+          delivery_date: string | null;
+          status: string;
+          memo: string | null;
+          cancelled_at: string | null;
+          cancel_reason: string | null;
+          corrects_id: string | null;
+        };
+        Insert: {
+          id?: string;
+          created_at?: string;
+          updated_at?: string;
+          case_id: string;
+          dealer_id: string;
+          statement_no?: string | null;
+          issue_date?: string | null;
+          finance_receipt_id?: string | null;
+          invoice_id?: string | null;
+          credit_received_amount?: number;
+          ve_share_amount?: number;
+          adjustment_total_amount?: number;
+          payout_amount?: number;
+          scheduled_payout_date?: string | null;
+          actual_payout_date?: string | null;
+          actual_payout_amount?: number | null;
+          contract_date?: string | null;
+          delivery_date?: string | null;
+          status?: string;
+          memo?: string | null;
+          cancelled_at?: string | null;
+          cancel_reason?: string | null;
+          corrects_id?: string | null;
+        };
+        Update: {
+          id?: string;
+          created_at?: string;
+          updated_at?: string;
+          case_id?: string;
+          dealer_id?: string;
+          statement_no?: string | null;
+          issue_date?: string | null;
+          finance_receipt_id?: string | null;
+          invoice_id?: string | null;
+          credit_received_amount?: number;
+          ve_share_amount?: number;
+          adjustment_total_amount?: number;
+          payout_amount?: number;
+          scheduled_payout_date?: string | null;
+          actual_payout_date?: string | null;
+          actual_payout_amount?: number | null;
+          contract_date?: string | null;
+          delivery_date?: string | null;
+          status?: string;
+          memo?: string | null;
+          cancelled_at?: string | null;
+          cancel_reason?: string | null;
+          corrects_id?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "dealer_settlements_case_id_fkey";
+            columns: ["case_id"];
+            isOneToOne: false;
+            referencedRelation: "cases";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "dealer_settlements_finance_receipt_id_fkey";
+            columns: ["finance_receipt_id"];
+            isOneToOne: false;
+            referencedRelation: "finance_receipts";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "dealer_settlements_invoice_id_fkey";
+            columns: ["invoice_id"];
+            isOneToOne: false;
+            referencedRelation: "invoices";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "dealer_settlements_corrects_id_fkey";
+            columns: ["corrects_id"];
+            isOneToOne: false;
+            referencedRelation: "dealer_settlements";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      /**
+       * 仕切清算明細（20260810150000）。
+       */
+      dealer_settlement_lines: {
+        Row: {
+          id: string;
+          created_at: string;
+          dealer_settlement_id: string;
+          sort_order: number;
+          line_kind: string;
+          description: string;
+          amount: number;
+          memo: string | null;
+        };
+        Insert: {
+          id?: string;
+          created_at?: string;
+          dealer_settlement_id: string;
+          sort_order?: number;
+          line_kind: string;
+          description: string;
+          amount?: number;
+          memo?: string | null;
+        };
+        Update: {
+          id?: string;
+          created_at?: string;
+          dealer_settlement_id?: string;
+          sort_order?: number;
+          line_kind?: string;
+          description?: string;
+          amount?: number;
+          memo?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "dealer_settlement_lines_dealer_settlement_id_fkey";
+            columns: ["dealer_settlement_id"];
+            isOneToOne: false;
+            referencedRelation: "dealer_settlements";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      /**
+       * 仕入先支払（20260810150000）。orders に対して 1:N。
+       */
+      supplier_payments: {
+        Row: {
+          id: string;
+          created_at: string;
+          updated_at: string;
+          case_id: string;
+          supplier_id: string;
+          order_id: string | null;
+          due_date: string | null;
+          scheduled_amount: number;
+          paid_date: string | null;
+          paid_amount: number | null;
+          status: string;
+          memo: string | null;
+          cancelled_at: string | null;
+          cancel_reason: string | null;
+          corrects_id: string | null;
+        };
+        Insert: {
+          id?: string;
+          created_at?: string;
+          updated_at?: string;
+          case_id: string;
+          supplier_id: string;
+          order_id?: string | null;
+          due_date?: string | null;
+          scheduled_amount?: number;
+          paid_date?: string | null;
+          paid_amount?: number | null;
+          status?: string;
+          memo?: string | null;
+          cancelled_at?: string | null;
+          cancel_reason?: string | null;
+          corrects_id?: string | null;
+        };
+        Update: {
+          id?: string;
+          created_at?: string;
+          updated_at?: string;
+          case_id?: string;
+          supplier_id?: string;
+          order_id?: string | null;
+          due_date?: string | null;
+          scheduled_amount?: number;
+          paid_date?: string | null;
+          paid_amount?: number | null;
+          status?: string;
+          memo?: string | null;
+          cancelled_at?: string | null;
+          cancel_reason?: string | null;
+          corrects_id?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "supplier_payments_case_id_fkey";
+            columns: ["case_id"];
+            isOneToOne: false;
+            referencedRelation: "cases";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "supplier_payments_order_id_fkey";
+            columns: ["order_id"];
+            isOneToOne: false;
+            referencedRelation: "orders";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "supplier_payments_corrects_id_fkey";
+            columns: ["corrects_id"];
+            isOneToOne: false;
+            referencedRelation: "supplier_payments";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       cases: {
         Row: {
           id: string;
