@@ -174,14 +174,22 @@ export default async function ProductDetailPage({
           </dl>
         </section>
 
-        <MasterPricePanels
-          targetType="PRODUCT"
-          productId={id}
-          defaultSupplierId={
-            (product.default_supplier_id as string | null) || ""
-          }
-          defaultSupplierName={supplierName === "—" ? "" : supplierName}
-        />
+        <section className="mx-auto mt-6 max-w-5xl">
+          <h2 className="mb-2 text-lg font-bold text-gray-900">
+            仕入・販売価格
+          </h2>
+          <p className="mb-4 text-sm text-gray-600">
+            この商品をどの仕入先からいくらで仕入れ、どの販売店へいくらで販売するかを確認できます。追加・編集は各価格画面から行います。
+          </p>
+          <MasterPricePanels
+            targetType="PRODUCT"
+            productId={id}
+            defaultSupplierId={
+              (product.default_supplier_id as string | null) || ""
+            }
+            defaultSupplierName={supplierName === "—" ? "" : supplierName}
+          />
+        </section>
       </main>
     </>
   );
