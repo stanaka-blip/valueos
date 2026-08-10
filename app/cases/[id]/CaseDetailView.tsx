@@ -1101,6 +1101,12 @@ function SettlementTab({
 
       {isSansha ? (
         <>
+          <div className="mt-8 rounded-lg border border-sky-100 bg-sky-50/70 px-4 py-3 text-sm text-sky-950">
+            <p className="font-semibold">3社間の金銭イベント（独立管理）</p>
+            <p className="mt-1 text-sky-900/90">
+              ①信販入金 ②販売店への仕切清算・支払 ③仕入先支払は、それぞれ別イベントです。固定の実行順序はありません。仕入先支払は信販入金前でも登録・支払済にできます。
+            </p>
+          </div>
           <ThreePartyMoneyPanels {...panelProps} section="finance" />
           <ThreePartyMoneyPanels {...panelProps} section="dealer" />
         </>
@@ -1711,15 +1717,20 @@ function PaymentTab({
       </div>
 
       {isSansha ? (
-        <ThreePartyMoneyPanels
-          caseId={caseId}
-          dealerId={dealerId || null}
-          financeCompanyDefault={financeCompanyDefault}
-          invoices={invoices}
-          orders={orders}
-          money={threePartyMoney}
-          section="supplier"
-        />
+        <>
+          <p className="mb-4 text-sm text-gray-600">
+            仕入先への支払は信販入金・仕切清算と独立しています。信販入金前でも予定登録・支払済にできます。
+          </p>
+          <ThreePartyMoneyPanels
+            caseId={caseId}
+            dealerId={dealerId || null}
+            financeCompanyDefault={financeCompanyDefault}
+            invoices={invoices}
+            orders={orders}
+            money={threePartyMoney}
+            section="supplier"
+          />
+        </>
       ) : (
         <p className="text-sm text-gray-500">
           3社間決済の案件では、ここで仕入先支払（予定・支払済・取消・訂正）を管理できます。

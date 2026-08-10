@@ -110,8 +110,11 @@ function FinanceReceiptPanel({
 
   return (
     <div className="mt-8 space-y-4 border-t border-gray-100 pt-6">
-      <div className="flex items-center justify-between gap-3">
-        <h3 className="text-sm font-semibold text-gray-900">信販入金</h3>
+      <div>
+        <h3 className="text-sm font-semibold text-gray-900">① 信販会社からの入金</h3>
+        <p className="mt-1 text-xs text-gray-500">
+          信販会社→Value Ecology の入金イベントです。仕切清算・仕入先支払の前提条件ではありません。
+        </p>
       </div>
       {money.loadError ? (
         <p className="text-sm text-rose-700">{money.loadError}</p>
@@ -138,12 +141,9 @@ function FinanceReceiptPanel({
                   cancel_reason: "画面から取消",
                 })
               }
-              onCorrect={() =>
+              onCorrect={(body) =>
                 run("finance_receipt.correct", row.id, {
-                  finance_company: row.financeCompany,
-                  scheduled_date: row.scheduledDate,
-                  scheduled_amount: row.scheduledAmount,
-                  memo: row.memo,
+                  ...body,
                   cancel_reason: "画面から訂正",
                 })
               }
@@ -232,18 +232,28 @@ function FinanceReceiptCard({
   busy: boolean;
   onConfirm: (date: string, amount: number) => void;
   onCancel: () => void;
-  onCorrect: () => void;
+  onCorrect: (body: Record<string, unknown>) => void;
 }) {
   const [actualDate, setActualDate] = useState(
     () => new Date().toISOString().slice(0, 10)
   );
   const [actualAmount, setActualAmount] = useState(String(row.scheduledAmount));
+  const [correcting, setCorrecting] = useState(false);
+  const [correctForm, setCorrectForm] = useState({
+    finance_company: row.financeCompany,
+    scheduled_date: row.scheduledDate || "",
+    scheduled_amount: String(row.scheduledAmount),
+    memo: row.memo || "",
+  });
   const active = row.status !== "取消";
 
   return (
     <div className="rounded-lg border border-gray-200 p-4">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm font-semibold text-gray-900">{row.financeCompany}</p>
+        <div>
+          <p className="text-xs text-gray-400">信販会社</p>
+          <p className="text-sm font-semibold text-gray-900">{row.financeCompany}</p>
+        </div>
         <StatusBadge label={row.displayStatus} />
       </div>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 text-sm">
@@ -267,41 +277,70 @@ function FinanceReceiptCard({
       {row.memo ? <p className="mt-2 text-xs text-gray-500">備考: {row.memo}</p> : null}
 
       {active && row.status === "予定" ? (
-        <div className="mt-4 flex flex-wrap items-end gap-2 border-t border-gray-100 pt-3">
-          <label className="text-xs text-gray-600">
-            実入金日
-            <input
-              type="date"
-              className="mt-1 block rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
-              value={actualDate}
+        <div className="mt-4 space-y-3 border-t border-gray-100 pt-3">
+          <p className="text-xs font-medium text-gray-700">
+            入金確認: 実入金日・実入金額を入力して確定します
+          </p>
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="text-xs text-gray-600">
+              実入金日
+              <input
+                type="date"
+                className="mt-1 block rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
+                value={actualDate}
+                disabled={busy}
+                onChange={(e) => setActualDate(e.target.value)}
+              />
+            </label>
+            <label className="text-xs text-gray-600">
+              実入金額
+              <input
+                type="number"
+                min={0}
+                className="mt-1 block w-36 rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
+                value={actualAmount}
+                disabled={busy}
+                onChange={(e) => setActualAmount(e.target.value)}
+              />
+            </label>
+            <button
+              type="button"
               disabled={busy}
-              onChange={(e) => setActualDate(e.target.value)}
-            />
-          </label>
-          <label className="text-xs text-gray-600">
-            実入金額
-            <input
-              type="number"
-              min={0}
-              className="mt-1 block w-36 rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
-              value={actualAmount}
+              className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-50"
+              onClick={() => onConfirm(actualDate, Number(actualAmount))}
+            >
+              入金確認
+            </button>
+            <button
+              type="button"
               disabled={busy}
-              onChange={(e) => setActualAmount(e.target.value)}
-            />
-          </label>
-          <button
-            type="button"
-            disabled={busy}
-            className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-50"
-            onClick={() => onConfirm(actualDate, Number(actualAmount))}
-          >
-            入金確認
-          </button>
+              className="rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 disabled:opacity-50"
+              onClick={() => setCorrecting((v) => !v)}
+            >
+              訂正
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              className="rounded-lg border border-rose-200 px-3 py-2 text-xs font-medium text-rose-700 disabled:opacity-50"
+              onClick={onCancel}
+            >
+              取消
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {active && row.status === "入金済" ? (
+        <div className="mt-4 flex flex-wrap gap-2 border-t border-gray-100 pt-3">
+          <p className="w-full text-xs text-gray-500">
+            入金済金額の直接編集はできません。変更は訂正（元行取消＋新規作成）で行います。
+          </p>
           <button
             type="button"
             disabled={busy}
             className="rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 disabled:opacity-50"
-            onClick={onCorrect}
+            onClick={() => setCorrecting((v) => !v)}
           >
             訂正
           </button>
@@ -316,23 +355,77 @@ function FinanceReceiptCard({
         </div>
       ) : null}
 
-      {active && row.status === "入金済" ? (
-        <div className="mt-4 flex flex-wrap gap-2 border-t border-gray-100 pt-3">
+      {active && correcting ? (
+        <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50/50 p-3">
+          <p className="mb-2 text-xs font-semibold text-amber-900">
+            訂正内容（元レコードは取消され、新しい予定が作成されます）
+          </p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <label className="text-xs text-gray-600">
+              信販会社
+              <input
+                className="mt-1 w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
+                value={correctForm.finance_company}
+                disabled={busy}
+                onChange={(e) =>
+                  setCorrectForm((f) => ({ ...f, finance_company: e.target.value }))
+                }
+              />
+            </label>
+            <label className="text-xs text-gray-600">
+              予定入金日
+              <input
+                type="date"
+                className="mt-1 w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
+                value={correctForm.scheduled_date}
+                disabled={busy}
+                onChange={(e) =>
+                  setCorrectForm((f) => ({ ...f, scheduled_date: e.target.value }))
+                }
+              />
+            </label>
+            <label className="text-xs text-gray-600">
+              予定金額
+              <input
+                type="number"
+                min={0}
+                className="mt-1 w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
+                value={correctForm.scheduled_amount}
+                disabled={busy}
+                onChange={(e) =>
+                  setCorrectForm((f) => ({
+                    ...f,
+                    scheduled_amount: e.target.value,
+                  }))
+                }
+              />
+            </label>
+            <label className="text-xs text-gray-600">
+              備考
+              <input
+                className="mt-1 w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
+                value={correctForm.memo}
+                disabled={busy}
+                onChange={(e) =>
+                  setCorrectForm((f) => ({ ...f, memo: e.target.value }))
+                }
+              />
+            </label>
+          </div>
           <button
             type="button"
             disabled={busy}
-            className="rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 disabled:opacity-50"
-            onClick={onCorrect}
+            className="mt-3 rounded-lg bg-amber-800 px-3 py-2 text-xs font-medium text-white disabled:opacity-50"
+            onClick={() =>
+              onCorrect({
+                finance_company: correctForm.finance_company,
+                scheduled_date: correctForm.scheduled_date || null,
+                scheduled_amount: Number(correctForm.scheduled_amount),
+                memo: correctForm.memo || null,
+              })
+            }
           >
-            訂正
-          </button>
-          <button
-            type="button"
-            disabled={busy}
-            className="rounded-lg border border-rose-200 px-3 py-2 text-xs font-medium text-rose-700 disabled:opacity-50"
-            onClick={onCancel}
-          >
-            取消
+            訂正を実行
           </button>
         </div>
       ) : null}
@@ -394,7 +487,14 @@ function DealerSettlementPanel({
 
   return (
     <div className="mt-8 space-y-4 border-t border-gray-100 pt-6">
-      <h3 className="text-sm font-semibold text-gray-900">販売店への仕切清算</h3>
+      <div>
+        <h3 className="text-sm font-semibold text-gray-900">
+          ② 販売店への仕切清算・支払
+        </h3>
+        <p className="mt-1 text-xs text-gray-500">
+          操作: 下書き作成 → 確定（金額固定）→ 支払済。確定後の金額直接編集は不可。変更は訂正。信販入金の完了は必須ではありません。
+        </p>
+      </div>
       {error ? <p className="text-sm text-rose-700">{error}</p> : null}
 
       <div className="space-y-3">
@@ -405,6 +505,7 @@ function DealerSettlementPanel({
             <DealerSettlementCard
               key={row.id}
               row={row}
+              dealerId={dealerId}
               busy={busy}
               onConfirm={() => run("dealer_settlement.confirm", row.id, {})}
               onPay={(date, amount) =>
@@ -418,27 +519,17 @@ function DealerSettlementPanel({
                   cancel_reason: "画面から取消",
                 })
               }
-              onCorrect={() => {
+              onCorrect={(body) => {
                 if (!dealerId) {
                   setError("販売店が未設定のため訂正できません");
                   return;
                 }
                 return run("dealer_settlement.correct", row.id, {
+                  ...body,
                   dealer_id: dealerId,
-                  credit_received_amount: row.creditReceivedAmount,
-                  ve_share_amount: row.veShareAmount,
                   finance_receipt_id: row.financeReceiptId,
                   invoice_id: row.invoiceId,
-                  scheduled_payout_date: row.scheduledPayoutDate,
-                  memo: row.memo,
                   cancel_reason: "画面から訂正",
-                  lines: row.lines.map((l) => ({
-                    line_kind: l.lineKind,
-                    description: l.description,
-                    amount: l.amount,
-                    memo: l.memo,
-                    sort_order: l.sortOrder,
-                  })),
                 });
               }}
             />
@@ -448,10 +539,10 @@ function DealerSettlementPanel({
 
       {dealerId ? (
         <div className="rounded-lg border border-dashed border-gray-300 p-4">
-          <p className="mb-3 text-xs font-semibold text-gray-600">仕切作成</p>
+          <p className="mb-3 text-xs font-semibold text-gray-600">仕切作成（下書き）</p>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="text-xs text-gray-600">
-              信販入金額
+              信販会社からの入金額
               <input
                 type="number"
                 min={0}
@@ -464,7 +555,7 @@ function DealerSettlementPanel({
               />
             </label>
             <label className="text-xs text-gray-600">
-              Value Ecology請求額 / 取り分
+              Value Ecology売上 / 請求額
               <input
                 type="number"
                 min={0}
@@ -502,10 +593,24 @@ function DealerSettlementPanel({
               />
             </label>
           </div>
-          <p className="mt-3 text-sm text-gray-700">
-            御振込金額（見込）:{" "}
-            <span className="font-semibold">{formatYen(preview.payoutAmount)}</span>
-          </p>
+          <div className="mt-4 overflow-hidden rounded-lg border border-gray-200 text-sm">
+            <div className="flex justify-between border-b border-gray-100 px-3 py-2">
+              <span>信販会社からの入金額</span>
+              <span className="tabular-nums">{formatYen(Number(form.credit_received_amount) || 0)}</span>
+            </div>
+            <div className="flex justify-between border-b border-gray-100 px-3 py-2 text-gray-700">
+              <span>− Value Ecology売上 / 請求額</span>
+              <span className="tabular-nums">{formatYen(Number(form.ve_share_amount) || 0)}</span>
+            </div>
+            <div className="flex justify-between border-b border-gray-100 px-3 py-2 text-gray-700">
+              <span>− 振込手数料</span>
+              <span className="tabular-nums">{formatYen(Number(form.transfer_fee) || 0)}</span>
+            </div>
+            <div className="flex justify-between bg-gray-900 px-3 py-3 font-semibold text-white">
+              <span>＝ 販売店への御振込金額</span>
+              <span className="text-base tabular-nums">{formatYen(preview.payoutAmount)}</span>
+            </div>
+          </div>
           <button
             type="button"
             disabled={busy}
@@ -557,6 +662,7 @@ function DealerSettlementPanel({
 
 function DealerSettlementCard({
   row,
+  dealerId,
   busy,
   onConfirm,
   onPay,
@@ -564,37 +670,78 @@ function DealerSettlementCard({
   onCorrect,
 }: {
   row: DealerSettlementView;
+  dealerId: string | null;
   busy: boolean;
   onConfirm: () => void;
   onPay: (date: string, amount: number) => void;
   onCancel: () => void;
-  onCorrect: () => void;
+  onCorrect: (body: Record<string, unknown>) => void;
 }) {
   const [payDate, setPayDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [payAmount, setPayAmount] = useState(String(row.payoutAmount));
+  const [correcting, setCorrecting] = useState(false);
+  const feeLine = row.lines.find((l) => l.lineKind === "transfer_fee");
+  const otherAdj = row.lines.filter((l) =>
+    ["discount", "offset", "other"].includes(l.lineKind)
+  );
+  const [correctForm, setCorrectForm] = useState({
+    credit_received_amount: String(row.creditReceivedAmount),
+    ve_share_amount: String(row.veShareAmount),
+    transfer_fee: String(feeLine?.amount ?? row.adjustmentTotalAmount),
+    scheduled_payout_date: row.scheduledPayoutDate || "",
+    memo: row.memo || "",
+  });
+  const correctPreview = calculateDealerSettlementPayout({
+    creditReceivedAmount: Number(correctForm.credit_received_amount) || 0,
+    veShareAmount: Number(correctForm.ve_share_amount) || 0,
+    adjustmentLines: [
+      { line_kind: "transfer_fee", amount: Number(correctForm.transfer_fee) || 0 },
+      ...otherAdj.map((l) => ({ line_kind: l.lineKind, amount: l.amount })),
+    ],
+  });
   const active = row.status !== "取消";
+  const amountsLocked = row.status === "確定" || row.status === "支払済";
 
   return (
     <div className="rounded-lg border border-gray-200 p-4">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm font-semibold text-gray-900">
-          御振込金額 {formatYen(row.payoutAmount)}
+        <p className="text-xs font-medium text-gray-500">
+          状態フロー: 下書き → 確定 → 支払済
         </p>
         <StatusBadge label={row.displayStatus} />
       </div>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 text-sm">
-        <div>
-          <p className="text-xs text-gray-400">信販入金額</p>
-          <p>{formatYen(row.creditReceivedAmount)}</p>
+
+      <div className="overflow-hidden rounded-lg border border-gray-200 text-sm">
+        <div className="flex justify-between border-b border-gray-100 px-3 py-2">
+          <span>信販会社からの入金額</span>
+          <span className="tabular-nums">{formatYen(row.creditReceivedAmount)}</span>
         </div>
-        <div>
-          <p className="text-xs text-gray-400">VE請求額 / 取り分</p>
-          <p>{formatYen(row.veShareAmount)}</p>
+        <div className="flex justify-between border-b border-gray-100 px-3 py-2 text-gray-700">
+          <span>− Value Ecology売上 / 請求額</span>
+          <span className="tabular-nums">{formatYen(row.veShareAmount)}</span>
         </div>
-        <div>
-          <p className="text-xs text-gray-400">調整合計</p>
-          <p>{formatYen(row.adjustmentTotalAmount)}</p>
+        <div className="flex justify-between border-b border-gray-100 px-3 py-2 text-gray-700">
+          <span>− 振込手数料</span>
+          <span className="tabular-nums">
+            {formatYen(feeLine?.amount ?? 0)}
+          </span>
         </div>
+        {otherAdj.map((l) => (
+          <div
+            key={l.id}
+            className="flex justify-between border-b border-gray-100 px-3 py-2 text-gray-700"
+          >
+            <span>− {l.description || l.lineKind}</span>
+            <span className="tabular-nums">{formatYen(l.amount)}</span>
+          </div>
+        ))}
+        <div className="flex justify-between bg-gray-900 px-3 py-3 font-semibold text-white">
+          <span>＝ 販売店への御振込金額</span>
+          <span className="text-base tabular-nums">{formatYen(row.payoutAmount)}</span>
+        </div>
+      </div>
+
+      <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3 text-sm">
         <div>
           <p className="text-xs text-gray-400">支払予定日</p>
           <p>{formatDate(row.scheduledPayoutDate)}</p>
@@ -608,15 +755,7 @@ function DealerSettlementCard({
           <p>{formatYen(row.actualPayoutAmount)}</p>
         </div>
       </div>
-      {row.lines.length > 0 ? (
-        <ul className="mt-3 space-y-1 text-xs text-gray-600">
-          {row.lines.map((l) => (
-            <li key={l.id}>
-              {l.description}: {formatYen(l.amount)}
-            </li>
-          ))}
-        </ul>
-      ) : null}
+      {row.memo ? <p className="mt-2 text-xs text-gray-500">備考: {row.memo}</p> : null}
 
       <div className="mt-4 flex flex-wrap gap-2 border-t border-gray-100 pt-3">
         {row.invoiceId ? (
@@ -641,7 +780,7 @@ function DealerSettlementCard({
             className="rounded-lg bg-gray-900 px-3 py-2 text-xs font-medium text-white disabled:opacity-50"
             onClick={onConfirm}
           >
-            確定
+            確定（金額を固定）
           </button>
         ) : null}
         {active && row.status === "確定" ? (
@@ -673,7 +812,7 @@ function DealerSettlementCard({
               className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-50"
               onClick={() => onPay(payDate, Number(payAmount))}
             >
-              支払済
+              支払済にする
             </button>
           </>
         ) : null}
@@ -681,9 +820,9 @@ function DealerSettlementCard({
           <>
             <button
               type="button"
-              disabled={busy || !row}
+              disabled={busy || !dealerId}
               className="rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 disabled:opacity-50"
-              onClick={onCorrect}
+              onClick={() => setCorrecting((v) => !v)}
             >
               訂正
             </button>
@@ -698,6 +837,127 @@ function DealerSettlementCard({
           </>
         ) : null}
       </div>
+
+      {amountsLocked ? (
+        <p className="mt-2 text-xs text-gray-500">
+          確定済みの仕切金額は直接編集できません。変更は訂正フローを使ってください。
+        </p>
+      ) : null}
+
+      {active && correcting ? (
+        <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50/50 p-3">
+          <p className="mb-2 text-xs font-semibold text-amber-900">
+            訂正内容（元レコード取消 + 新しい下書き作成）
+          </p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <label className="text-xs text-gray-600">
+              信販入金額
+              <input
+                type="number"
+                min={0}
+                className="mt-1 w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
+                value={correctForm.credit_received_amount}
+                disabled={busy}
+                onChange={(e) =>
+                  setCorrectForm((f) => ({
+                    ...f,
+                    credit_received_amount: e.target.value,
+                  }))
+                }
+              />
+            </label>
+            <label className="text-xs text-gray-600">
+              VE売上 / 請求額
+              <input
+                type="number"
+                min={0}
+                className="mt-1 w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
+                value={correctForm.ve_share_amount}
+                disabled={busy}
+                onChange={(e) =>
+                  setCorrectForm((f) => ({
+                    ...f,
+                    ve_share_amount: e.target.value,
+                  }))
+                }
+              />
+            </label>
+            <label className="text-xs text-gray-600">
+              振込手数料
+              <input
+                type="number"
+                min={0}
+                className="mt-1 w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
+                value={correctForm.transfer_fee}
+                disabled={busy}
+                onChange={(e) =>
+                  setCorrectForm((f) => ({ ...f, transfer_fee: e.target.value }))
+                }
+              />
+            </label>
+            <label className="text-xs text-gray-600">
+              支払予定日
+              <input
+                type="date"
+                className="mt-1 w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
+                value={correctForm.scheduled_payout_date}
+                disabled={busy}
+                onChange={(e) =>
+                  setCorrectForm((f) => ({
+                    ...f,
+                    scheduled_payout_date: e.target.value,
+                  }))
+                }
+              />
+            </label>
+          </div>
+          <p className="mt-2 text-sm font-semibold text-gray-900">
+            御振込（見込）: {formatYen(correctPreview.payoutAmount)}
+          </p>
+          <button
+            type="button"
+            disabled={busy || !dealerId}
+            className="mt-3 rounded-lg bg-amber-800 px-3 py-2 text-xs font-medium text-white disabled:opacity-50"
+            onClick={() =>
+              onCorrect({
+                credit_received_amount: Number(correctForm.credit_received_amount),
+                ve_share_amount: Number(correctForm.ve_share_amount),
+                scheduled_payout_date: correctForm.scheduled_payout_date || null,
+                memo: correctForm.memo || null,
+                lines: [
+                  {
+                    line_kind: "credit_in",
+                    description: "クレジット会社入金額",
+                    amount: Number(correctForm.credit_received_amount) || 0,
+                    sort_order: 1,
+                  },
+                  {
+                    line_kind: "ve_share",
+                    description: "弊社売上金額",
+                    amount: Number(correctForm.ve_share_amount) || 0,
+                    sort_order: 2,
+                  },
+                  {
+                    line_kind: "transfer_fee",
+                    description: "振込手数料",
+                    amount: Number(correctForm.transfer_fee) || 0,
+                    sort_order: 3,
+                  },
+                  ...otherAdj.map((l, i) => ({
+                    line_kind: l.lineKind,
+                    description: l.description,
+                    amount: l.amount,
+                    memo: l.memo,
+                    sort_order: 4 + i,
+                  })),
+                ],
+              })
+            }
+          >
+            訂正を実行
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -737,8 +997,11 @@ function SupplierPaymentPanel({ caseId, orders, money }: Props) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-gray-900">仕入先支払</h3>
+      <div>
+        <h3 className="text-sm font-semibold text-gray-900">③ 仕入先への支払</h3>
+        <p className="mt-1 text-xs text-gray-500">
+          発注に対する支払イベントです（同一発注に複数登録可。当面は1回払いUI）。信販入金の有無は問いません。
+        </p>
       </div>
       {money.loadError ? (
         <p className="text-sm text-rose-700">{money.loadError}</p>
@@ -765,13 +1028,11 @@ function SupplierPaymentPanel({ caseId, orders, money }: Props) {
                   cancel_reason: "画面から取消",
                 })
               }
-              onCorrect={() =>
+              onCorrect={(body) =>
                 run("supplier_payment.correct", row.id, {
+                  ...body,
                   supplier_id: row.supplierId,
                   order_id: row.orderId,
-                  due_date: row.dueDate,
-                  scheduled_amount: row.scheduledAmount,
-                  memo: row.memo,
                   cancel_reason: "画面から訂正",
                 })
               }
@@ -908,21 +1169,30 @@ function SupplierPaymentCard({
   busy: boolean;
   onPay: (date: string, amount: number) => void;
   onCancel: () => void;
-  onCorrect: () => void;
+  onCorrect: (body: Record<string, unknown>) => void;
 }) {
   const [paidDate, setPaidDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [paidAmount, setPaidAmount] = useState(String(row.scheduledAmount));
+  const [correcting, setCorrecting] = useState(false);
+  const [correctForm, setCorrectForm] = useState({
+    due_date: row.dueDate || "",
+    scheduled_amount: String(row.scheduledAmount),
+    memo: row.memo || "",
+  });
   const active = row.status !== "取消";
 
   return (
     <div className="rounded-lg border border-gray-200 p-4">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm font-semibold text-gray-900">
-          {row.supplierName || "仕入先"}
-        </p>
+        <div>
+          <p className="text-xs text-gray-400">仕入先</p>
+          <p className="text-sm font-semibold text-gray-900">
+            {row.supplierName || "仕入先"}
+          </p>
+        </div>
         <StatusBadge label={row.displayStatus} />
       </div>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 text-sm">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 text-sm">
         <div>
           <p className="text-xs text-gray-400">発注番号</p>
           <p>{row.orderNo || "—"}</p>
@@ -939,13 +1209,21 @@ function SupplierPaymentCard({
           <p className="text-xs text-gray-400">支払済額</p>
           <p>{formatYen(row.paidAmount)}</p>
         </div>
+        <div>
+          <p className="text-xs text-gray-400">支払日</p>
+          <p>{formatDate(row.paidDate)}</p>
+        </div>
+        <div>
+          <p className="text-xs text-gray-400">状態</p>
+          <p>{row.displayStatus}</p>
+        </div>
       </div>
       {row.memo ? <p className="mt-2 text-xs text-gray-500">備考: {row.memo}</p> : null}
 
       {active && row.status === "予定" ? (
         <div className="mt-4 flex flex-wrap items-end gap-2 border-t border-gray-100 pt-3">
           <label className="text-xs text-gray-600">
-            実支払日
+            支払日
             <input
               type="date"
               className="mt-1 block rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
@@ -955,7 +1233,7 @@ function SupplierPaymentCard({
             />
           </label>
           <label className="text-xs text-gray-600">
-            実支払額
+            支払済額
             <input
               type="number"
               min={0}
@@ -971,13 +1249,13 @@ function SupplierPaymentCard({
             className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-50"
             onClick={() => onPay(paidDate, Number(paidAmount))}
           >
-            支払済
+            支払済にする
           </button>
           <button
             type="button"
             disabled={busy}
             className="rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 disabled:opacity-50"
-            onClick={onCorrect}
+            onClick={() => setCorrecting((v) => !v)}
           >
             訂正
           </button>
@@ -994,11 +1272,14 @@ function SupplierPaymentCard({
 
       {active && row.status === "支払済" ? (
         <div className="mt-4 flex flex-wrap gap-2 border-t border-gray-100 pt-3">
+          <p className="w-full text-xs text-gray-500">
+            支払済金額の直接編集はできません。変更は訂正で行います。
+          </p>
           <button
             type="button"
             disabled={busy}
             className="rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 disabled:opacity-50"
-            onClick={onCorrect}
+            onClick={() => setCorrecting((v) => !v)}
           >
             訂正
           </button>
@@ -1009,6 +1290,69 @@ function SupplierPaymentCard({
             onClick={onCancel}
           >
             取消
+          </button>
+        </div>
+      ) : null}
+
+      {active && correcting ? (
+        <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50/50 p-3">
+          <p className="mb-2 text-xs font-semibold text-amber-900">
+            訂正内容（元レコード取消 + 新規予定作成）
+          </p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <label className="text-xs text-gray-600">
+              支払期限
+              <input
+                type="date"
+                className="mt-1 w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
+                value={correctForm.due_date}
+                disabled={busy}
+                onChange={(e) =>
+                  setCorrectForm((f) => ({ ...f, due_date: e.target.value }))
+                }
+              />
+            </label>
+            <label className="text-xs text-gray-600">
+              支払予定額
+              <input
+                type="number"
+                min={0}
+                className="mt-1 w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
+                value={correctForm.scheduled_amount}
+                disabled={busy}
+                onChange={(e) =>
+                  setCorrectForm((f) => ({
+                    ...f,
+                    scheduled_amount: e.target.value,
+                  }))
+                }
+              />
+            </label>
+            <label className="text-xs text-gray-600 sm:col-span-2">
+              備考
+              <input
+                className="mt-1 w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
+                value={correctForm.memo}
+                disabled={busy}
+                onChange={(e) =>
+                  setCorrectForm((f) => ({ ...f, memo: e.target.value }))
+                }
+              />
+            </label>
+          </div>
+          <button
+            type="button"
+            disabled={busy}
+            className="mt-3 rounded-lg bg-amber-800 px-3 py-2 text-xs font-medium text-white disabled:opacity-50"
+            onClick={() =>
+              onCorrect({
+                due_date: correctForm.due_date || null,
+                scheduled_amount: Number(correctForm.scheduled_amount),
+                memo: correctForm.memo || null,
+              })
+            }
+          >
+            訂正を実行
           </button>
         </div>
       ) : null}
