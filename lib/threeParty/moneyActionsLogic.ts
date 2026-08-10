@@ -455,6 +455,13 @@ function parseDealerCreateBody(
     ),
   });
 
+  // 振込額が負 = 異常値。作成/訂正を拒否（DB側でも同チェック）
+  if (calc.payoutAmount < 0) {
+    errors.payout_amount =
+      "振込額が負になります。金額・調整を見直してください";
+    return null;
+  }
+
   return {
     dealer_id: body.dealer_id,
     statement_no,
@@ -825,8 +832,87 @@ function sortKeysDeep(value: unknown): unknown {
   return value;
 }
 
-/** 冪等ハッシュ用（キーソートした JSON の sha256） */
+/** テスト用（キーソートした JSON の sha256）。RPC 側の冪等は md5(payload::text)。 */
 export function hashMoneyActionPayload(value: ValidatedMoneyAction): string {
   const normalized = JSON.stringify(sortKeysDeep(value));
   return createHash("sha256").update(normalized).digest("hex");
+}
+
+/**
+ * execute_three_party_money RPC へ渡す payload。
+ * request_id / case_id / resource_id / action はサーバ注入値のみ。
+ */
+export function buildThreePartyMoneyRpcPayload(
+  requestId: string,
+  action: ValidatedMoneyAction
+): Record<string, unknown> {
+  const base: Record<string, unknown> = {
+    request_id: requestId,
+    action: action.action,
+  };
+
+  switch (action.action) {
+    case "finance_receipt.create":
+      return {
+        ...base,
+        case_id: action.case_id,
+        ...action.payload,
+      };
+    case "finance_receipt.confirm":
+    case "finance_receipt.cancel":
+    case "dealer_settlement.confirm":
+    case "dealer_settlement.pay":
+    case "dealer_settlement.cancel":
+    case "supplier_payment.pay":
+    case "supplier_payment.cancel":
+      return {
+        ...base,
+        resource_id: action.resource_id,
+        ...action.payload,
+      };
+    case "finance_receipt.correct":
+      return {
+        ...base,
+        resource_id: action.resource_id,
+        ...action.payload,
+      };
+    case "supplier_payment.correct":
+      return {
+        ...base,
+        resource_id: action.resource_id,
+        ...action.payload,
+      };
+    case "dealer_settlement.create":
+    case "dealer_settlement.correct":
+      return {
+        ...base,
+        ...(action.action === "dealer_settlement.create"
+          ? { case_id: action.case_id }
+          : { resource_id: action.resource_id }),
+        dealer_id: action.payload.dealer_id,
+        statement_no: action.payload.statement_no,
+        issue_date: action.payload.issue_date,
+        finance_receipt_id: action.payload.finance_receipt_id,
+        invoice_id: action.payload.invoice_id,
+        scheduled_payout_date: action.payload.scheduled_payout_date,
+        contract_date: action.payload.contract_date,
+        delivery_date: action.payload.delivery_date,
+        memo: action.payload.memo,
+        cancel_reason:
+          "cancel_reason" in action.payload
+            ? action.payload.cancel_reason
+            : undefined,
+        credit_received_amount: action.payload.credit_received_amount_calc,
+        ve_share_amount: action.payload.ve_share_amount_calc,
+        lines: action.payload.lines,
+      };
+    case "supplier_payment.create":
+      return {
+        ...base,
+        case_id: action.case_id,
+        ...action.payload,
+      };
+    default:
+      return base;
+  }
 }

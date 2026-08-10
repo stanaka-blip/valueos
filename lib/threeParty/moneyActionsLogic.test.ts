@@ -6,6 +6,7 @@
 import assert from "node:assert/strict";
 
 import {
+  buildThreePartyMoneyRpcPayload,
   hashMoneyActionPayload,
   validateMoneyActionInput,
 } from "@/lib/threeParty/moneyActionsLogic";
@@ -118,6 +119,43 @@ test("負の調整額は拒否", () => {
     },
   });
   assert.equal(r.ok, false);
+});
+
+test("payout < 0 は拒否", () => {
+  const r = validateMoneyActionInput({
+    action: "dealer_settlement.create",
+    caseId: CASE_ID,
+    resourceId: null,
+    body: {
+      dealer_id: DEALER_ID,
+      credit_received_amount: 100,
+      ve_share_amount: 200,
+      lines: [],
+    },
+  });
+  assert.equal(r.ok, false);
+  if (r.ok) return;
+  assert.equal(r.field_errors?.payout_amount != null, true);
+});
+
+test("RPC payload に request_id/action を注入し client request_id を使わない", () => {
+  const r = validateMoneyActionInput({
+    action: "finance_receipt.create",
+    caseId: CASE_ID,
+    resourceId: null,
+    body: {
+      request_id: "should-be-ignored",
+      finance_company: "オリコ",
+      scheduled_amount: 1,
+    },
+  });
+  assert.equal(r.ok, true);
+  if (!r.ok) return;
+  const payload = buildThreePartyMoneyRpcPayload(RESOURCE_ID, r.value);
+  assert.equal(payload.request_id, RESOURCE_ID);
+  assert.equal(payload.action, "finance_receipt.create");
+  assert.equal(payload.case_id, CASE_ID);
+  assert.notEqual(String(payload.request_id), "should-be-ignored");
 });
 
 test("payload hash はキー順に安定", () => {

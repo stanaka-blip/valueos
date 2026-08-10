@@ -1585,6 +1585,12 @@ export type Database = {
         };
         Returns: Json;
       };
+      execute_three_party_money: {
+        Args: {
+          payload: Json;
+        };
+        Returns: Json;
+      };
       gateway_rate_limit_hit: {
         Args: {
           p_bucket_key: string;
