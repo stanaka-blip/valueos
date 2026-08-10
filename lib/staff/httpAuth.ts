@@ -37,6 +37,8 @@ export function statusForStaffError(code: string): number {
       return 403;
     case "NOT_FOUND":
       return 404;
+    case "IN_USE":
+      return 409;
     case "CONFIG_ERROR":
       return 503;
     default:

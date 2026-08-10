@@ -114,7 +114,7 @@ export default function EditContractorPage() {
       return;
     }
 
-    router.push("/contractors");
+    router.push(`/contractors/${id}`);
     router.refresh();
   }
 

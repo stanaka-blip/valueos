@@ -18,6 +18,12 @@ export default function NewSeriesPage() {
   });
 
   useEffect(() => {
+    const mid = new URLSearchParams(window.location.search).get(
+      "manufacturer_id"
+    );
+    if (mid) {
+      setForm((f) => ({ ...f, manufacturer_id: f.manufacturer_id || mid }));
+    }
     supabase
       .from("manufacturers")
       .select("id, name")
