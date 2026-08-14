@@ -300,6 +300,11 @@ const navGroups: NavGroup[] = [
         href: "/queues/collections",
         icon: <IconPayment />,
       },
+      {
+        name: "支払管理",
+        href: "/queues/payments-management",
+        icon: <IconPayment />,
+      },
     ],
   },
   {

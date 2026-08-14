@@ -60,16 +60,22 @@ type Props = {
   money: ThreePartyMoneyView;
   /** settlement | payment | invoice */
   section: "finance" | "dealer" | "supplier";
+  /**
+   * case_flow: 案件詳細向けに簡素化（支払済操作は支払管理へ誘導）
+   * full: 履歴・訂正・支払まで同一画面（互換）
+   */
+  variant?: "case_flow" | "full";
 };
 
 export default function ThreePartyMoneyPanels(props: Props) {
+  const variant = props.variant || "full";
   if (props.section === "finance") {
-    return <FinanceReceiptPanel {...props} />;
+    return <FinanceReceiptPanel {...props} variant={variant} />;
   }
   if (props.section === "dealer") {
-    return <DealerSettlementPanel {...props} />;
+    return <DealerSettlementPanel {...props} variant={variant} />;
   }
-  return <SupplierPaymentPanel {...props} />;
+  return <SupplierPaymentPanel {...props} variant={variant} />;
 }
 
 function FinanceReceiptPanel({
@@ -438,10 +444,12 @@ function DealerSettlementPanel({
   dealerId,
   invoices,
   money,
+  variant = "full",
 }: Props) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const caseFlow = variant === "case_flow";
   const activeReceipt = money.financeReceipts.find((r) => r.status === "入金済")
     || money.financeReceipts.find((r) => r.status === "予定");
   const activeInvoice = invoices.find((i) => i.status !== "取消");
@@ -489,12 +497,28 @@ function DealerSettlementPanel({
     <div className="mt-8 space-y-4 border-t border-gray-100 pt-6">
       <div>
         <h3 className="text-sm font-semibold text-gray-900">
-          ② 販売店への仕切清算・支払
+          {caseFlow ? "② 金額確認・仕切作成 → ③ 確定" : "② 販売店への仕切清算・支払"}
         </h3>
         <p className="mt-1 text-xs text-gray-500">
-          操作: 下書き作成 → 確定（金額固定）→ 支払済。確定後の金額直接編集は不可。変更は訂正。信販入金の完了は必須ではありません。
+          {caseFlow
+            ? "案件詳細では金額確定まで。販売店への実支払は支払管理で処理します。"
+            : "操作: 下書き作成 → 確定（金額固定）→ 支払済。確定後の金額直接編集は不可。変更は訂正。信販入金の完了は必須ではありません。"}
         </p>
       </div>
+      {caseFlow ? (
+        <div className="rounded-lg border border-sky-100 bg-sky-50/70 px-4 py-3 text-sm text-sky-950">
+          <p className="font-semibold">④ 支払は支払管理へ</p>
+          <p className="mt-1 text-sky-900/90">
+            信販入金済かつ販売店未払いの案件は、支払管理の「3社間支払い」に自動で並びます。
+          </p>
+          <Link
+            href="/queues/payments-management"
+            className="mt-2 inline-flex text-xs font-medium text-sky-900 underline"
+          >
+            支払管理を開く
+          </Link>
+        </div>
+      ) : null}
       {error ? <p className="text-sm text-rose-700">{error}</p> : null}
 
       <div className="space-y-3">
@@ -507,6 +531,7 @@ function DealerSettlementPanel({
               row={row}
               dealerId={dealerId}
               busy={busy}
+              hidePay={caseFlow}
               onConfirm={() => run("dealer_settlement.confirm", row.id, {})}
               onPay={(date, amount) =>
                 run("dealer_settlement.pay", row.id, {
@@ -664,6 +689,7 @@ function DealerSettlementCard({
   row,
   dealerId,
   busy,
+  hidePay = false,
   onConfirm,
   onPay,
   onCancel,
@@ -672,6 +698,7 @@ function DealerSettlementCard({
   row: DealerSettlementView;
   dealerId: string | null;
   busy: boolean;
+  hidePay?: boolean;
   onConfirm: () => void;
   onPay: (date: string, amount: number) => void;
   onCancel: () => void;
@@ -784,37 +811,46 @@ function DealerSettlementCard({
           </button>
         ) : null}
         {active && row.status === "確定" ? (
-          <>
-            <label className="text-xs text-gray-600">
-              実支払日
-              <input
-                type="date"
-                className="mt-1 block rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
-                value={payDate}
-                disabled={busy}
-                onChange={(e) => setPayDate(e.target.value)}
-              />
-            </label>
-            <label className="text-xs text-gray-600">
-              実支払額
-              <input
-                type="number"
-                min={0}
-                className="mt-1 block w-36 rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
-                value={payAmount}
-                disabled={busy}
-                onChange={(e) => setPayAmount(e.target.value)}
-              />
-            </label>
-            <button
-              type="button"
-              disabled={busy}
-              className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-50"
-              onClick={() => onPay(payDate, Number(payAmount))}
+          hidePay ? (
+            <Link
+              href="/queues/payments-management"
+              className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-medium text-white"
             >
-              支払済にする
-            </button>
-          </>
+              支払管理で支払処理
+            </Link>
+          ) : (
+            <>
+              <label className="text-xs text-gray-600">
+                実支払日
+                <input
+                  type="date"
+                  className="mt-1 block rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
+                  value={payDate}
+                  disabled={busy}
+                  onChange={(e) => setPayDate(e.target.value)}
+                />
+              </label>
+              <label className="text-xs text-gray-600">
+                実支払額
+                <input
+                  type="number"
+                  min={0}
+                  className="mt-1 block w-36 rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
+                  value={payAmount}
+                  disabled={busy}
+                  onChange={(e) => setPayAmount(e.target.value)}
+                />
+              </label>
+              <button
+                type="button"
+                disabled={busy}
+                className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-50"
+                onClick={() => onPay(payDate, Number(payAmount))}
+              >
+                支払済にする
+              </button>
+            </>
+          )
         ) : null}
         {active ? (
           <>
@@ -962,10 +998,16 @@ function DealerSettlementCard({
   );
 }
 
-function SupplierPaymentPanel({ caseId, orders, money }: Props) {
+function SupplierPaymentPanel({
+  caseId,
+  orders,
+  money,
+  variant = "full",
+}: Props) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const caseFlow = variant === "case_flow";
   const activeOrders = orders.filter(
     (o) => o.status !== "キャンセル" && o.status !== "取消"
   );
@@ -1000,9 +1042,22 @@ function SupplierPaymentPanel({ caseId, orders, money }: Props) {
       <div>
         <h3 className="text-sm font-semibold text-gray-900">③ 仕入先への支払</h3>
         <p className="mt-1 text-xs text-gray-500">
-          発注に対する支払イベントです（同一発注に複数登録可。当面は1回払いUI）。信販入金の有無は問いません。
+          {caseFlow
+            ? "納品済みかつ未払いの発注は支払管理に自動表示されます。ここは履歴・例外操作用です。"
+            : "発注に対する支払イベントです（同一発注に複数登録可。当面は1回払いUI）。信販入金の有無は問いません。"}
         </p>
       </div>
+      {caseFlow ? (
+        <div className="rounded-lg border border-sky-100 bg-sky-50/70 px-4 py-3 text-sm text-sky-950">
+          <p className="font-semibold">支払待ちは支払管理で処理</p>
+          <Link
+            href="/queues/payments-management"
+            className="mt-2 inline-flex text-xs font-medium text-sky-900 underline"
+          >
+            支払管理（仕入先支払い）を開く
+          </Link>
+        </div>
+      ) : null}
       {money.loadError ? (
         <p className="text-sm text-rose-700">{money.loadError}</p>
       ) : null}
@@ -1017,6 +1072,7 @@ function SupplierPaymentPanel({ caseId, orders, money }: Props) {
               key={row.id}
               row={row}
               busy={busy}
+              hidePay={caseFlow}
               onPay={(date, paid) =>
                 run("supplier_payment.pay", row.id, {
                   paid_date: date,
@@ -1041,18 +1097,20 @@ function SupplierPaymentPanel({ caseId, orders, money }: Props) {
         )}
       </div>
 
-      <SupplierPaymentCreateForm
-        caseId={caseId}
-        busy={busy}
-        orders={activeOrders}
-        selectedOrderId={selectedOrderId}
-        setSelectedOrderId={setSelectedOrderId}
-        dueDate={dueDate}
-        setDueDate={setDueDate}
-        amount={amount}
-        setAmount={setAmount}
-        onCreate={(body) => run("supplier_payment.create", undefined, body)}
-      />
+      {!caseFlow ? (
+        <SupplierPaymentCreateForm
+          caseId={caseId}
+          busy={busy}
+          orders={activeOrders}
+          selectedOrderId={selectedOrderId}
+          setSelectedOrderId={setSelectedOrderId}
+          dueDate={dueDate}
+          setDueDate={setDueDate}
+          amount={amount}
+          setAmount={setAmount}
+          onCreate={(body) => run("supplier_payment.create", undefined, body)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -1161,12 +1219,14 @@ function SupplierPaymentCreateForm({
 function SupplierPaymentCard({
   row,
   busy,
+  hidePay = false,
   onPay,
   onCancel,
   onCorrect,
 }: {
   row: SupplierPaymentView;
   busy: boolean;
+  hidePay?: boolean;
   onPay: (date: string, amount: number) => void;
   onCancel: () => void;
   onCorrect: (body: Record<string, unknown>) => void;
@@ -1222,35 +1282,46 @@ function SupplierPaymentCard({
 
       {active && row.status === "予定" ? (
         <div className="mt-4 flex flex-wrap items-end gap-2 border-t border-gray-100 pt-3">
-          <label className="text-xs text-gray-600">
-            支払日
-            <input
-              type="date"
-              className="mt-1 block rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
-              value={paidDate}
-              disabled={busy}
-              onChange={(e) => setPaidDate(e.target.value)}
-            />
-          </label>
-          <label className="text-xs text-gray-600">
-            支払済額
-            <input
-              type="number"
-              min={0}
-              className="mt-1 block w-36 rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
-              value={paidAmount}
-              disabled={busy}
-              onChange={(e) => setPaidAmount(e.target.value)}
-            />
-          </label>
-          <button
-            type="button"
-            disabled={busy}
-            className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-50"
-            onClick={() => onPay(paidDate, Number(paidAmount))}
-          >
-            支払済にする
-          </button>
+          {hidePay ? (
+            <Link
+              href="/queues/payments-management?tab=supplier"
+              className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-medium text-white"
+            >
+              支払管理で支払処理
+            </Link>
+          ) : (
+            <>
+              <label className="text-xs text-gray-600">
+                支払日
+                <input
+                  type="date"
+                  className="mt-1 block rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
+                  value={paidDate}
+                  disabled={busy}
+                  onChange={(e) => setPaidDate(e.target.value)}
+                />
+              </label>
+              <label className="text-xs text-gray-600">
+                支払済額
+                <input
+                  type="number"
+                  min={0}
+                  className="mt-1 block w-36 rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
+                  value={paidAmount}
+                  disabled={busy}
+                  onChange={(e) => setPaidAmount(e.target.value)}
+                />
+              </label>
+              <button
+                type="button"
+                disabled={busy}
+                className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-50"
+                onClick={() => onPay(paidDate, Number(paidAmount))}
+              >
+                支払済にする
+              </button>
+            </>
+          )}
           <button
             type="button"
             disabled={busy}

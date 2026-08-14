@@ -25,8 +25,11 @@ const printPage = readFileSync(
 
 // 独立イベント: 仕入先支払 create に信販入金フィールドを要求しない
 assert.ok(panels.includes("信販入金の有無は問いません"));
-assert.ok(caseDetail.includes("固定の実行順序はありません"));
-assert.ok(caseDetail.includes("信販入金前でも登録・支払済にできます"));
+assert.ok(caseDetail.includes("支払管理"));
+assert.ok(caseDetail.includes("variant=\"case_flow\""));
+assert.ok(caseDetail.includes("金額・債務を確定する画面"));
+assert.ok(panels.includes("case_flow"));
+assert.ok(panels.includes("/queues/payments-management"));
 assert.ok(!panels.includes('.from("finance_receipts")'));
 assert.ok(!panels.includes('.from("dealer_settlements")'));
 assert.ok(!panels.includes('.from("supplier_payments")'));

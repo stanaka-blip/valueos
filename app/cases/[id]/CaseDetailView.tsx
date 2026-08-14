@@ -1039,7 +1039,10 @@ function SettlementTab({
   };
 
   return (
-    <Section title="決済" description="決済フローと入金・請求の条件">
+    <Section
+      title="決済"
+      description="金額・債務を確定する画面。実支払は支払管理で処理します。"
+    >
       {settlement ? (
         <div className="mb-6 grid gap-4 rounded-lg border border-gray-200 p-4 sm:grid-cols-2 xl:grid-cols-4">
           <Field label="決済区分" value={settlement.settlementType} />
@@ -1102,13 +1105,33 @@ function SettlementTab({
       {isSansha ? (
         <>
           <div className="mt-8 rounded-lg border border-sky-100 bg-sky-50/70 px-4 py-3 text-sm text-sky-950">
-            <p className="font-semibold">3社間の金銭イベント（独立管理）</p>
-            <p className="mt-1 text-sky-900/90">
-              ①信販入金 ②販売店への仕切清算・支払 ③仕入先支払は、それぞれ別イベントです。固定の実行順序はありません。仕入先支払は信販入金前でも登録・支払済にできます。
-            </p>
+            <p className="font-semibold">3社間の流れ（案件詳細 → 支払管理）</p>
+            <ol className="mt-2 list-decimal space-y-1 pl-5 text-sky-900/90">
+              <li>信販入金を記録する</li>
+              <li>金額を確認して仕切を作成する</li>
+              <li>仕切を確定する</li>
+              <li>
+                販売店への実支払は{" "}
+                <Link
+                  href="/queues/payments-management"
+                  className="font-medium underline"
+                >
+                  支払管理
+                </Link>
+                で処理する（入金済かつ未払いなら自動で並ぶ）
+              </li>
+            </ol>
           </div>
-          <ThreePartyMoneyPanels {...panelProps} section="finance" />
-          <ThreePartyMoneyPanels {...panelProps} section="dealer" />
+          <ThreePartyMoneyPanels
+            {...panelProps}
+            section="finance"
+            variant="case_flow"
+          />
+          <ThreePartyMoneyPanels
+            {...panelProps}
+            section="dealer"
+            variant="case_flow"
+          />
         </>
       ) : null}
     </Section>
@@ -1673,6 +1696,7 @@ function InvoiceReceiptTab({
           orders={orders}
           money={threePartyMoney}
           section="dealer"
+          variant="case_flow"
         />
       ) : null}
     </Section>
@@ -1703,7 +1727,10 @@ function PaymentTab({
   const isSansha = settlementType === "3社間決済";
 
   return (
-    <Section title="支払" description="仕入先への支払管理">
+    <Section
+      title="支払"
+      description="仕入先支払の履歴・例外操作。日常の支払処理は支払管理へ。"
+    >
       <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
         <MiniStat label="支払対象合計" value={formatYen(summary.targetAmount)} />
         <MiniStat
@@ -1718,9 +1745,18 @@ function PaymentTab({
 
       {isSansha ? (
         <>
-          <p className="mb-4 text-sm text-gray-600">
-            仕入先への支払は信販入金・仕切清算と独立しています。信販入金前でも予定登録・支払済にできます。
-          </p>
+          <div className="mb-4 rounded-lg border border-sky-100 bg-sky-50/70 px-4 py-3 text-sm text-sky-950">
+            <p>
+              納品済みかつ仕入先未払いの発注は、
+              <Link
+                href="/queues/payments-management?tab=supplier"
+                className="mx-1 font-medium underline"
+              >
+                支払管理
+              </Link>
+              に自動表示されます（supplier_payments の事前作成は不要）。
+            </p>
+          </div>
           <ThreePartyMoneyPanels
             caseId={caseId}
             dealerId={dealerId || null}
@@ -1729,11 +1765,12 @@ function PaymentTab({
             orders={orders}
             money={threePartyMoney}
             section="supplier"
+            variant="case_flow"
           />
         </>
       ) : (
         <p className="text-sm text-gray-500">
-          3社間決済の案件では、ここで仕入先支払（予定・支払済・取消・訂正）を管理できます。
+          3社間決済以外の仕入先支払も、支払管理の仕入先タブで処理できます。
         </p>
       )}
 
