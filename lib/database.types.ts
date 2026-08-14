@@ -1735,6 +1735,194 @@ export type Database = {
           },
         ];
       };
+      /**
+       * RBAC Core（20260814100000_role_permission_scope_core）。
+       * staff_profiles.is_admin とは併存。runtime Auth 未接続。service_role のみ。
+       */
+      roles: {
+        Row: {
+          id: string;
+          code: string;
+          display_name: string;
+          description: string | null;
+          sort_order: number;
+          is_active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          code: string;
+          display_name: string;
+          description?: string | null;
+          sort_order?: number;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          code?: string;
+          display_name?: string;
+          description?: string | null;
+          sort_order?: number;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      permissions: {
+        Row: {
+          id: string;
+          code: string;
+          display_name: string;
+          description: string | null;
+          is_active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          code: string;
+          display_name: string;
+          description?: string | null;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          code?: string;
+          display_name?: string;
+          description?: string | null;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      role_permissions: {
+        Row: {
+          id: string;
+          role_id: string;
+          permission_id: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          role_id: string;
+          permission_id: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          role_id?: string;
+          permission_id?: string;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "role_permissions_role_id_fkey";
+            columns: ["role_id"];
+            isOneToOne: false;
+            referencedRelation: "roles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "role_permissions_permission_id_fkey";
+            columns: ["permission_id"];
+            isOneToOne: false;
+            referencedRelation: "permissions";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      scopes: {
+        Row: {
+          id: string;
+          code: string;
+          display_name: string;
+          description: string | null;
+          sort_order: number;
+          is_active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          code: string;
+          display_name: string;
+          description?: string | null;
+          sort_order?: number;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          code?: string;
+          display_name?: string;
+          description?: string | null;
+          sort_order?: number;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      organization_membership_roles: {
+        Row: {
+          id: string;
+          organization_membership_id: string;
+          role_id: string;
+          scope_id: string;
+          is_active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_membership_id: string;
+          role_id: string;
+          scope_id: string;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          organization_membership_id?: string;
+          role_id?: string;
+          scope_id?: string;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "organization_membership_roles_organization_membership_id_fkey";
+            columns: ["organization_membership_id"];
+            isOneToOne: false;
+            referencedRelation: "organization_memberships";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "organization_membership_roles_role_id_fkey";
+            columns: ["role_id"];
+            isOneToOne: false;
+            referencedRelation: "roles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "organization_membership_roles_scope_id_fkey";
+            columns: ["scope_id"];
+            isOneToOne: false;
+            referencedRelation: "scopes";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: Record<string, never>;
     Functions: {
@@ -1848,3 +2036,26 @@ export type OrganizationMembershipInsert =
   PublicTables["organization_memberships"]["Insert"];
 export type OrganizationMembershipUpdate =
   PublicTables["organization_memberships"]["Update"];
+
+export type RoleRow = PublicTables["roles"]["Row"];
+export type RoleInsert = PublicTables["roles"]["Insert"];
+export type RoleUpdate = PublicTables["roles"]["Update"];
+
+export type PermissionRow = PublicTables["permissions"]["Row"];
+export type PermissionInsert = PublicTables["permissions"]["Insert"];
+export type PermissionUpdate = PublicTables["permissions"]["Update"];
+
+export type RolePermissionRow = PublicTables["role_permissions"]["Row"];
+export type RolePermissionInsert = PublicTables["role_permissions"]["Insert"];
+export type RolePermissionUpdate = PublicTables["role_permissions"]["Update"];
+
+export type ScopeRow = PublicTables["scopes"]["Row"];
+export type ScopeInsert = PublicTables["scopes"]["Insert"];
+export type ScopeUpdate = PublicTables["scopes"]["Update"];
+
+export type OrganizationMembershipRoleRow =
+  PublicTables["organization_membership_roles"]["Row"];
+export type OrganizationMembershipRoleInsert =
+  PublicTables["organization_membership_roles"]["Insert"];
+export type OrganizationMembershipRoleUpdate =
+  PublicTables["organization_membership_roles"]["Update"];
