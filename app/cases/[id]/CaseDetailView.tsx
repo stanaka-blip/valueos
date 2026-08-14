@@ -1026,6 +1026,7 @@ function SettlementTab({
   orders: OrderRow[];
   threePartyMoney: ThreePartyMoneyView;
 }) {
+  const [editingConditions, setEditingConditions] = useState(!settlement);
   const type = settlement?.settlementType || "";
   const isSansha = type === "3社間決済";
   const isCard = type === "カード";
@@ -1044,7 +1045,7 @@ function SettlementTab({
       description="金額・債務を確定する画面。実支払は支払管理で処理します。"
     >
       {settlement ? (
-        <div className="mb-6 grid gap-4 rounded-lg border border-gray-200 p-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="mb-4 grid gap-4 rounded-lg border border-gray-200 p-4 sm:grid-cols-2 xl:grid-cols-4">
           <Field label="決済区分" value={settlement.settlementType} />
           {isSansha ? (
             <>
@@ -1095,16 +1096,42 @@ function SettlementTab({
         </div>
       ) : null}
 
-      <SettlementForm
-        caseId={caseId}
-        settlement={settlement}
-        loadError={loadError}
-        dealerPaymentType={dealerPaymentType}
-      />
+      {settlement && !editingConditions ? (
+        <div className="mb-6">
+          <button
+            type="button"
+            onClick={() => setEditingConditions(true)}
+            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50"
+          >
+            決済条件を編集
+          </button>
+        </div>
+      ) : (
+        <div className="mb-6">
+          {settlement ? (
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <p className="text-xs font-medium text-gray-500">決済条件の編集</p>
+              <button
+                type="button"
+                onClick={() => setEditingConditions(false)}
+                className="text-xs text-gray-500 underline hover:text-gray-800"
+              >
+                閉じる
+              </button>
+            </div>
+          ) : null}
+          <SettlementForm
+            caseId={caseId}
+            settlement={settlement}
+            loadError={loadError}
+            dealerPaymentType={dealerPaymentType}
+          />
+        </div>
+      )}
 
       {isSansha ? (
         <>
-          <div className="mt-8 rounded-lg border border-sky-100 bg-sky-50/70 px-4 py-3 text-sm text-sky-950">
+          <div className="mt-2 rounded-lg border border-sky-100 bg-sky-50/70 px-4 py-3 text-sm text-sky-950">
             <p className="font-semibold">3社間の流れ（案件詳細 → 支払管理）</p>
             <ol className="mt-2 list-decimal space-y-1 pl-5 text-sky-900/90">
               <li>信販入金を記録する</li>

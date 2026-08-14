@@ -114,7 +114,7 @@ export default function PaymentsManagementClient({
         <ThreePartyActionPanel
           key={selectedThree.id}
           row={selectedThree}
-          onDone={() => setSelectedThreeId(null)}
+          onDone={(nextId) => setSelectedThreeId(nextId)}
         />
       ) : null}
 
@@ -348,7 +348,7 @@ function ThreePartyActionPanel({
   onDone,
 }: {
   row: ThreePartyPaymentQueueRow;
-  onDone: () => void;
+  onDone: (nextId: string | null) => void;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -381,7 +381,8 @@ function ThreePartyActionPanel({
   async function run(
     action: string,
     resourceId: string | undefined,
-    body: Record<string, unknown>
+    body: Record<string, unknown>,
+    nextSelectedId: string | null
   ) {
     setBusy(true);
     setError("");
@@ -396,7 +397,14 @@ function ThreePartyActionPanel({
       setError(result.error_message);
       return;
     }
-    onDone();
+    let selected = nextSelectedId;
+    if (
+      action === "dealer_settlement.create" &&
+      result.resource_id
+    ) {
+      selected = `${row.caseId}:${row.financeReceiptId}:${result.resource_id}`;
+    }
+    onDone(selected);
     router.refresh();
   }
 
@@ -470,34 +478,39 @@ function ThreePartyActionPanel({
                 disabled={busy || preview.payoutAmount < 0}
                 className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
                 onClick={() =>
-                  run("dealer_settlement.create", undefined, {
-                    dealer_id: row.dealerId,
-                    finance_receipt_id: row.financeReceiptId,
-                    credit_received_amount: Number(credit),
-                    ve_share_amount: Number(veShare),
-                    scheduled_payout_date: scheduledPayoutDate || null,
-                    issue_date: new Date().toISOString().slice(0, 10),
-                    lines: [
-                      {
-                        line_kind: "credit_in",
-                        description: "信販会社からの入金",
-                        amount: Number(credit) || 0,
-                        sort_order: 1,
-                      },
-                      {
-                        line_kind: "ve_share",
-                        description: "Value Ecology売上 / 請求額",
-                        amount: Number(veShare) || 0,
-                        sort_order: 2,
-                      },
-                      {
-                        line_kind: "transfer_fee",
-                        description: "振込手数料",
-                        amount: Number(transferFee) || 0,
-                        sort_order: 3,
-                      },
-                    ],
-                  })
+                  run(
+                    "dealer_settlement.create",
+                    undefined,
+                    {
+                      dealer_id: row.dealerId,
+                      finance_receipt_id: row.financeReceiptId,
+                      credit_received_amount: Number(credit),
+                      ve_share_amount: Number(veShare),
+                      scheduled_payout_date: scheduledPayoutDate || null,
+                      issue_date: new Date().toISOString().slice(0, 10),
+                      lines: [
+                        {
+                          line_kind: "credit_in",
+                          description: "信販会社からの入金",
+                          amount: Number(credit) || 0,
+                          sort_order: 1,
+                        },
+                        {
+                          line_kind: "ve_share",
+                          description: "Value Ecology売上 / 請求額",
+                          amount: Number(veShare) || 0,
+                          sort_order: 2,
+                        },
+                        {
+                          line_kind: "transfer_fee",
+                          description: "振込手数料",
+                          amount: Number(transferFee) || 0,
+                          sort_order: 3,
+                        },
+                      ],
+                    },
+                    null
+                  )
                 }
               >
                 仕切を下書き作成
@@ -524,7 +537,7 @@ function ThreePartyActionPanel({
               disabled={busy}
               className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
               onClick={() =>
-                run("dealer_settlement.confirm", row.settlementId!, {})
+                run("dealer_settlement.confirm", row.settlementId!, {}, row.id)
               }
             >
               仕切を確定する
@@ -569,12 +582,17 @@ function ThreePartyActionPanel({
             disabled={busy || !payDate}
             className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
             onClick={() =>
-              run("dealer_settlement.pay", row.settlementId!, {
-                actual_payout_date: payDate,
-                actual_payout_amount: Number(
-                  payAmount || row.payoutAmount || 0
-                ),
-              })
+              run(
+                "dealer_settlement.pay",
+                row.settlementId!,
+                {
+                  actual_payout_date: payDate,
+                  actual_payout_amount: Number(
+                    payAmount || row.payoutAmount || 0
+                  ),
+                },
+                null
+              )
             }
           >
             支払済にする

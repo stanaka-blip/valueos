@@ -306,3 +306,155 @@ test("仕入先: 期限超過が先、同条件は納品日古い順", () => {
   assert.equal(sorted[0].orderId, "o1");
   assert.equal(sorted[1].orderId, "o2");
 });
+
+test("E2Eシナリオ: 3社間 未作成→下書き→確定→支払済で消える", () => {
+  const finance = baseThree.financeReceipts;
+  let settlements: typeof baseThree.dealerSettlements = [];
+
+  const unpaid = buildThreePartyPaymentQueueRow({
+    ...baseThree,
+    dealerSettlements: settlements,
+  });
+  assert.ok(unpaid);
+  assert.equal(unpaid!.stage, "needs_settlement");
+
+  settlements = [
+    {
+      id: "s1",
+      status: "下書き",
+      creditReceivedAmount: 2340000,
+      veShareAmount: 900000,
+      adjustmentTotalAmount: 550,
+      payoutAmount: 1439450,
+      scheduledPayoutDate: "2026-08-20",
+      financeReceiptId: "f1",
+    },
+  ];
+  const draft = buildThreePartyPaymentQueueRow({
+    ...baseThree,
+    financeReceipts: finance,
+    dealerSettlements: settlements,
+  });
+  assert.equal(draft!.stage, "needs_confirm");
+
+  settlements = [{ ...settlements[0], status: "確定" }];
+  const confirmed = buildThreePartyPaymentQueueRow({
+    ...baseThree,
+    financeReceipts: finance,
+    dealerSettlements: settlements,
+  });
+  assert.equal(confirmed!.stage, "needs_pay");
+  assert.equal(confirmed!.nextActionLabel, "支払処理");
+
+  settlements = [{ ...settlements[0], status: "支払済" }];
+  const paid = buildThreePartyPaymentQueueRow({
+    ...baseThree,
+    financeReceipts: finance,
+    dealerSettlements: settlements,
+  });
+  assert.equal(paid, null);
+});
+
+test("E2Eシナリオ: 仕入先 未納品非表示→納品済未登録表示→支払済で消える", () => {
+  const base = {
+    orderId: "o1",
+    orderNo: "PO-1",
+    caseId: "c1",
+    caseNo: "C-1",
+    caseStatus: "対応中",
+    customerName: "顧客",
+    supplierId: "sup1",
+    supplierName: "商社",
+    orderAmount: 500000,
+  };
+
+  assert.equal(
+    buildSupplierPaymentQueueRow({
+      ...base,
+      orderStatus: "発注済",
+      deliveredDate: null,
+      payments: [],
+    }),
+    null
+  );
+
+  const virtual = buildSupplierPaymentQueueRow({
+    ...base,
+    orderStatus: "納品済",
+    deliveredDate: "2026-08-01",
+    payments: [],
+  });
+  assert.ok(virtual);
+  assert.equal(virtual!.stage, "needs_create_and_pay");
+  assert.equal(virtual!.supplierPaymentId, null);
+
+  const scheduled = buildSupplierPaymentQueueRow({
+    ...base,
+    orderStatus: "納品済",
+    deliveredDate: "2026-08-01",
+    payments: [
+      {
+        id: "sp1",
+        status: "予定",
+        dueDate: null,
+        scheduledAmount: 500000,
+      },
+    ],
+  });
+  assert.equal(scheduled!.stage, "needs_pay");
+  assert.equal(scheduled!.supplierPaymentId, "sp1");
+
+  assert.equal(
+    buildSupplierPaymentQueueRow({
+      ...base,
+      orderStatus: "納品済",
+      deliveredDate: "2026-08-01",
+      payments: [
+        {
+          id: "sp1",
+          status: "支払済",
+          dueDate: null,
+          scheduledAmount: 500000,
+        },
+      ],
+    }),
+    null
+  );
+});
+
+test("将来一括用キー: payeeKey / periodKey を保持", () => {
+  const three = buildThreePartyPaymentQueueRow({
+    ...baseThree,
+    dealerSettlements: [
+      {
+        id: "s1",
+        status: "確定",
+        creditReceivedAmount: 100,
+        veShareAmount: 10,
+        adjustmentTotalAmount: 0,
+        payoutAmount: 90,
+        scheduledPayoutDate: "2026-09-15",
+        financeReceiptId: "f1",
+      },
+    ],
+  })!;
+  assert.equal(three.payeeKey, "d1");
+  assert.equal(three.periodKey, "2026-09");
+
+  const supplier = buildSupplierPaymentQueueRow({
+    orderId: "o1",
+    orderNo: "PO-1",
+    caseId: "c1",
+    caseNo: "C-1",
+    caseStatus: "対応中",
+    customerName: "顧客",
+    supplierId: "sup9",
+    supplierName: "商社",
+    orderStatus: "納品済",
+    deliveredDate: "2026-08-01",
+    orderAmount: 1,
+    payments: [],
+  })!;
+  assert.equal(supplier.payeeKey, "sup9");
+  assert.equal(supplier.periodKey, "2026-08");
+});

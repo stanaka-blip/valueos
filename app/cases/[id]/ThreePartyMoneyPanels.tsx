@@ -82,10 +82,16 @@ function FinanceReceiptPanel({
   caseId,
   financeCompanyDefault,
   money,
+  variant = "full",
 }: Props) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const caseFlow = variant === "case_flow";
+  const hasActiveReceipt = money.financeReceipts.some(
+    (r) => r.status !== "取消"
+  );
+  const [showCreateForm, setShowCreateForm] = useState(!hasActiveReceipt);
   const [form, setForm] = useState({
     finance_company: financeCompanyDefault || "",
     scheduled_date: "",
@@ -158,71 +164,94 @@ function FinanceReceiptPanel({
         )}
       </div>
 
-      <div className="rounded-lg border border-dashed border-gray-300 p-4">
-        <p className="mb-3 text-xs font-semibold text-gray-600">予定登録</p>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <label className="text-xs text-gray-600">
-            信販会社
-            <input
-              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              value={form.finance_company}
-              disabled={busy}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, finance_company: e.target.value }))
-              }
-            />
-          </label>
-          <label className="text-xs text-gray-600">
-            予定入金日
-            <input
-              type="date"
-              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              value={form.scheduled_date}
-              disabled={busy}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, scheduled_date: e.target.value }))
-              }
-            />
-          </label>
-          <label className="text-xs text-gray-600">
-            予定金額
-            <input
-              type="number"
-              min={0}
-              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              value={form.scheduled_amount}
-              disabled={busy}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, scheduled_amount: e.target.value }))
-              }
-            />
-          </label>
-          <label className="text-xs text-gray-600">
-            備考
-            <input
-              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              value={form.memo}
-              disabled={busy}
-              onChange={(e) => setForm((f) => ({ ...f, memo: e.target.value }))}
-            />
-          </label>
-        </div>
+      {caseFlow && hasActiveReceipt && !showCreateForm ? (
         <button
           type="button"
-          disabled={busy}
-          className="mt-3 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
-          onClick={() =>
-            run("finance_receipt.create", undefined, {
-              finance_company: form.finance_company,
-              scheduled_date: form.scheduled_date || null,
-              scheduled_amount: Number(form.scheduled_amount),
-              memo: form.memo || null,
-            })
-          }
+          className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50"
+          onClick={() => setShowCreateForm(true)}
         >
-          予定を登録
+          信販入金の予定を追加登録
         </button>
-      </div>
+      ) : (
+        <div className="rounded-lg border border-dashed border-gray-300 p-4">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <p className="text-xs font-semibold text-gray-600">予定登録</p>
+            {caseFlow && hasActiveReceipt ? (
+              <button
+                type="button"
+                className="text-xs text-gray-500 underline"
+                onClick={() => setShowCreateForm(false)}
+              >
+                閉じる
+              </button>
+            ) : null}
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="text-xs text-gray-600">
+              信販会社
+              <input
+                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                value={form.finance_company}
+                disabled={busy}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, finance_company: e.target.value }))
+                }
+              />
+            </label>
+            <label className="text-xs text-gray-600">
+              予定入金日
+              <input
+                type="date"
+                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                value={form.scheduled_date}
+                disabled={busy}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, scheduled_date: e.target.value }))
+                }
+              />
+            </label>
+            <label className="text-xs text-gray-600">
+              予定金額
+              <input
+                type="number"
+                min={0}
+                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                value={form.scheduled_amount}
+                disabled={busy}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, scheduled_amount: e.target.value }))
+                }
+              />
+            </label>
+            <label className="text-xs text-gray-600">
+              備考
+              <input
+                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                value={form.memo}
+                disabled={busy}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, memo: e.target.value }))
+                }
+              />
+            </label>
+          </div>
+          <button
+            type="button"
+            disabled={busy}
+            className="mt-3 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
+            onClick={() =>
+              run("finance_receipt.create", undefined, {
+                finance_company: form.finance_company,
+                scheduled_date: form.scheduled_date || null,
+                scheduled_amount: Number(form.scheduled_amount),
+                memo: form.memo || null,
+              })
+            }
+          >
+            予定を登録
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -453,6 +482,10 @@ function DealerSettlementPanel({
   const activeReceipt = money.financeReceipts.find((r) => r.status === "入金済")
     || money.financeReceipts.find((r) => r.status === "予定");
   const activeInvoice = invoices.find((i) => i.status !== "取消");
+  const hasUnpaidSettlement = money.dealerSettlements.some(
+    (s) => s.status !== "取消" && s.status !== "支払済"
+  );
+  const [showCreateForm, setShowCreateForm] = useState(!hasUnpaidSettlement);
 
   const [form, setForm] = useState({
     credit_received_amount: String(activeReceipt?.actualAmount ?? activeReceipt?.scheduledAmount ?? ""),
@@ -563,8 +596,28 @@ function DealerSettlementPanel({
       </div>
 
       {dealerId ? (
+        caseFlow && hasUnpaidSettlement && !showCreateForm ? (
+          <button
+            type="button"
+            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50"
+            onClick={() => setShowCreateForm(true)}
+          >
+            仕切を追加作成
+          </button>
+        ) : (
         <div className="rounded-lg border border-dashed border-gray-300 p-4">
-          <p className="mb-3 text-xs font-semibold text-gray-600">仕切作成（下書き）</p>
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <p className="text-xs font-semibold text-gray-600">仕切作成（下書き）</p>
+            {caseFlow && hasUnpaidSettlement ? (
+              <button
+                type="button"
+                className="text-xs text-gray-500 underline"
+                onClick={() => setShowCreateForm(false)}
+              >
+                閉じる
+              </button>
+            ) : null}
+          </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="text-xs text-gray-600">
               信販会社からの入金額
@@ -676,6 +729,7 @@ function DealerSettlementPanel({
             仕切を作成
           </button>
         </div>
+        )
       ) : (
         <p className="text-sm text-amber-800">
           販売店が未設定のため仕切を作成できません。
