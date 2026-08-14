@@ -1600,6 +1600,141 @@ export type Database = {
           },
         ];
       };
+      /**
+       * Organization Core（20260814090000_organization_core）。
+       * 既存 dealers/contractors/suppliers とは未結合。service_role のみ。
+       */
+      organizations: {
+        Row: {
+          id: string;
+          name: string;
+          legal_name: string | null;
+          is_active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          name: string;
+          legal_name?: string | null;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          name?: string;
+          legal_name?: string | null;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      organization_types: {
+        Row: {
+          id: string;
+          code: string;
+          display_name: string;
+          sort_order: number;
+          is_active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          code: string;
+          display_name: string;
+          sort_order?: number;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          code?: string;
+          display_name?: string;
+          sort_order?: number;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      organization_type_assignments: {
+        Row: {
+          id: string;
+          organization_id: string;
+          organization_type_id: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          organization_type_id: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          organization_id?: string;
+          organization_type_id?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "organization_type_assignments_organization_id_fkey";
+            columns: ["organization_id"];
+            isOneToOne: false;
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "organization_type_assignments_organization_type_id_fkey";
+            columns: ["organization_type_id"];
+            isOneToOne: false;
+            referencedRelation: "organization_types";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      organization_memberships: {
+        Row: {
+          id: string;
+          user_id: string;
+          organization_id: string;
+          is_active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          organization_id: string;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          organization_id?: string;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "organization_memberships_organization_id_fkey";
+            columns: ["organization_id"];
+            isOneToOne: false;
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: Record<string, never>;
     Functions: {
@@ -1691,3 +1826,25 @@ export type CaseSettlementUpdate = PublicTables["case_settlements"]["Update"];
 export type CompanySettingsRow = PublicTables["company_settings"]["Row"];
 export type CompanySettingsInsert = PublicTables["company_settings"]["Insert"];
 export type CompanySettingsUpdate = PublicTables["company_settings"]["Update"];
+
+export type OrganizationRow = PublicTables["organizations"]["Row"];
+export type OrganizationInsert = PublicTables["organizations"]["Insert"];
+export type OrganizationUpdate = PublicTables["organizations"]["Update"];
+
+export type OrganizationTypeRow = PublicTables["organization_types"]["Row"];
+export type OrganizationTypeInsert = PublicTables["organization_types"]["Insert"];
+export type OrganizationTypeUpdate = PublicTables["organization_types"]["Update"];
+
+export type OrganizationTypeAssignmentRow =
+  PublicTables["organization_type_assignments"]["Row"];
+export type OrganizationTypeAssignmentInsert =
+  PublicTables["organization_type_assignments"]["Insert"];
+export type OrganizationTypeAssignmentUpdate =
+  PublicTables["organization_type_assignments"]["Update"];
+
+export type OrganizationMembershipRow =
+  PublicTables["organization_memberships"]["Row"];
+export type OrganizationMembershipInsert =
+  PublicTables["organization_memberships"]["Insert"];
+export type OrganizationMembershipUpdate =
+  PublicTables["organization_memberships"]["Update"];
