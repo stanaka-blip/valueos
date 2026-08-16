@@ -9,6 +9,10 @@ import {
   loadAllCaseSettlementsAdmin,
   type QueueSettlementRow,
 } from "@/lib/queues/loadCaseSettlementsAdmin";
+import {
+  getServiceRoleSupabase,
+  ServerAdminConfigError,
+} from "@/lib/supabase/serverAdmin";
 import { supabase } from "@/lib/supabase";
 
 export type CollectionQueueLoadResult = {
@@ -54,10 +58,41 @@ type PaymentRow = {
   payment_amount: number | null;
 };
 
+type FinanceReceiptRow = {
+  id: string;
+  case_id: string | null;
+  status: string | null;
+};
+
+async function loadFinanceReceiptsAdmin(): Promise<
+  | { ok: true; data: FinanceReceiptRow[] }
+  | { ok: false; error: string }
+> {
+  try {
+    const admin = getServiceRoleSupabase();
+    const { data, error } = await admin
+      .from("finance_receipts")
+      .select("id, case_id, status");
+    if (error) {
+      return {
+        ok: false,
+        error: `信販入金の取得に失敗しました：${error.message}`,
+      };
+    }
+    return { ok: true, data: (data || []) as FinanceReceiptRow[] };
+  } catch (e) {
+    if (e instanceof ServerAdminConfigError) {
+      return { ok: false, error: "サーバー設定が完了していません" };
+    }
+    return { ok: false, error: "信販入金の取得に失敗しました" };
+  }
+}
+
 export async function loadCollectionQueue(): Promise<CollectionQueueLoadResult> {
   const [
     { data: casesData, error: casesError },
     settlementsResult,
+    financeResult,
     { data: orders, error: ordersError },
     { data: invoices, error: invoicesError },
     { data: payments, error: paymentsError },
@@ -76,6 +111,7 @@ export async function loadCollectionQueue(): Promise<CollectionQueueLoadResult> 
     `
     ),
     loadAllCaseSettlementsAdmin({ includeApprovalNumber: true }),
+    loadFinanceReceiptsAdmin(),
     supabase.from("orders").select("id, case_id, status, delivered_date"),
     supabase
       .from("invoices")
@@ -87,6 +123,9 @@ export async function loadCollectionQueue(): Promise<CollectionQueueLoadResult> 
 
   if (!settlementsResult.ok) {
     return { rows: [], error: settlementsResult.error };
+  }
+  if (!financeResult.ok) {
+    return { rows: [], error: financeResult.error };
   }
 
   // construction_completed_date 未適用環境向けフォールバック
@@ -112,6 +151,7 @@ export async function loadCollectionQueue(): Promise<CollectionQueueLoadResult> 
     return assemble(
       (fallback.data || []) as unknown as CaseRow[],
       settlementsResult.data,
+      financeResult.data,
       (orders || []) as OrderRow[],
       (invoices || []) as InvoiceRow[],
       (payments || []) as PaymentRow[],
@@ -135,6 +175,7 @@ export async function loadCollectionQueue(): Promise<CollectionQueueLoadResult> 
   return assemble(
     (casesData || []) as unknown as CaseRow[],
     settlementsResult.data,
+    financeResult.data,
     (orders || []) as OrderRow[],
     (invoices || []) as InvoiceRow[],
     (payments || []) as PaymentRow[],
@@ -145,6 +186,7 @@ export async function loadCollectionQueue(): Promise<CollectionQueueLoadResult> 
 function assemble(
   cases: CaseRow[],
   settlements: QueueSettlementRow[],
+  financeReceipts: FinanceReceiptRow[],
   orders: OrderRow[],
   invoices: InvoiceRow[],
   payments: PaymentRow[],
@@ -163,6 +205,7 @@ function assemble(
   const ordersByCase = groupBy(orders, "case_id");
   const invoicesByCase = groupBy(invoices, "case_id");
   const paymentsByCase = groupBy(payments, "case_id");
+  const financeByCase = groupBy(financeReceipts, "case_id");
 
   const rows: CollectionQueueRow[] = [];
   for (const c of cases) {
@@ -180,9 +223,11 @@ function assemble(
       loan_status: settlement?.loan_status ?? null,
       card_status: settlement?.card_status ?? null,
       approval_number: settlement?.approval_number ?? null,
+      construction_completed_date: c.construction_completed_date ?? null,
       orders: ordersByCase.get(c.id) || [],
       invoices: invoicesByCase.get(c.id) || [],
       payments: paymentsByCase.get(c.id) || [],
+      finance_receipts: financeByCase.get(c.id) || [],
     });
     if (row) rows.push(row);
   }

@@ -490,7 +490,7 @@ function DealerSettlementPanel({
   const [form, setForm] = useState({
     credit_received_amount: String(activeReceipt?.actualAmount ?? activeReceipt?.scheduledAmount ?? ""),
     ve_share_amount: String(activeInvoice?.invoiceAmount ?? ""),
-    transfer_fee: "550",
+    transfer_fee: "0",
     scheduled_payout_date: "",
     memo: "",
     finance_receipt_id: activeReceipt?.id || "",
