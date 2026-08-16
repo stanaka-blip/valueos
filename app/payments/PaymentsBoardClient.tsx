@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
+import FinanceReceiptPaidForm from "@/app/components/threeParty/FinanceReceiptPaidForm";
 import { INVOICE_PAYMENT_STATUSES } from "@/lib/payments/constants";
 import type { PaymentBoardRow, PaymentBoardSummary } from "@/lib/payments/loadPaymentBoard";
 import { SETTLEMENT_RULE_LIST } from "@/lib/workflow";
@@ -215,8 +217,8 @@ export default function PaymentsBoardClient({
                   "決済区分",
                   "請求番号",
                   "請求金額",
-                  "入金済金額",
-                  "未入金金額",
+                  "入金済 / 実質回収",
+                  "未入金残高",
                   "入金予定日",
                   "入金状況",
                   "遅延日数",
@@ -241,73 +243,7 @@ export default function PaymentsBoardClient({
                 </tr>
               ) : (
                 filtered.map((r) => (
-                  <tr key={r.invoiceId} className="border-t border-gray-100">
-                    <td className="whitespace-nowrap px-3 py-3">
-                      {r.caseId ? (
-                        <Link
-                          href={`/cases/${r.caseId}`}
-                          className="text-gray-900 hover:underline"
-                        >
-                          {r.caseNo || "—"}
-                        </Link>
-                      ) : (
-                        r.caseNo || "—"
-                      )}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-3">
-                      {r.customerName || "—"}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-3">
-                      {r.dealerName || "—"}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-3">
-                      {r.settlementTypeLabel || "—"}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-3">
-                      <Link
-                        href={`/invoices/${r.invoiceId}?from=payments`}
-                        className="text-gray-900 hover:underline"
-                      >
-                        {r.invoiceNo || "—"}
-                      </Link>
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-3">
-                      {formatYen(r.invoiceAmount)}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-3">
-                      {formatYen(r.confirmedPaidAmount)}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-3">
-                      {formatYen(r.unpaidAmount)}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-3">
-                      {formatDate(r.dueDate)}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-3">
-                      <span
-                        className={`rounded-full px-2 py-1 text-xs font-medium ${statusClass(r.displayStatus)}`}
-                      >
-                        {r.displayStatus}
-                      </span>
-                      {r.overpaidAmount > 0 ? (
-                        <span className="ml-1 text-xs text-amber-700">過入金</span>
-                      ) : null}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-3">
-                      {r.delayDays > 0 ? `${r.delayDays}日` : "—"}
-                    </td>
-                    <td className="min-w-[10rem] px-3 py-3 text-xs text-gray-600">
-                      {r.nextAction}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-3 text-right">
-                      <Link
-                        href={`/invoices/${r.invoiceId}/payments/new`}
-                        className="rounded-md bg-gray-900 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-gray-800"
-                      >
-                        入金登録
-                      </Link>
-                    </td>
-                  </tr>
+                  <PaymentBoardTableRow key={r.invoiceId} row={r} />
                 ))
               )}
             </tbody>
@@ -318,6 +254,133 @@ export default function PaymentsBoardClient({
         </div>
       </section>
     </div>
+  );
+}
+
+function PaymentBoardTableRow({ row: r }: { row: PaymentBoardRow }) {
+  const router = useRouter();
+  const [showFinance, setShowFinance] = useState(false);
+  const isThree = r.isThreeParty === true;
+
+  return (
+    <>
+      <tr className="border-t border-gray-100">
+        <td className="whitespace-nowrap px-3 py-3">
+          {r.caseId ? (
+            <Link
+              href={`/cases/${r.caseId}?tab=invoice`}
+              className="text-gray-900 hover:underline"
+            >
+              {r.caseNo || "—"}
+            </Link>
+          ) : (
+            r.caseNo || "—"
+          )}
+        </td>
+        <td className="whitespace-nowrap px-3 py-3">
+          {r.customerName || "—"}
+        </td>
+        <td className="whitespace-nowrap px-3 py-3">
+          {r.dealerName || "—"}
+        </td>
+        <td className="whitespace-nowrap px-3 py-3">
+          {r.settlementTypeLabel || "—"}
+          {isThree ? (
+            <span className="ml-1 text-[10px] text-teal-800">信販</span>
+          ) : null}
+        </td>
+        <td className="whitespace-nowrap px-3 py-3">
+          <Link
+            href={`/invoices/${r.invoiceId}?from=payments`}
+            className="text-gray-900 hover:underline"
+          >
+            {r.invoiceNo || "—"}
+          </Link>
+        </td>
+        <td className="whitespace-nowrap px-3 py-3">
+          {formatYen(r.invoiceAmount)}
+        </td>
+        <td className="whitespace-nowrap px-3 py-3">
+          {isThree ? (
+            <span title="実質回収額 = 信販入金額 − 販売店支払額">
+              {formatYen(r.effectiveRecoveryAmount ?? 0)}
+              <span className="block text-[10px] text-gray-400">実質回収</span>
+            </span>
+          ) : (
+            formatYen(r.confirmedPaidAmount)
+          )}
+        </td>
+        <td className="whitespace-nowrap px-3 py-3">
+          {isThree ? (
+            <span title="未入金残高 = 商品請求額 − 実質回収額">
+              {formatYen(r.threePartyUnpaidBalance ?? r.unpaidAmount)}
+            </span>
+          ) : (
+            formatYen(r.unpaidAmount)
+          )}
+        </td>
+        <td className="whitespace-nowrap px-3 py-3">
+          {formatDate(r.dueDate)}
+        </td>
+        <td className="whitespace-nowrap px-3 py-3">
+          <span
+            className={`rounded-full px-2 py-1 text-xs font-medium ${statusClass(r.displayStatus)}`}
+          >
+            {isThree && !r.financePaid
+              ? "信販未入金"
+              : r.displayStatus}
+          </span>
+          {!isThree && r.overpaidAmount > 0 ? (
+            <span className="ml-1 text-xs text-amber-700">過入金</span>
+          ) : null}
+        </td>
+        <td className="whitespace-nowrap px-3 py-3">
+          {r.delayDays > 0 ? `${r.delayDays}日` : "—"}
+        </td>
+        <td className="min-w-[10rem] px-3 py-3 text-xs text-gray-600">
+          {r.nextAction}
+        </td>
+        <td className="whitespace-nowrap px-3 py-3 text-right">
+          {isThree && r.needsFinanceRegister ? (
+            <button
+              type="button"
+              onClick={() => setShowFinance((v) => !v)}
+              className="rounded-md bg-gray-900 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-gray-800"
+            >
+              {showFinance ? "閉じる" : "信販入金を登録"}
+            </button>
+          ) : isThree ? (
+            <Link
+              href={`/queues/payments-management`}
+              className="rounded-md border border-gray-300 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+            >
+              支払管理
+            </Link>
+          ) : (
+            <Link
+              href={`/invoices/${r.invoiceId}/payments/new`}
+              className="rounded-md bg-gray-900 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-gray-800"
+            >
+              入金登録
+            </Link>
+          )}
+        </td>
+      </tr>
+      {isThree && r.needsFinanceRegister && showFinance && r.caseId ? (
+        <tr className="border-t border-teal-100 bg-teal-50/40">
+          <td colSpan={13} className="px-3 py-3">
+            <FinanceReceiptPaidForm
+              caseId={r.caseId}
+              compact
+              onSuccess={() => {
+                setShowFinance(false);
+                router.refresh();
+              }}
+            />
+          </td>
+        </tr>
+      ) : null}
+    </>
   );
 }
 

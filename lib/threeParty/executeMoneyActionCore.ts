@@ -12,6 +12,7 @@ import {
   type MoneyFieldErrors,
   type ValidatedMoneyAction,
 } from "@/lib/threeParty/moneyActionsLogic";
+import { financeReceiptCreateBlockReason } from "@/lib/threeParty/threePartyRecovery";
 
 type AdminClient = SupabaseClient<Database>;
 
@@ -62,6 +63,35 @@ export async function executeMoneyActionWithClient(
   action: ValidatedMoneyAction,
   client: AdminClient
 ): Promise<ExecuteMoneyActionResult> {
+  // 信販入金 create: 有効な予定/入金済があれば二重登録を拒否（Migrationなし）
+  if (action.action === "finance_receipt.create") {
+    const { data: existing, error: existingError } = await client
+      .from("finance_receipts")
+      .select("id, status")
+      .eq("case_id", action.case_id);
+    if (existingError) {
+      console.warn(
+        "[executeMoneyAction] finance_receipts guard error:",
+        existingError.message
+      );
+      return {
+        ok: false,
+        error_code: "ACTION_FAILED",
+        error_message: "処理に失敗しました",
+        request_id: requestId,
+      };
+    }
+    const block = financeReceiptCreateBlockReason(existing || []);
+    if (block) {
+      return {
+        ok: false,
+        error_code: "CONFLICT",
+        error_message: block,
+        request_id: requestId,
+      };
+    }
+  }
+
   const payload = buildThreePartyMoneyRpcPayload(requestId, action);
 
   const { data, error } = await client.rpc("execute_three_party_money", {

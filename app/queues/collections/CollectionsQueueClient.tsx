@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import FinanceReceiptPaidForm from "@/app/components/threeParty/FinanceReceiptPaidForm";
 import type {
   CollectionQueueRow,
   CollectionQueueSummary,
@@ -182,90 +184,116 @@ function SummaryStrip({ summary }: { summary: CollectionQueueSummary }) {
 }
 
 function CollectionQueueTableRow({ row }: { row: CollectionQueueRow }) {
+  const router = useRouter();
+  const [showFinanceForm, setShowFinanceForm] = useState(false);
   const overdue = row.uiCategory === "overdue" || row.isOverdue;
   const remainingEmphasis =
     row.uiCategory === "partial_payment" || row.uiCategory === "overdue";
   const ctaLabel = row.ctaLabel || row.secondaryLabel;
 
   return (
-    <tr
-      className={
-        row.uiCategory === "overdue"
-          ? "border-b border-red-100 bg-red-50/40 last:border-0"
-          : "border-b border-gray-100 last:border-0"
-      }
-    >
-      <td className="px-4 py-3 whitespace-nowrap">
-        <span
-          className={
-            row.uiCategory === "overdue"
-              ? "font-medium text-red-700"
-              : "text-gray-900"
-          }
-        >
-          {row.displayStateLabel}
-        </span>
-      </td>
-      <td className="px-4 py-3 whitespace-nowrap">
-        <Link
-          href={row.detailHref}
-          className="font-medium text-gray-900 underline-offset-2 hover:underline"
-        >
-          {row.caseNo}
-        </Link>
-      </td>
-      <td className="px-4 py-3 text-gray-900">{row.customerName}</td>
-      <td className="px-4 py-3 text-gray-700">{row.dealerName}</td>
-      <td className="px-4 py-3 whitespace-nowrap text-gray-700">
-        {row.settlementType}
-      </td>
-      <td className="px-4 py-3 whitespace-nowrap text-gray-700">
-        {formatYen(row.invoiceAmount)}
-      </td>
-      <td className="px-4 py-3 whitespace-nowrap text-gray-700">
-        {formatYen(row.confirmedPaidAmount)}
-      </td>
-      <td
+    <>
+      <tr
         className={
-          remainingEmphasis
-            ? "px-4 py-3 whitespace-nowrap font-semibold text-red-700"
-            : "px-4 py-3 whitespace-nowrap text-gray-700"
+          row.uiCategory === "overdue"
+            ? "border-b border-red-100 bg-red-50/40 last:border-0"
+            : "border-b border-gray-100 last:border-0"
         }
       >
-        {formatYen(row.remainingAmount)}
-      </td>
-      <td
-        className={
-          overdue
-            ? "px-4 py-3 whitespace-nowrap font-medium text-red-700"
-            : "px-4 py-3 whitespace-nowrap text-gray-700"
-        }
-      >
-        {formatDate(row.dueDate)}
-      </td>
-      <td className="px-4 py-3 text-gray-700">{row.nextAction}</td>
-      <td className="px-4 py-3 whitespace-nowrap">
-        <div className="flex flex-wrap items-center gap-2">
+        <td className="px-4 py-3 whitespace-nowrap">
+          <span
+            className={
+              row.uiCategory === "overdue"
+                ? "font-medium text-red-700"
+                : "text-gray-900"
+            }
+          >
+            {row.displayStateLabel}
+          </span>
+        </td>
+        <td className="px-4 py-3 whitespace-nowrap">
           <Link
             href={row.detailHref}
-            className="rounded-md border border-gray-200 px-2.5 py-1.5 text-xs text-gray-700 hover:bg-gray-50"
+            className="font-medium text-gray-900 underline-offset-2 hover:underline"
           >
-            詳細
+            {row.caseNo}
           </Link>
-          {row.secondaryHref && ctaLabel ? (
+        </td>
+        <td className="px-4 py-3 text-gray-900">{row.customerName}</td>
+        <td className="px-4 py-3 text-gray-700">{row.dealerName}</td>
+        <td className="px-4 py-3 whitespace-nowrap text-gray-700">
+          {row.settlementType}
+        </td>
+        <td className="px-4 py-3 whitespace-nowrap text-gray-700">
+          {formatYen(row.invoiceAmount)}
+        </td>
+        <td className="px-4 py-3 whitespace-nowrap text-gray-700">
+          {formatYen(row.confirmedPaidAmount)}
+        </td>
+        <td
+          className={
+            remainingEmphasis
+              ? "px-4 py-3 whitespace-nowrap font-semibold text-red-700"
+              : "px-4 py-3 whitespace-nowrap text-gray-700"
+          }
+        >
+          {formatYen(row.remainingAmount)}
+        </td>
+        <td
+          className={
+            overdue
+              ? "px-4 py-3 whitespace-nowrap font-medium text-red-700"
+              : "px-4 py-3 whitespace-nowrap text-gray-700"
+          }
+        >
+          {formatDate(row.dueDate)}
+        </td>
+        <td className="px-4 py-3 text-gray-700">{row.nextAction}</td>
+        <td className="px-4 py-3 whitespace-nowrap">
+          <div className="flex flex-wrap items-center gap-2">
             <Link
-              href={row.secondaryHref}
-              className={
-                row.uiCategory === "overdue"
-                  ? "rounded-md bg-red-700 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-red-600"
-                  : "rounded-md bg-gray-900 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-gray-700"
-              }
+              href={row.detailHref}
+              className="rounded-md border border-gray-200 px-2.5 py-1.5 text-xs text-gray-700 hover:bg-gray-50"
             >
-              {ctaLabel}
+              詳細
             </Link>
-          ) : null}
-        </div>
-      </td>
-    </tr>
+            {row.allowsFinanceRegister ? (
+              <button
+                type="button"
+                onClick={() => setShowFinanceForm((v) => !v)}
+                className="rounded-md bg-gray-900 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-gray-700"
+              >
+                {showFinanceForm ? "閉じる" : "信販入金を登録"}
+              </button>
+            ) : row.secondaryHref && ctaLabel ? (
+              <Link
+                href={row.secondaryHref}
+                className={
+                  row.uiCategory === "overdue"
+                    ? "rounded-md bg-red-700 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-red-600"
+                    : "rounded-md bg-gray-900 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-gray-700"
+                }
+              >
+                {ctaLabel}
+              </Link>
+            ) : null}
+          </div>
+        </td>
+      </tr>
+      {row.allowsFinanceRegister && showFinanceForm ? (
+        <tr className="border-b border-gray-100 bg-teal-50/30">
+          <td colSpan={11} className="px-4 py-3">
+            <FinanceReceiptPaidForm
+              caseId={row.id}
+              compact
+              onSuccess={() => {
+                setShowFinanceForm(false);
+                router.refresh();
+              }}
+            />
+          </td>
+        </tr>
+      ) : null}
+    </>
   );
 }

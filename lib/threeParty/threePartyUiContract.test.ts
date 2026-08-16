@@ -37,18 +37,38 @@ assert.ok(!caseDetail.includes("3社間決済以外の仕入先支払も"));
 assert.ok(panels.includes("case_flow"));
 assert.ok(panels.includes("/queues/payments-management"));
 assert.ok(panels.includes("?tab=supplier"));
-assert.ok(panels.includes("信販入金を登録"));
+assert.ok(panels.includes("信販入金を登録") || panels.includes("FinanceReceiptPaidForm"));
 assert.ok(panels.includes("hidePay"));
 assert.ok(panels.includes("信販入金（信販会社からの契約金）"));
-assert.ok(panels.includes("商品請求に対する顧客入金"));
-assert.ok(panels.includes("信販入金額 − 有効請求額合計"));
-assert.ok(panels.includes("登録時点で入金済"));
+assert.ok(panels.includes("信販入金額 − 有効請求額合計") || panels.includes("初期仕切額"));
 assert.ok(!panels.includes("信販入金の予定を追加登録"));
-assert.ok(!panels.includes("信販入金の予定登録"));
 assert.ok(!panels.includes("予定信販入金額"));
 assert.ok(caseDetail.includes("請求額と信販入金額は別物"));
 assert.ok(caseDetail.includes('section="finance"'));
 assert.ok(caseDetail.includes("顧客入金（通常決済用・参考）"));
+assert.ok(caseDetail.includes("実質回収額"));
+assert.ok(caseDetail.includes("未入金残高"));
+assert.ok(caseDetail.includes("二重登録") || panels.includes("二重登録"));
+const financeForm = readFileSync(
+  join(root, "app/components/threeParty/FinanceReceiptPaidForm.tsx"),
+  "utf8"
+);
+assert.ok(financeForm.includes("finance_receipt.create"));
+assert.ok(financeForm.includes("finance_receipt.confirm"));
+assert.ok(financeForm.includes("登録時点で入金済"));
+const collectionsClient = readFileSync(
+  join(root, "app/queues/collections/CollectionsQueueClient.tsx"),
+  "utf8"
+);
+assert.ok(collectionsClient.includes("FinanceReceiptPaidForm"));
+assert.ok(collectionsClient.includes("allowsFinanceRegister"));
+const paymentsBoard = readFileSync(
+  join(root, "app/payments/PaymentsBoardClient.tsx"),
+  "utf8"
+);
+assert.ok(paymentsBoard.includes("FinanceReceiptPaidForm"));
+assert.ok(paymentsBoard.includes("実質回収"));
+assert.ok(paymentsBoard.includes("needsFinanceRegister"));
 
 const sidebar = readFileSync(
   join(root, "app/components/AppSidebar.tsx"),

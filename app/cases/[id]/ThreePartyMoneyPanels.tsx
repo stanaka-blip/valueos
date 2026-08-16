@@ -10,6 +10,7 @@ import type {
   SupplierPaymentView,
   ThreePartyMoneyView,
 } from "@/lib/threeParty/loadThreePartyMoneyAdmin";
+import FinanceReceiptPaidForm from "@/app/components/threeParty/FinanceReceiptPaidForm";
 import {
   calculateDealerSettlementPayout,
   sumActiveInvoiceAmounts,
@@ -17,8 +18,11 @@ import {
 import {
   buildFinanceReceiptPaidConfirmBody,
   buildFinanceReceiptPaidCorrectBody,
-  buildFinanceReceiptPaidCreateBody,
 } from "@/lib/threeParty/financeReceiptRegister";
+import {
+  financeReceiptCreateBlockReason,
+  hasActiveFinanceReceipt,
+} from "@/lib/threeParty/threePartyRecovery";
 
 import { submitThreePartyMoney } from "./submitThreePartyMoney";
 
@@ -96,16 +100,9 @@ function FinanceReceiptPanel({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const caseFlow = variant === "case_flow";
-  const hasActiveReceipt = money.financeReceipts.some(
-    (r) => r.status !== "取消"
-  );
+  const hasActiveReceipt = hasActiveFinanceReceipt(money.financeReceipts);
+  const blockReason = financeReceiptCreateBlockReason(money.financeReceipts);
   const [showCreateForm, setShowCreateForm] = useState(!hasActiveReceipt);
-  const [form, setForm] = useState({
-    finance_company: financeCompanyDefault || "",
-    actual_date: new Date().toISOString().slice(0, 10),
-    actual_amount: "",
-    memo: "",
-  });
 
   async function run(
     action: string,
@@ -123,35 +120,6 @@ function FinanceReceiptPanel({
       return null;
     }
     return result;
-  }
-
-  /** 1ステップ: create(予定互換) → confirm(入金済)。予定UIは使わない */
-  async function registerPaid() {
-    setBusy(true);
-    setError("");
-    const paid = {
-      finance_company: form.finance_company,
-      actual_date: form.actual_date,
-      actual_amount: Number(form.actual_amount),
-      memo: form.memo || null,
-    };
-    const created = await run(
-      "finance_receipt.create",
-      undefined,
-      buildFinanceReceiptPaidCreateBody(paid)
-    );
-    if (!created) {
-      setBusy(false);
-      return;
-    }
-    const confirmed = await run(
-      "finance_receipt.confirm",
-      created.resource_id,
-      buildFinanceReceiptPaidConfirmBody(paid)
-    );
-    setBusy(false);
-    if (!confirmed) return;
-    router.refresh();
   }
 
   async function cancelReceipt(id: string) {
@@ -176,14 +144,10 @@ function FinanceReceiptPanel({
   ) {
     setBusy(true);
     setError("");
-    const corrected = await run(
-      "finance_receipt.correct",
-      id,
-      {
-        ...buildFinanceReceiptPaidCorrectBody(body),
-        cancel_reason: "画面から訂正",
-      }
-    );
+    const corrected = await run("finance_receipt.correct", id, {
+      ...buildFinanceReceiptPaidCorrectBody(body),
+      cancel_reason: "画面から訂正",
+    });
     if (!corrected) {
       setBusy(false);
       return;
@@ -198,7 +162,11 @@ function FinanceReceiptPanel({
     router.refresh();
   }
 
-  async function confirmLegacy(id: string, actual_date: string, actual_amount: number) {
+  async function confirmLegacy(
+    id: string,
+    actual_date: string,
+    actual_amount: number
+  ) {
     setBusy(true);
     setError("");
     const result = await run("finance_receipt.confirm", id, {
@@ -215,7 +183,7 @@ function FinanceReceiptPanel({
       <div>
         <h3 className="text-sm font-semibold text-gray-900">① 信販入金（信販会社からの契約金）</h3>
         <p className="mt-1 text-xs text-gray-500">
-          着金後に、信販会社・実入金日・実入金額（契約金額）を登録します。登録時点で入金済になります（予定登録は不要）。商品請求に対する顧客入金とは別物です。
+          着金後に登録します。回収管理・入金管理・支払管理と同じ finance_receipts を使い、二重登録はできません。商品請求に対する顧客入金とは別物です。
         </p>
       </div>
       {money.loadError ? (
@@ -243,89 +211,19 @@ function FinanceReceiptPanel({
       </div>
 
       {caseFlow && hasActiveReceipt && !showCreateForm ? (
-        <button
-          type="button"
-          className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50"
-          onClick={() => setShowCreateForm(true)}
-        >
-          信販入金を追加登録
-        </button>
-      ) : (
-        <div className="rounded-lg border border-dashed border-teal-300 bg-teal-50/40 p-4">
-          <div className="mb-3 flex items-center justify-between gap-2">
-            <p className="text-xs font-semibold text-teal-900">信販入金を登録</p>
-            {caseFlow && hasActiveReceipt ? (
-              <button
-                type="button"
-                className="text-xs text-gray-500 underline"
-                onClick={() => setShowCreateForm(false)}
-              >
-                閉じる
-              </button>
-            ) : null}
-          </div>
-          <p className="mb-3 text-xs text-teal-900/80">
-            入力するのは信販会社から実際に振り込まれた契約金額です（商品請求額ではありません）。
-          </p>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="text-xs text-gray-600">
-              信販会社
-              <input
-                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                value={form.finance_company}
-                disabled={busy}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, finance_company: e.target.value }))
-                }
-              />
-            </label>
-            <label className="text-xs text-gray-600">
-              実入金日
-              <input
-                type="date"
-                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                value={form.actual_date}
-                disabled={busy}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, actual_date: e.target.value }))
-                }
-              />
-            </label>
-            <label className="text-xs text-gray-600">
-              実入金額（契約金額）
-              <input
-                type="number"
-                min={0}
-                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                value={form.actual_amount}
-                disabled={busy}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, actual_amount: e.target.value }))
-                }
-              />
-            </label>
-            <label className="text-xs text-gray-600">
-              備考
-              <input
-                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                value={form.memo}
-                disabled={busy}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, memo: e.target.value }))
-                }
-              />
-            </label>
-          </div>
-          <button
-            type="button"
-            disabled={busy || !form.finance_company || !form.actual_date || form.actual_amount === ""}
-            className="mt-3 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
-            onClick={() => registerPaid()}
-          >
-            信販入金を登録
-          </button>
-        </div>
-      )}
+        <p className="text-xs text-gray-500">
+          有効な信販入金があるため追加登録はできません（二重登録防止）。訂正・取消は上のカードから行えます。
+        </p>
+      ) : !hasActiveReceipt || showCreateForm ? (
+        <FinanceReceiptPaidForm
+          caseId={caseId}
+          financeCompanyDefault={financeCompanyDefault}
+          blockedReason={blockReason}
+          disabled={busy}
+          onSuccess={() => router.refresh()}
+          onError={(msg) => setError(msg)}
+        />
+      ) : null}
     </div>
   );
 }

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
 import { submitThreePartyMoney } from "@/app/cases/[id]/submitThreePartyMoney";
+import FinanceReceiptPaidForm from "@/app/components/threeParty/FinanceReceiptPaidForm";
 import { calculateDealerSettlementPayout } from "@/lib/threeParty/dealerSettlementCalc";
 import type {
   SupplierPaymentQueueRow,
@@ -442,17 +443,21 @@ function ThreePartyActionPanel({
       {error ? <p className="mt-3 text-sm text-rose-700">{error}</p> : null}
 
       {row.stage === "needs_finance_confirm" ? (
-        <div className="mt-4 space-y-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-          <p className="font-semibold">信販入金を確認してください</p>
-          <p className="text-xs leading-relaxed text-amber-900/90">
-            納品済みですが、信販入金（入金済）がまだありません。案件詳細の「請求・入金」タブで信販入金（契約金額）を登録してください。回収管理にも同案件が表示されることがあります（安全網）。
-          </p>
-          <Link
-            href={row.caseHref}
-            className="inline-flex rounded-lg bg-gray-900 px-4 py-2 text-xs font-medium text-white hover:bg-gray-800"
-          >
-            案件詳細で信販入金を確認
-          </Link>
+        <div className="mt-4 space-y-3">
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+            <p className="font-semibold">信販入金を登録してください</p>
+            <p className="mt-1 text-xs leading-relaxed text-amber-900/90">
+              回収管理・入金管理・案件詳細と同じ finance_receipts に登録します。二重登録はできません。登録後は仕切作成待ちへ進みます。
+            </p>
+          </div>
+          <FinanceReceiptPaidForm
+            caseId={row.caseId}
+            onSuccess={() => {
+              setError("");
+              router.refresh();
+            }}
+            onError={(msg) => setError(msg)}
+          />
         </div>
       ) : null}
 
