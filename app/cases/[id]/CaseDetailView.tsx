@@ -8,6 +8,11 @@ import TaskStatusSelect from "../../tasks/TaskStatusSelect";
 import type { WorkflowResult } from "@/lib/workflow";
 
 import type { ThreePartyMoneyView } from "@/lib/threeParty/loadThreePartyMoneyAdmin";
+import {
+  computeThreePartyRecoveryAmounts,
+  sumDealerPaidAmount,
+} from "@/lib/threeParty/threePartyRecovery";
+import { sumActiveInvoiceAmounts } from "@/lib/threeParty/dealerSettlementCalc";
 
 import SettlementForm from "./SettlementForm";
 import ThreePartyMoneyPanels from "./ThreePartyMoneyPanels";
@@ -1519,9 +1524,20 @@ function InvoiceReceiptTab({
   const financeAmountDisplay =
     paidFinance?.actualAmount ??
     paidFinance?.scheduledAmount ??
-    threePartyMoney.financeReceipts.find((r) => r.status === "予定")
-      ?.scheduledAmount ??
     null;
+  const invoiceTotalForRecovery = sumActiveInvoiceAmounts(invoices);
+  const dealerPaidForRecovery = sumDealerPaidAmount(
+    threePartyMoney.dealerSettlements.map((s) => ({
+      status: s.status,
+      actualPayoutAmount: s.actualPayoutAmount,
+      payoutAmount: s.payoutAmount,
+    }))
+  );
+  const recovery = computeThreePartyRecoveryAmounts({
+    invoiceTotalAmount: invoiceTotalForRecovery,
+    financePaidAmount: financeAmountDisplay,
+    dealerPaidAmount: dealerPaidForRecovery,
+  });
 
   return (
     <Section
@@ -1548,17 +1564,16 @@ function InvoiceReceiptTab({
             <li>
               信販入金額 … 信販会社から実際に振り込まれた契約金額（finance_receipts）
             </li>
+            <li>実質回収額 = 信販入金額 − 販売店支払額</li>
+            <li>未入金残高 = 商品請求額 − 実質回収額</li>
             <li>仕切初期額 = 信販入金額 − 有効請求額合計（手数料の自動控除なし）</li>
           </ul>
         </div>
       ) : null}
 
-      <div className="mb-8 grid grid-cols-3 gap-3">
-        <MiniStat
-          label={isSansha ? "商品請求合計" : "請求合計"}
-          value={formatYen(totals.invoiceAmount)}
-        />
-        {isSansha ? (
+      {isSansha ? (
+        <div className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <MiniStat label="商品請求合計" value={formatYen(totals.invoiceAmount)} />
           <MiniStat
             label="信販入金額"
             value={
@@ -1567,17 +1582,27 @@ function InvoiceReceiptTab({
                 : "—"
             }
           />
-        ) : (
+          <MiniStat
+            label="実質回収額"
+            value={formatYen(recovery.effectiveRecoveryAmount)}
+          />
+          <MiniStat
+            label="未入金残高"
+            value={formatYen(recovery.unpaidBalance)}
+            alert={recovery.unpaidBalance > 0}
+          />
+        </div>
+      ) : (
+        <div className="mb-8 grid grid-cols-3 gap-3">
+          <MiniStat label="請求合計" value={formatYen(totals.invoiceAmount)} />
           <MiniStat label="入金済み" value={formatYen(totals.paidIn)} />
-        )}
-        <MiniStat
-          label={isSansha ? "顧客入金（参考）" : "未入金残高"}
-          value={
-            isSansha ? formatYen(totals.paidIn) : formatYen(totals.unpaid)
-          }
-          alert={!isSansha && totals.unpaid > 0}
-        />
-      </div>
+          <MiniStat
+            label="未入金残高"
+            value={formatYen(totals.unpaid)}
+            alert={totals.unpaid > 0}
+          />
+        </div>
+      )}
 
       <div>
         <div className="mb-4 flex items-center justify-between gap-3">

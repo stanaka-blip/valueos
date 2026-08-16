@@ -105,6 +105,8 @@ export type CollectionQueueRow = {
   secondaryHref: string | null;
   /** PR #95 のリンク文言（ロジック側）。画面 CTA は ctaLabel を優先 */
   secondaryLabel: string | null;
+  /** 3社間・信販入金待ちなら true（同一 finance_receipts 登録導線） */
+  allowsFinanceRegister: boolean;
   ctaLabel: string | null;
 };
 
@@ -604,11 +606,11 @@ function evaluateLoan(input: CollectionQueueCaseInput): CollectionQueueRow | nul
     amountLabel: null,
     amount: null,
     stateLabel: "信販入金待ち",
-    nextAction: "信販入金を確認",
+    nextAction: "信販入金を登録",
     dueDate: null,
     isOverdue: false,
-    secondaryHref: `/cases/${input.id}?tab=settlement`,
-    secondaryLabel: "案件詳細",
+    secondaryHref: `/cases/${input.id}?tab=invoice`,
+    secondaryLabel: "信販入金を登録",
   });
 }
 
@@ -652,6 +654,7 @@ function baseRow(
     detailHref: `/cases/${input.id}`,
     secondaryHref: fields.secondaryHref,
     secondaryLabel: fields.secondaryLabel,
+    allowsFinanceRegister: fields.stateLabel === "信販入金待ち",
     ctaLabel: resolveCollectionCtaLabel(fields.secondaryLabel, uiCategory),
   };
 }

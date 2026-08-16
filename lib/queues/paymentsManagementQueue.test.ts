@@ -136,7 +136,7 @@ test("3社間: 信販未入金でも承認済・納品済なら入金確認待�
   });
   assert.ok(row);
   assert.equal(row!.stage, "needs_finance_confirm");
-  assert.equal(row!.nextActionLabel, "信販入金を確認してください");
+  assert.equal(row!.nextActionLabel, "信販入金を登録してください");
 });
 
 test("3社間: 信販予定のみは入金確認待ち（入金済が必要）", () => {
@@ -553,7 +553,7 @@ test("VE-1786852027168: 支払管理は少なくとも入金確認待ち", () =>
   });
   assert.ok(pay);
   assert.equal(pay!.stage, "needs_finance_confirm");
-  assert.equal(pay!.nextActionLabel, "信販入金を確認してください");
+  assert.equal(pay!.nextActionLabel, "信販入金を登録してください");
 });
 
 test("VE-1786852027168: 信販入金後の仕切初期額は信販−請求（例 180万−143万=37万）", () => {
@@ -645,7 +645,7 @@ test("VE-1786852027168: 回収管理は完工/請求/信販の次アクション
     finance_receipts: [],
   });
   assert.equal(needFinance?.stateLabel, "信販入金待ち");
-  assert.equal(needFinance?.nextAction, "信販入金を確認");
+  assert.equal(needFinance?.nextAction, "信販入金を登録");
   assert.equal(needFinance?.displayStateLabel, "信販入金待ち");
 
   const done = buildCollectionQueueRow({

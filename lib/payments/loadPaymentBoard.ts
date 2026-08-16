@@ -7,6 +7,15 @@ import {
 import type { InvoicePaymentStatus } from "@/lib/payments/constants";
 import { resolveSettlementRule } from "@/lib/workflow";
 import { supabase } from "@/lib/supabase";
+import {
+  getServiceRoleSupabase,
+  ServerAdminConfigError,
+} from "@/lib/supabase/serverAdmin";
+import {
+  computeThreePartyRecoveryAmounts,
+  hasPaidFinanceReceiptStatus,
+  sumDealerPaidAmount,
+} from "@/lib/threeParty/threePartyRecovery";
 
 export type PaymentBoardRow = {
   invoiceId: string;
@@ -27,6 +36,13 @@ export type PaymentBoardRow = {
   delayDays: number;
   nextAction: string;
   warnings: string[];
+  /** 3社間のみ。通常ARの payments とは別系統 */
+  isThreeParty?: boolean;
+  financePaid?: boolean;
+  financeAmount?: number | null;
+  effectiveRecoveryAmount?: number | null;
+  threePartyUnpaidBalance?: number | null;
+  needsFinanceRegister?: boolean;
 };
 
 export type PaymentBoardSummary = {
@@ -154,6 +170,78 @@ export async function loadPaymentBoard(today?: string): Promise<PaymentBoardData
     })
   );
 
+  // 3社間: finance_receipts / dealer_settlements は service_role のみ（通常 payments とは別）
+  const threePartyCaseIds = caseIds.filter((id) => {
+    const t = (settlementTypeByCase.get(id) || "").trim();
+    return (
+      t === "3社間決済" ||
+      t === "三社間決済" ||
+      t === "3社間" ||
+      t === "三社間" ||
+      t === "ローン"
+    );
+  });
+
+  const financeByCase = new Map<
+    string,
+    Array<{ status: string | null; actual_amount: number | null; scheduled_amount: number | null }>
+  >();
+  const dealerPaidByCase = new Map<string, number>();
+  if (threePartyCaseIds.length > 0) {
+    try {
+      const admin = getServiceRoleSupabase();
+      const { data: finances } = await admin
+        .from("finance_receipts")
+        .select("case_id, status, actual_amount, scheduled_amount")
+        .in("case_id", threePartyCaseIds);
+      for (const fr of finances || []) {
+        const cid = String(fr.case_id || "");
+        if (!cid) continue;
+        const list = financeByCase.get(cid) || [];
+        list.push({
+          status: (fr.status as string) || null,
+          actual_amount:
+            fr.actual_amount == null ? null : toNumber(fr.actual_amount),
+          scheduled_amount: toNumber(fr.scheduled_amount),
+        });
+        financeByCase.set(cid, list);
+      }
+      const { data: dealers } = await admin
+        .from("dealer_settlements")
+        .select("case_id, status, actual_payout_amount, payout_amount")
+        .in("case_id", threePartyCaseIds);
+      const byCase = new Map<
+        string,
+        Array<{
+          status: string | null;
+          actualPayoutAmount: number | null;
+          payoutAmount: number | null;
+        }>
+      >();
+      for (const ds of dealers || []) {
+        const cid = String(ds.case_id || "");
+        if (!cid) continue;
+        const list = byCase.get(cid) || [];
+        list.push({
+          status: (ds.status as string) || null,
+          actualPayoutAmount:
+            ds.actual_payout_amount == null
+              ? null
+              : toNumber(ds.actual_payout_amount),
+          payoutAmount: toNumber(ds.payout_amount),
+        });
+        byCase.set(cid, list);
+      }
+      for (const [cid, list] of byCase) {
+        dealerPaidByCase.set(cid, sumDealerPaidAmount(list));
+      }
+    } catch (e) {
+      if (!(e instanceof ServerAdminConfigError)) {
+        console.warn("[loadPaymentBoard] three-party enrich failed", e);
+      }
+    }
+  }
+
   const rows: PaymentBoardRow[] = [];
   let unpaidTotal = 0;
   let dueThisMonthTotal = 0;
@@ -196,17 +284,23 @@ export async function loadPaymentBoard(today?: string): Promise<PaymentBoardData
       today: todayStr,
     });
 
-    const settlementType =
-      settlementTypeByCase.get((inv.case_id as string) || "") || "";
+    const caseId = (inv.case_id as string) || caseData?.id || "";
+    const settlementType = settlementTypeByCase.get(caseId) || "";
     const rule = resolveSettlementRule(settlementType);
+    const isThreeParty =
+      settlementType === "3社間決済" ||
+      settlementType === "三社間決済" ||
+      settlementType === "3社間" ||
+      settlementType === "三社間" ||
+      settlementType === "ローン";
 
-    rows.push({
+    let row: PaymentBoardRow = {
       invoiceId,
       invoiceNo: (inv.invoice_no as string) || "",
       invoiceAmount: summary.invoiceAmount,
       invoiceDate: (inv.invoice_date as string) || null,
       dueDate: (inv.due_date as string) || null,
-      caseId: (inv.case_id as string) || caseData?.id || "",
+      caseId,
       caseNo: caseData?.case_no || "",
       customerName: caseData?.customer_name || "",
       dealerName: dealer?.name || "",
@@ -219,26 +313,69 @@ export async function loadPaymentBoard(today?: string): Promise<PaymentBoardData
       delayDays: summary.delayDays,
       nextAction: summary.nextAction,
       warnings: summary.warnings,
-    });
+    };
 
-    unpaidTotal += summary.unpaidAmount;
-    if (summary.isOverdue) {
+    if (isThreeParty) {
+      const frs = financeByCase.get(caseId) || [];
+      const financePaid = hasPaidFinanceReceiptStatus(frs);
+      const paidFr = frs.find((f) => String(f.status || "").trim() === "入金済");
+      const financeAmount = financePaid
+        ? paidFr?.actual_amount != null
+          ? Math.floor(paidFr.actual_amount)
+          : Math.floor(paidFr?.scheduled_amount || 0)
+        : null;
+      const dealerPaid = dealerPaidByCase.get(caseId) || 0;
+      const recovery = computeThreePartyRecoveryAmounts({
+        invoiceTotalAmount: summary.invoiceAmount,
+        financePaidAmount: financeAmount,
+        dealerPaidAmount: dealerPaid,
+      });
+      row = {
+        ...row,
+        isThreeParty: true,
+        financePaid,
+        financeAmount,
+        effectiveRecoveryAmount: recovery.effectiveRecoveryAmount,
+        threePartyUnpaidBalance: recovery.unpaidBalance,
+        needsFinanceRegister: !financePaid,
+        // 表示用: 顧客 payments と混同しないよう 3社間指標を優先
+        confirmedPaidAmount: recovery.effectiveRecoveryAmount,
+        unpaidAmount: recovery.unpaidBalance,
+        nextAction: financePaid
+          ? recovery.unpaidBalance > 0
+            ? "仕切・支払を確認（支払管理）"
+            : "信販入金済"
+          : "信販入金を登録",
+        displayStatus: financePaid
+          ? recovery.unpaidBalance <= 0
+            ? "入金済"
+            : "一部入金"
+          : "未入金",
+      };
+    }
+
+    rows.push(row);
+
+    unpaidTotal += row.unpaidAmount;
+    if (!isThreeParty && summary.isOverdue) {
       overdueTotal += summary.unpaidAmount;
     }
     if (
-      summary.unpaidAmount > 0 &&
+      row.unpaidAmount > 0 &&
       isSameMonth((inv.due_date as string) || null, todayStr)
     ) {
-      dueThisMonthTotal += summary.unpaidAmount;
+      dueThisMonthTotal += row.unpaidAmount;
     }
 
-    for (const p of invPayments) {
-      const status = ((p.status as string) || "").trim();
-      if (
-        CONFIRMED_PAYMENT_STATUSES.has(status) &&
-        isSameMonth(p.payment_date as string, todayStr)
-      ) {
-        paidThisMonthTotal += toNumber(p.payment_amount);
+    if (!isThreeParty) {
+      for (const p of invPayments) {
+        const status = ((p.status as string) || "").trim();
+        if (
+          CONFIRMED_PAYMENT_STATUSES.has(status) &&
+          isSameMonth(p.payment_date as string, todayStr)
+        ) {
+          paidThisMonthTotal += toNumber(p.payment_amount);
+        }
       }
     }
   }

@@ -265,7 +265,7 @@ export function buildThreePartyPaymentQueueRow(
       settlementStatus: null,
       stage: "needs_finance_confirm",
       stageLabel: "入金確認待ち",
-      nextActionLabel: "信販入金を確認してください",
+      nextActionLabel: "信販入金を登録してください",
       veShareAmount: null,
       adjustmentTotalAmount: null,
       payoutAmount: null,
@@ -273,7 +273,7 @@ export function buildThreePartyPaymentQueueRow(
       priorityRank: 4,
       payeeKey,
       periodKey: monthKey(todayString(input.today)),
-      caseHref: `/cases/${input.caseId}?tab=settlement`,
+      caseHref: `/cases/${input.caseId}?tab=invoice`,
       printHref: null,
     };
   }
