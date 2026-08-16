@@ -111,25 +111,40 @@ assert.ok(panels.includes("販売店への御振込金額"));
 assert.ok(panels.includes("確定（金額を固定）"));
 assert.ok(panels.includes("確定済みの仕切金額は直接編集できません"));
 
-// print 必須項目
+// print 必須項目（請求書同系統レイアウト）
 for (const label of [
-  "仕切清算書",
-  "販売店",
+  "仕切精算書",
+  "宛先",
+  "精算内訳",
   "案件番号",
   "顧客名",
   "発行日",
   "契約日",
   "納品日",
   "信販会社",
-  "クレジット会社入金額",
-  "弊社売上金額",
-  "振込手数料",
+  "信販入金額",
+  "商品請求額",
+  "調整額/手数料",
   "御振込金額",
+  "支払予定日",
+  "実支払日",
   "備考",
   "請求書とは別書類",
 ]) {
   assert.ok(printPage.includes(label), `print missing: ${label}`);
 }
+assert.ok(printPage.includes("InvoiceIssuerBlock"));
+assert.ok(
+  printPage.includes("− ${formatYen(adjustmentDisplay)}") ||
+    printPage.includes("`− ${formatYen(adjustmentDisplay)}`")
+);
+assert.ok(printPage.includes("order-print-amount-value-emphasis"));
+assert.ok(printPage.includes("@page"));
+assert.ok(printPage.includes("A4 portrait"));
+assert.ok(printPage.includes("visibility: hidden"));
+assert.ok(printPage.includes(".order-print-page"));
+assert.ok(!printPage.includes("クレジット会社入金額"));
+assert.ok(!printPage.includes("弊社売上金額"));
 
 const model = buildDealerSettlementPrintModel({
   credit_received_amount: 1000,
