@@ -48,12 +48,54 @@ type Payment = {
   created_at: string | null;
 };
 
+type InvoiceBackFrom =
+  | "collections"
+  | "payments"
+  | "invoices"
+  | "case"
+  | "unknown";
+
+function resolveInvoiceBackFrom(
+  raw: string | undefined,
+  caseId: string | null | undefined
+): { from: InvoiceBackFrom; href: string; label: string } {
+  const value = (raw || "").trim().toLowerCase();
+  if (value === "payments") {
+    return { from: "payments", href: "/payments", label: "入金管理へ戻る" };
+  }
+  if (value === "invoices") {
+    return { from: "invoices", href: "/invoices", label: "請求一覧へ戻る" };
+  }
+  if (value === "case" && caseId) {
+    return {
+      from: "case",
+      href: `/cases/${caseId}?tab=invoice`,
+      label: "案件詳細へ戻る",
+    };
+  }
+  if (value === "collections") {
+    return {
+      from: "collections",
+      href: "/queues/collections",
+      label: "回収管理へ戻る",
+    };
+  }
+  return {
+    from: "unknown",
+    href: "/queues/collections",
+    label: "回収管理へ戻る",
+  };
+}
+
 export default async function InvoiceDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ from?: string }>;
 }) {
   const { id } = await params;
+  const { from: fromParam } = await searchParams;
 
   const invoiceResult = await supabase
     .from("invoices")
@@ -138,6 +180,7 @@ export default async function InvoiceDetailPage({
   }
 
   if (invoiceError || !invoiceData) {
+    const back = resolveInvoiceBackFrom(fromParam, null);
     return (
       <>
         <header className="border-b bg-white px-8 py-5">
@@ -152,12 +195,20 @@ export default async function InvoiceDetailPage({
             {invoiceError?.message || "請求情報が見つかりません"}
           </div>
 
-          <Link
-            href="/queues/collections"
-            className="mt-5 inline-flex rounded-lg border bg-white px-4 py-2 text-sm font-bold text-gray-700"
-          >
-            ← 回収管理へ戻る
-          </Link>
+          <div className="mt-5 flex flex-wrap gap-3">
+            <Link
+              href={back.href}
+              className="inline-flex rounded-lg border bg-white px-4 py-2 text-sm font-bold text-gray-700"
+            >
+              ← {back.label}
+            </Link>
+            <Link
+              href="/invoices"
+              className="inline-flex rounded-lg border bg-white px-4 py-2 text-sm font-bold text-gray-700"
+            >
+              請求一覧
+            </Link>
+          </div>
         </main>
       </>
     );
@@ -168,6 +219,7 @@ export default async function InvoiceDetailPage({
 
   const caseData = getSingleRelation(invoice.cases);
   const dealer = getSingleRelation(caseData?.dealers);
+  const back = resolveInvoiceBackFrom(fromParam, caseData?.id || invoice.case_id);
 
   const paymentSummary = summarizeInvoicePayments({
     invoiceAmount: invoice.invoice_amount,
@@ -200,11 +252,35 @@ export default async function InvoiceDetailPage({
 
           <div className="flex flex-wrap gap-3">
             <Link
-              href="/queues/collections"
+              href={back.href}
               className="rounded-lg border bg-white px-4 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50"
             >
-              ← 回収管理へ戻る
+              ← {back.label}
             </Link>
+            {back.from !== "invoices" ? (
+              <Link
+                href="/invoices"
+                className="rounded-lg border bg-white px-4 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50"
+              >
+                請求一覧
+              </Link>
+            ) : null}
+            {back.from !== "payments" ? (
+              <Link
+                href="/payments"
+                className="rounded-lg border bg-white px-4 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50"
+              >
+                入金管理
+              </Link>
+            ) : null}
+            {back.from !== "collections" ? (
+              <Link
+                href="/queues/collections"
+                className="rounded-lg border bg-white px-4 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50"
+              >
+                回収管理
+              </Link>
+            ) : null}
 
             <Link
               href={`/invoices/${invoice.id}/payments/new`}
