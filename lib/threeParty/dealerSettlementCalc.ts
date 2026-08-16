@@ -116,3 +116,35 @@ export function toDealerSettlementAmountSnapshot(
     payout_amount: calc.payoutAmount,
   };
 }
+
+/**
+ * 有効請求額合計（取消以外）。仕切の ve_share 初期値に使う。
+ * 商品請求額であり、信販入金額とは別物。
+ */
+export function sumActiveInvoiceAmounts(
+  invoices: ReadonlyArray<{
+    status: string | null | undefined;
+    invoiceAmount: number | string | null | undefined;
+  }>
+): number {
+  let sum = 0;
+  for (const inv of invoices) {
+    const status = String(inv.status || "").trim();
+    if (status === "取消") continue;
+    sum += floorMoney(toFiniteNumber(inv.invoiceAmount));
+  }
+  return sum;
+}
+
+/**
+ * 仕切初期額（調整なし）= 信販入金額 − 有効請求額合計。
+ * transfer_fee は含めない（初期自動控除なし）。負値は 0。
+ */
+export function suggestedDealerPayoutFromFinance(input: {
+  financeAmount: number | string | null | undefined;
+  invoiceTotalAmount: number | string | null | undefined;
+}): number {
+  const finance = floorMoney(toFiniteNumber(input.financeAmount));
+  const invoices = floorMoney(toFiniteNumber(input.invoiceTotalAmount));
+  return Math.max(0, finance - invoices);
+}

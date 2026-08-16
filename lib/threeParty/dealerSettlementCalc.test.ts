@@ -7,6 +7,8 @@ import assert from "node:assert/strict";
 
 import {
   calculateDealerSettlementPayout,
+  suggestedDealerPayoutFromFinance,
+  sumActiveInvoiceAmounts,
   sumDealerSettlementAdjustments,
   toDealerSettlementAmountSnapshot,
 } from "@/lib/threeParty/dealerSettlementCalc";
@@ -90,6 +92,39 @@ test("端数は floor してから演算", () => {
   assert.equal(r.veShareAmount, 100);
   assert.equal(r.adjustmentTotalAmount, 10);
   assert.equal(r.payoutAmount, 890);
+});
+
+test("VE-1786852027168例: 信販180万と商品請求143万は別物で仕切初期37万", () => {
+  const invoiceTotal = sumActiveInvoiceAmounts([
+    { status: "請求済", invoiceAmount: 1_430_000 },
+    { status: "取消", invoiceAmount: 999_999 },
+  ]);
+  assert.equal(invoiceTotal, 1_430_000);
+
+  const financeAmount = 1_800_000;
+  const suggested = suggestedDealerPayoutFromFinance({
+    financeAmount,
+    invoiceTotalAmount: invoiceTotal,
+  });
+  assert.equal(suggested, 370_000);
+
+  const r = calculateDealerSettlementPayout({
+    creditReceivedAmount: financeAmount,
+    veShareAmount: invoiceTotal,
+    adjustmentLines: [{ line_kind: "transfer_fee", amount: 0 }],
+  });
+  assert.equal(r.payoutAmount, 370_000);
+  assert.equal(r.adjustmentTotalAmount, 0);
+});
+
+test("仕切初期額は transfer_fee を自動控除しない", () => {
+  assert.equal(
+    suggestedDealerPayoutFromFinance({
+      financeAmount: 1_000_000,
+      invoiceTotalAmount: 400_000,
+    }),
+    600_000
+  );
 });
 
 let failed = 0;

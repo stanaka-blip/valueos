@@ -556,6 +556,44 @@ test("VE-1786852027168: 支払管理は少なくとも入金確認待ち", () =>
   assert.equal(pay!.nextActionLabel, "信販入金を確認してください");
 });
 
+test("VE-1786852027168: 信販入金後の仕切初期額は信販−請求（例 180万−143万=37万）", () => {
+  const caseId = "6b7513ee-b3b3-4933-9b66-0a2a972a01f5";
+  const row = buildThreePartyPaymentQueueRow({
+    caseId,
+    caseNo: "VE-1786852027168",
+    caseStatus: "納品済",
+    customerName: "顧客",
+    dealerId: "d1",
+    dealerName: "販売店",
+    settlementType: "3社間決済",
+    loanStatus: "承認済",
+    approvalNumber: "AP-PROD",
+    financeReceipts: [
+      {
+        id: "fr1",
+        financeCompany: "信販A",
+        status: "入金済",
+        actualDate: "2026-08-15",
+        actualAmount: 1_800_000,
+        scheduledAmount: 1_800_000,
+      },
+    ],
+    dealerSettlements: [],
+    invoices: [
+      { id: "inv1", status: "請求済", invoiceAmount: 1_430_000 },
+    ],
+    orders: [{ id: "o1", status: "納品済", deliveredDate: "2026-08-10" }],
+    today: "2026-08-16",
+  });
+  assert.ok(row);
+  assert.equal(row!.stage, "needs_settlement");
+  assert.equal(row!.financeAmount, 1_800_000);
+  assert.equal(row!.invoiceTotalAmount, 1_430_000);
+  assert.equal(row!.suggestedPayoutAmount, 370_000);
+  assert.equal(row!.veShareAmount, 1_430_000);
+  assert.equal(row!.adjustmentTotalAmount, 0);
+});
+
 test("VE-1786852027168: 回収管理は完工/請求/信販の次アクションを返す", () => {
   const caseId = "6b7513ee-b3b3-4933-9b66-0a2a972a01f5";
   const base = {
