@@ -13,6 +13,10 @@ import {
   sumDealerPaidAmount,
 } from "@/lib/threeParty/threePartyRecovery";
 import { sumActiveInvoiceAmounts } from "@/lib/threeParty/dealerSettlementCalc";
+import {
+  computeConfirmedCaseProfit,
+  computeForecastCaseProfit,
+} from "@/lib/profit/caseProfitCalc";
 
 import SettlementForm from "./SettlementForm";
 import ThreePartyMoneyPanels from "./ThreePartyMoneyPanels";
@@ -210,19 +214,6 @@ export default function CaseDetailView({
       unpaid: Math.max(invoiceAmount - paidIn, 0),
     };
   }, [products, orders, invoices, payments]);
-
-  function resolveFee(baseAmount: number): number {
-    if (!settlement) {
-      return 0;
-    }
-    if (settlement.feeAmount > 0) {
-      return settlement.feeAmount;
-    }
-    if (settlement.feeRate != null && settlement.feeRate > 0) {
-      return (baseAmount * settlement.feeRate) / 100;
-    }
-    return 0;
-  }
 
   const deliverySummary = useMemo(
     () => summarizeDeliveries(orders),
@@ -541,9 +532,11 @@ export default function CaseDetailView({
             ) : null}
             {viewMode === "detail" && tab === "profit" ? (
               <ProfitTab
+                products={products}
+                invoices={invoices}
+                orders={orders}
                 totals={totals}
                 settlement={settlement}
-                resolveFee={resolveFee}
               />
             ) : null}
             {viewMode === "detail" && tab === "documents" ? (
@@ -1937,47 +1930,59 @@ function PaymentTab({
 }
 
 function ProfitTab({
+  products,
+  invoices,
+  orders,
   totals,
   settlement,
-  resolveFee,
 }: {
+  products: CaseProductRow[];
+  invoices: InvoiceRow[];
+  orders: OrderRow[];
   totals: {
-    sales: number;
-    purchase: number;
-    profit: number;
-    rate: number | null;
     paidIn: number;
-    orderAmount: number;
     unpaid: number;
   };
   settlement: SettlementViewData | null;
-  resolveFee: (baseAmount: number) => number;
 }) {
-  const other = 0;
-  const forecastFee = resolveFee(totals.sales);
-  const actualFee = resolveFee(totals.paidIn);
-  const forecastProfit =
-    totals.sales - totals.purchase - other - forecastFee;
-  const actualProfit =
-    totals.paidIn - totals.orderAmount - other - actualFee;
-  const forecastRate =
-    totals.sales > 0 ? (forecastProfit / totals.sales) * 100 : null;
-  const actualRate =
-    totals.paidIn > 0 ? (actualProfit / totals.paidIn) * 100 : null;
+  const feeInput = settlement
+    ? { feeAmount: settlement.feeAmount, feeRate: settlement.feeRate }
+    : null;
+
+  const confirmed = computeConfirmedCaseProfit({
+    invoices: invoices.map((i) => ({
+      status: i.status,
+      invoiceAmount: i.invoiceAmount,
+    })),
+    orders: orders.map((o) => ({
+      status: o.status,
+      orderAmount: o.orderAmount,
+    })),
+    fee: feeInput,
+  });
+
+  const forecast = computeForecastCaseProfit({
+    products: products.map((p) => ({
+      salesPrice: p.salesPrice,
+      purchasePrice: p.purchasePrice,
+    })),
+    fee: feeInput,
+  });
 
   return (
     <div className="space-y-6">
-      <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-        <p className="font-semibold">参考 / 暫定表示（v1）</p>
-        <p className="mt-1 text-xs leading-relaxed text-amber-900/90">
-          この粗利タブは簡易計算です。3社間の仕切・仕入先支払・その他支払はまだ完全反映していません（その他支払は常に
-          0）。経営ダッシュボードの KPI とは集計基準が異なります。
+      <div className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-950">
+        <p className="font-semibold">粗利 v1</p>
+        <p className="mt-1 text-xs leading-relaxed text-sky-900/90">
+          確定粗利は請求・発注ベース（有効請求 − 有効発注 −
+          決済手数料）です。顧客入金・信販入金・販売店仕切・仕入先支払タイミングはキャッシュフローのため粗利に含めません。見込粗利は商品価格の参考表示です。経営ダッシュボードの
+          KPI とは集計基準が異なる場合があります。
         </p>
       </div>
 
       <Section
-        title="決済条件の反映（参考）"
-        description="粗利計算に使う決済手数料・前金"
+        title="決済条件の反映"
+        description="確定・見込粗利の決済手数料に使用"
       >
         {settlement ? (
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -2007,40 +2012,44 @@ function ProfitTab({
       </Section>
 
       <Section
-        title="確定粗利（参考・暫定）"
-        description="入金・発注額ベースの簡易計算。その他支払は未接続"
+        title="確定粗利（請求・発注ベース）"
+        description="売上＝有効請求額合計 / 仕入＝有効発注額合計 / 手数料＝case_settlements"
       >
         <ProfitLines
           rows={[
-            { label: "売上（入金合計）", value: totals.paidIn },
-            { label: "仕入原価（発注合計）", value: -totals.orderAmount },
-            { label: "その他支払（暫定0）", value: -other },
-            { label: "決済手数料", value: -actualFee },
+            { label: "売上（有効請求合計）", value: confirmed.revenue },
+            { label: "仕入原価（有効発注合計）", value: -confirmed.cost },
+            { label: "決済手数料", value: -confirmed.fee },
           ]}
-          profit={actualProfit}
-          rate={actualRate}
+          profit={confirmed.profit}
+          rate={confirmed.rate}
         />
         {totals.unpaid > 0 ? (
           <p className="mt-3 text-xs text-amber-700">
-            未入金 {formatYen(totals.unpaid)} — 確定粗利は暫定です
+            顧客入金ベースの未入金残高 {formatYen(totals.unpaid)}
+            （参考・粗利計算には未使用）
           </p>
         ) : null}
       </Section>
 
       <Section
-        title="見込粗利（参考・暫定）"
-        description="商品売価・仕入値ベースの簡易計算。その他支払は未接続"
+        title="見込粗利（参考）"
+        description="商品売価・仕入値ベース。確定粗利とは別の参考表示"
       >
         <ProfitLines
           rows={[
-            { label: "売上（商品売価）", value: totals.sales },
-            { label: "仕入原価（商品仕入）", value: -totals.purchase },
-            { label: "その他支払（暫定0）", value: -other },
-            { label: "決済手数料", value: -forecastFee },
+            { label: "売上（商品売価）", value: forecast.revenue },
+            { label: "仕入原価（商品仕入）", value: -forecast.cost },
+            { label: "決済手数料（見込）", value: -forecast.fee },
           ]}
-          profit={forecastProfit}
-          rate={forecastRate}
+          profit={forecast.profit}
+          rate={forecast.rate}
         />
+        {forecast.hasUnsetPrices ? (
+          <p className="mt-3 text-xs text-amber-700">
+            価格未設定を含む — 見込金額は設定済み明細のみの合計です（0円確定ではありません）
+          </p>
+        ) : null}
       </Section>
     </div>
   );
