@@ -215,7 +215,11 @@ function ThreePartyTable({
                   {formatYen(row.financeAmount)}
                 </td>
                 <td className="px-4 py-3 whitespace-nowrap tabular-nums">
-                  {formatYen(row.veShareAmount)}
+                  {formatYen(
+                    row.stage === "needs_settlement"
+                      ? row.invoiceTotalAmount
+                      : row.veShareAmount
+                  )}
                 </td>
                 <td className="px-4 py-3 whitespace-nowrap tabular-nums">
                   {formatYen(row.adjustmentTotalAmount)}
@@ -353,12 +357,20 @@ function ThreePartyActionPanel({
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [credit, setCredit] = useState(String(row.financeAmount));
+  const [credit, setCredit] = useState(String(row.financeAmount ?? ""));
   const [veShare, setVeShare] = useState(
-    String(row.veShareAmount ?? "")
+    String(
+      row.invoiceTotalAmount ??
+        row.veShareAmount ??
+        ""
+    )
   );
   const [transferFee, setTransferFee] = useState(
-    String(row.adjustmentTotalAmount ?? "550")
+    String(
+      row.stage === "needs_settlement"
+        ? 0
+        : row.adjustmentTotalAmount ?? 0
+    )
   );
   const [scheduledPayoutDate, setScheduledPayoutDate] = useState(
     row.scheduledPayoutDate || ""
@@ -429,6 +441,21 @@ function ThreePartyActionPanel({
       </div>
       {error ? <p className="mt-3 text-sm text-rose-700">{error}</p> : null}
 
+      {row.stage === "needs_finance_confirm" ? (
+        <div className="mt-4 space-y-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          <p className="font-semibold">信販入金を確認してください</p>
+          <p className="text-xs leading-relaxed text-amber-900/90">
+            納品済みですが、信販入金（入金済）がまだありません。案件詳細の決済タブで信販入金を記録・確定してください。回収管理にも同案件が表示されることがあります（安全網）。
+          </p>
+          <Link
+            href={row.caseHref}
+            className="inline-flex rounded-lg bg-gray-900 px-4 py-2 text-xs font-medium text-white hover:bg-gray-800"
+          >
+            案件詳細で信販入金を確認
+          </Link>
+        </div>
+      ) : null}
+
       {row.stage === "needs_settlement" ? (
         <div className="mt-4 space-y-4">
           {!row.dealerId ? (
@@ -473,6 +500,9 @@ function ThreePartyActionPanel({
                 fee={Number(transferFee) || 0}
                 payout={preview.payoutAmount}
               />
+              <p className="text-xs text-gray-500">
+                初期値: 仕切額（御振込）= 信販入金額 − 有効請求額合計。振込手数料は自動控除しません。必要なら調整欄を編集してください。
+              </p>
               <button
                 type="button"
                 disabled={busy || preview.payoutAmount < 0}
@@ -501,12 +531,16 @@ function ThreePartyActionPanel({
                           amount: Number(veShare) || 0,
                           sort_order: 2,
                         },
-                        {
-                          line_kind: "transfer_fee",
-                          description: "振込手数料",
-                          amount: Number(transferFee) || 0,
-                          sort_order: 3,
-                        },
+                        ...(Number(transferFee) > 0
+                          ? [
+                              {
+                                line_kind: "transfer_fee",
+                                description: "振込手数料",
+                                amount: Number(transferFee) || 0,
+                                sort_order: 3,
+                              },
+                            ]
+                          : []),
                       ],
                     },
                     null

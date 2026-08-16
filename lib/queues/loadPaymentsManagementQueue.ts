@@ -36,6 +36,8 @@ type CaseRow = {
 type SettlementTypeRow = {
   case_id: string;
   settlement_type: string | null;
+  loan_status: string | null;
+  approval_number: string | null;
 };
 
 type FinanceReceiptRow = {
@@ -80,6 +82,13 @@ type SupplierPaymentRow = {
   scheduled_amount: number | null;
 };
 
+type InvoiceRow = {
+  id: string;
+  case_id: string | null;
+  status: string | null;
+  invoice_amount: number | null;
+};
+
 type SupplierRow = {
   id: string;
   name: string | null;
@@ -95,6 +104,7 @@ export async function loadPaymentsManagementQueue(): Promise<PaymentsManagementL
       financeRes,
       dealerRes,
       ordersRes,
+      invoicesRes,
       supplierPayRes,
       suppliersRes,
     ] = await Promise.all([
@@ -108,7 +118,9 @@ export async function loadPaymentsManagementQueue(): Promise<PaymentsManagementL
         dealers ( name )
       `
       ),
-      supabase.from("case_settlements").select("case_id, settlement_type"),
+      supabase
+        .from("case_settlements")
+        .select("case_id, settlement_type, loan_status, approval_number"),
       supabase
         .from("finance_receipts")
         .select(
@@ -125,6 +137,9 @@ export async function loadPaymentsManagementQueue(): Promise<PaymentsManagementL
           "id, case_id, supplier_id, order_no, status, delivered_date, order_amount"
         ),
       supabase
+        .from("invoices")
+        .select("id, case_id, status, invoice_amount"),
+      supabase
         .from("supplier_payments")
         .select(
           "id, case_id, order_id, supplier_id, status, due_date, scheduled_amount"
@@ -138,6 +153,7 @@ export async function loadPaymentsManagementQueue(): Promise<PaymentsManagementL
       financeRes.error?.message ||
       dealerRes.error?.message ||
       ordersRes.error?.message ||
+      invoicesRes.error?.message ||
       supplierPayRes.error?.message ||
       suppliersRes.error?.message ||
       null;
@@ -153,16 +169,21 @@ export async function loadPaymentsManagementQueue(): Promise<PaymentsManagementL
     const dealerRows = (dealerRes.data ||
       []) as unknown as DealerSettlementRow[];
     const orders = (ordersRes.data || []) as unknown as OrderRow[];
+    const invoices = (invoicesRes.data || []) as unknown as InvoiceRow[];
     const supplierPays = (supplierPayRes.data ||
       []) as unknown as SupplierPaymentRow[];
     const suppliers = (suppliersRes.data || []) as unknown as SupplierRow[];
 
-    const settlementTypeByCase = new Map<string, string>();
+    const settlementByCase = new Map<
+      string,
+      { settlementType: string; loanStatus: string | null; approvalNumber: string | null }
+    >();
     for (const row of settlements) {
-      settlementTypeByCase.set(
-        String(row.case_id),
-        String(row.settlement_type || "")
-      );
+      settlementByCase.set(String(row.case_id), {
+        settlementType: String(row.settlement_type || ""),
+        loanStatus: row.loan_status,
+        approvalNumber: row.approval_number,
+      });
     }
 
     const financeByCase = new Map<
@@ -219,9 +240,42 @@ export async function loadPaymentsManagementQueue(): Promise<PaymentsManagementL
       dealerByCase.set(caseId, list);
     }
 
+    const invoicesByCase = new Map<
+      string,
+      Array<{ id: string; status: string | null; invoiceAmount: number }>
+    >();
+    for (const row of invoices) {
+      const caseId = row.case_id ? String(row.case_id) : "";
+      if (!caseId) continue;
+      const list = invoicesByCase.get(caseId) || [];
+      list.push({
+        id: String(row.id),
+        status: row.status,
+        invoiceAmount: Number(row.invoice_amount) || 0,
+      });
+      invoicesByCase.set(caseId, list);
+    }
+
+    const ordersByCase = new Map<
+      string,
+      Array<{ id: string; status: string | null; deliveredDate: string | null }>
+    >();
+    for (const o of orders) {
+      const caseId = o.case_id ? String(o.case_id) : "";
+      if (!caseId) continue;
+      const list = ordersByCase.get(caseId) || [];
+      list.push({
+        id: String(o.id),
+        status: o.status,
+        deliveredDate: o.delivered_date,
+      });
+      ordersByCase.set(caseId, list);
+    }
+
     const threePartyRows: ThreePartyPaymentQueueRow[] = [];
     for (const c of cases) {
       const dealer = getSingle(c.dealers);
+      const settlement = settlementByCase.get(String(c.id));
       const row = buildThreePartyPaymentQueueRow({
         caseId: String(c.id),
         caseNo: c.case_no,
@@ -229,9 +283,13 @@ export async function loadPaymentsManagementQueue(): Promise<PaymentsManagementL
         customerName: c.customer_name,
         dealerId: c.dealer_id,
         dealerName: dealer?.name || null,
-        settlementType: settlementTypeByCase.get(String(c.id)) || null,
+        settlementType: settlement?.settlementType || null,
+        loanStatus: settlement?.loanStatus || null,
+        approvalNumber: settlement?.approvalNumber || null,
         financeReceipts: financeByCase.get(String(c.id)) || [],
         dealerSettlements: dealerByCase.get(String(c.id)) || [],
+        invoices: invoicesByCase.get(String(c.id)) || [],
+        orders: ordersByCase.get(String(c.id)) || [],
       });
       if (row) threePartyRows.push(row);
     }

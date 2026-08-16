@@ -45,6 +45,11 @@ export type CollectionQueueOrderInput = {
   delivered_date?: string | null;
 };
 
+export type CollectionQueueFinanceReceiptInput = {
+  id: string;
+  status?: string | null;
+};
+
 export type CollectionQueueCaseInput = {
   id: string;
   case_no: string | null;
@@ -57,9 +62,13 @@ export type CollectionQueueCaseInput = {
   loan_status: string | null;
   card_status: string | null;
   approval_number: string | null;
+  /** 完工日（未登録なら null） */
+  construction_completed_date?: string | null;
   orders: ReadonlyArray<CollectionQueueOrderInput>;
   invoices: ReadonlyArray<CollectionQueueInvoiceInput>;
   payments: ReadonlyArray<CollectionQueuePaymentInput>;
+  /** 信販入金（3社間）。service_role 読取前提 */
+  finance_receipts?: ReadonlyArray<CollectionQueueFinanceReceiptInput>;
   today?: string;
 };
 
@@ -178,7 +187,9 @@ export function resolveCollectionUiCategory(
       return "partial_payment";
     case "カード決済待ち":
     case "審査承認待ち":
+    case "完工待ち":
       return "settlement_review";
+    case "信販入金待ち":
     case "入金待ち":
     case "未入金":
       return "payment_waiting";
@@ -191,6 +202,10 @@ export function resolveCollectionDisplayStateLabel(
   stateLabel: string,
   uiCategory: CollectionUiCategory
 ): string {
+  // 3社間の次アクション文言は潰さない
+  if (stateLabel === "信販入金待ち" || stateLabel === "完工待ち") {
+    return stateLabel;
+  }
   if (uiCategory === "payment_waiting") return "入金待ち";
   if (uiCategory === "settlement_review") {
     return stateLabel;
@@ -338,6 +353,19 @@ export function isLoanApprovalComplete(input: {
   const approved = (LOAN_APPROVED_STATUSES as readonly string[]).includes(loan);
   const hasNumber = Boolean((input.approvalNumber || "").trim());
   return approved && hasNumber;
+}
+
+/** 信販入金済が1件でもあれば true（取消以外の入金済） */
+export function hasPaidFinanceReceipt(
+  receipts: ReadonlyArray<CollectionQueueFinanceReceiptInput> | null | undefined
+): boolean {
+  return (receipts || []).some((r) => (r.status || "").trim() === "入金済");
+}
+
+function hasConstructionCompletedDate(
+  value: string | null | undefined
+): boolean {
+  return Boolean((value || "").trim());
 }
 
 function paymentInputs(
@@ -506,38 +534,80 @@ function evaluateCard(input: CollectionQueueCaseInput): CollectionQueueRow | nul
 }
 
 function evaluateLoan(input: CollectionQueueCaseInput): CollectionQueueRow | null {
+  // 既存: ローン未完了は審査待ち（請求・入金フェーズより前）
   if (
-    isLoanApprovalComplete({
+    !isLoanApprovalComplete({
       loanStatus: input.loan_status,
       approvalNumber: input.approval_number,
     })
   ) {
-    return null;
+    const approved = (LOAN_APPROVED_STATUSES as readonly string[]).includes(
+      (input.loan_status || "").trim()
+    );
+    const hasNumber = Boolean((input.approval_number || "").trim());
+
+    let nextAction = "審査状況確認";
+    if (approved && !hasNumber) {
+      nextAction = "承認番号確認";
+    }
+
+    return baseRow(input, {
+      settlementType: "3社間決済",
+      amountLabel: null,
+      amount: null,
+      stateLabel: "審査承認待ち",
+      nextAction,
+      dueDate: null,
+      isOverdue: false,
+      secondaryHref: `/cases/${input.id}`,
+      secondaryLabel: "案件詳細",
+    });
   }
 
-  const approved = (LOAN_APPROVED_STATUSES as readonly string[]).includes(
-    (input.loan_status || "").trim()
-  );
-  const hasNumber = Boolean((input.approval_number || "").trim());
+  // 仕様優先:
+  // 1 完工待ち → 2 請求待ち → 3 信販入金待ち → 4 入金済で除外
+  if (!hasConstructionCompletedDate(input.construction_completed_date)) {
+    return baseRow(input, {
+      settlementType: "3社間決済",
+      amountLabel: null,
+      amount: null,
+      stateLabel: "完工待ち",
+      nextAction: "完工日を登録",
+      dueDate: null,
+      isOverdue: false,
+      secondaryHref: `/cases/${input.id}`,
+      secondaryLabel: "案件詳細",
+    });
+  }
 
-  let nextAction = "審査状況確認";
-  if (approved && !hasNumber) {
-    nextAction = "承認番号確認";
-  } else if (!approved && hasNumber) {
-    nextAction = "審査状況確認";
-  } else if (!approved && !hasNumber) {
-    nextAction = "審査状況確認";
+  const invoices = activeInvoicesForCollection(input.invoices);
+  if (invoices.length === 0) {
+    return baseRow(input, {
+      settlementType: "3社間決済",
+      amountLabel: null,
+      amount: null,
+      stateLabel: "請求待ち",
+      nextAction: "請求書を作成",
+      dueDate: null,
+      isOverdue: false,
+      secondaryHref: `/cases/${input.id}/invoices/new`,
+      secondaryLabel: "請求作成",
+    });
+  }
+
+  if (hasPaidFinanceReceipt(input.finance_receipts)) {
+    return null;
   }
 
   return baseRow(input, {
     settlementType: "3社間決済",
     amountLabel: null,
     amount: null,
-    stateLabel: "審査承認待ち",
-    nextAction,
+    stateLabel: "信販入金待ち",
+    nextAction: "信販入金を確認",
     dueDate: null,
     isOverdue: false,
-    secondaryHref: `/cases/${input.id}`,
+    secondaryHref: `/cases/${input.id}?tab=settlement`,
     secondaryLabel: "案件詳細",
   });
 }
