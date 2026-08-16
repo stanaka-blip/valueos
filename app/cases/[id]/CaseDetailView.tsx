@@ -1134,8 +1134,10 @@ function SettlementTab({
           <div className="mt-2 rounded-lg border border-sky-100 bg-sky-50/70 px-4 py-3 text-sm text-sky-950">
             <p className="font-semibold">3社間の流れ（案件詳細 → 支払管理）</p>
             <ol className="mt-2 list-decimal space-y-1 pl-5 text-sky-900/90">
-              <li>信販入金を記録する</li>
-              <li>金額を確認して仕切を作成する</li>
+              <li>
+                請求・入金タブ（またはここ）で信販入金を記録する（商品請求への顧客入金ではない）
+              </li>
+              <li>金額を確認して仕切を作成する（初期額 = 信販入金 − 有効請求合計）</li>
               <li>仕切を確定する</li>
               <li>
                 販売店への実支払は{" "}
@@ -1489,6 +1491,7 @@ function InvoiceReceiptTab({
   threePartyMoney: ThreePartyMoneyView;
   financeCompanyDefault: string;
 }) {
+  const isSansha = settlementType === "3社間決済";
   const invoiceNoById = useMemo(() => {
     const map = new Map<string, string>();
     for (const inv of invoices) {
@@ -1510,10 +1513,24 @@ function InvoiceReceiptTab({
     return invoice.invoiceAmount - paid > 0;
   });
 
+  const paidFinance = threePartyMoney.financeReceipts.find(
+    (r) => r.status === "入金済"
+  );
+  const financeAmountDisplay =
+    paidFinance?.actualAmount ??
+    paidFinance?.scheduledAmount ??
+    threePartyMoney.financeReceipts.find((r) => r.status === "予定")
+      ?.scheduledAmount ??
+    null;
+
   return (
     <Section
       title="請求・入金"
-      description="請求・入金状況をこの案件単位で管理します"
+      description={
+        isSansha
+          ? "商品請求と信販入金（契約金額）を分けて管理します。顧客入金とは別です。"
+          : "請求・入金状況をこの案件単位で管理します"
+      }
       action={
         <Link
           href={`/cases/${caseId}/invoices/new`}
@@ -1523,19 +1540,50 @@ function InvoiceReceiptTab({
         </Link>
       }
     >
+      {isSansha ? (
+        <div className="mb-6 rounded-lg border border-teal-200 bg-teal-50/70 px-4 py-3 text-sm text-teal-950">
+          <p className="font-semibold">3社間決済: 請求額と信販入金額は別物です</p>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-teal-900/90">
+            <li>商品請求額 … Value Ecology が請求する金額</li>
+            <li>
+              信販入金額 … 信販会社から実際に振り込まれた契約金額（finance_receipts）
+            </li>
+            <li>仕切初期額 = 信販入金額 − 有効請求額合計（手数料の自動控除なし）</li>
+          </ul>
+        </div>
+      ) : null}
+
       <div className="mb-8 grid grid-cols-3 gap-3">
-        <MiniStat label="請求合計" value={formatYen(totals.invoiceAmount)} />
-        <MiniStat label="入金済み" value={formatYen(totals.paidIn)} />
         <MiniStat
-          label="未入金残高"
-          value={formatYen(totals.unpaid)}
-          alert={totals.unpaid > 0}
+          label={isSansha ? "商品請求合計" : "請求合計"}
+          value={formatYen(totals.invoiceAmount)}
+        />
+        {isSansha ? (
+          <MiniStat
+            label="信販入金額"
+            value={
+              financeAmountDisplay != null
+                ? formatYen(financeAmountDisplay)
+                : "—"
+            }
+          />
+        ) : (
+          <MiniStat label="入金済み" value={formatYen(totals.paidIn)} />
+        )}
+        <MiniStat
+          label={isSansha ? "顧客入金（参考）" : "未入金残高"}
+          value={
+            isSansha ? formatYen(totals.paidIn) : formatYen(totals.unpaid)
+          }
+          alert={!isSansha && totals.unpaid > 0}
         />
       </div>
 
       <div>
         <div className="mb-4 flex items-center justify-between gap-3">
-          <h3 className="text-sm font-semibold text-gray-900">請求</h3>
+          <h3 className="text-sm font-semibold text-gray-900">
+            {isSansha ? "商品請求" : "請求"}
+          </h3>
         </div>
 
         {invoiceError ? <ErrorText text={invoiceError} /> : null}
@@ -1587,11 +1635,11 @@ function InvoiceReceiptTab({
                       value={formatDate(invoice.dueDate)}
                     />
                     <Field
-                      label="請求金額"
+                      label={isSansha ? "商品請求金額" : "請求金額"}
                       value={formatYen(invoice.invoiceAmount)}
                     />
                     <Field
-                      label="入金残高"
+                      label={isSansha ? "顧客入金残高（参考）" : "入金残高"}
                       value={formatYen(invoiceRemainingAmount)}
                     />
                     <div>
@@ -1624,7 +1672,9 @@ function InvoiceReceiptTab({
                     >
                       請求書PDF
                     </Link>
-                    {invoiceRemainingAmount > 0 && invoice.status !== "取消" ? (
+                    {!isSansha &&
+                    invoiceRemainingAmount > 0 &&
+                    invoice.status !== "取消" ? (
                       <Link
                         href={`/invoices/${invoice.id}/payments/new`}
                         className="rounded-lg bg-gray-900 px-4 py-2 text-xs font-medium text-white hover:bg-gray-800"
@@ -1640,22 +1690,39 @@ function InvoiceReceiptTab({
         ) : null}
       </div>
 
+      {isSansha ? (
+        <ThreePartyMoneyPanels
+          caseId={caseId}
+          dealerId={dealerId || null}
+          financeCompanyDefault={financeCompanyDefault}
+          invoices={invoices}
+          orders={orders}
+          money={threePartyMoney}
+          section="finance"
+          variant="case_flow"
+        />
+      ) : null}
+
       <div className="mt-10">
         <div className="mb-4 flex items-center justify-between gap-3">
           <div>
-            <h3 className="text-sm font-semibold text-gray-900">入金</h3>
+            <h3 className="text-sm font-semibold text-gray-900">
+              {isSansha ? "顧客入金（通常決済用・参考）" : "入金"}
+            </h3>
             <p className="mt-0.5 text-sm text-gray-500">
-              請求に対する入金実績
+              {isSansha
+                ? "請求に対する顧客入金です。3社間の信販入金とは別です（通常は使いません）。"
+                : "請求に対する入金実績"}
             </p>
           </div>
-          {openInvoice ? (
+          {!isSansha && openInvoice ? (
             <Link
               href={`/invoices/${openInvoice.id}/payments/new`}
               className="text-sm text-gray-600 hover:text-gray-900"
             >
               ＋ 入金登録
             </Link>
-          ) : invoices.length === 0 ? (
+          ) : !isSansha && invoices.length === 0 ? (
             <Link
               href={`/cases/${caseId}/invoices/new`}
               className="text-sm text-gray-600 hover:text-gray-900"
@@ -1669,8 +1736,12 @@ function InvoiceReceiptTab({
 
         {!paymentError && payments.length === 0 ? (
           <div className="rounded-lg border border-dashed border-gray-200 bg-[#f7f7f5] px-4 py-8 text-center">
-            <p className="text-sm text-gray-500">入金実績はまだありません。</p>
-            {openInvoice ? (
+            <p className="text-sm text-gray-500">
+              {isSansha
+                ? "顧客入金の実績はありません（3社間は上の信販入金を使います）。"
+                : "入金実績はまだありません。"}
+            </p>
+            {!isSansha && openInvoice ? (
               <Link
                 href={`/invoices/${openInvoice.id}/payments/new`}
                 className="mt-4 inline-flex rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
@@ -1736,7 +1807,7 @@ function InvoiceReceiptTab({
         ) : null}
       </div>
 
-      {settlementType === "3社間決済" ? (
+      {isSansha ? (
         <ThreePartyMoneyPanels
           caseId={caseId}
           dealerId={dealerId || null}

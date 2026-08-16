@@ -10,7 +10,10 @@ import type {
   SupplierPaymentView,
   ThreePartyMoneyView,
 } from "@/lib/threeParty/loadThreePartyMoneyAdmin";
-import { calculateDealerSettlementPayout } from "@/lib/threeParty/dealerSettlementCalc";
+import {
+  calculateDealerSettlementPayout,
+  sumActiveInvoiceAmounts,
+} from "@/lib/threeParty/dealerSettlementCalc";
 
 import { submitThreePartyMoney } from "./submitThreePartyMoney";
 
@@ -123,9 +126,9 @@ function FinanceReceiptPanel({
   return (
     <div className="mt-8 space-y-4 border-t border-gray-100 pt-6">
       <div>
-        <h3 className="text-sm font-semibold text-gray-900">① 信販会社からの入金</h3>
+        <h3 className="text-sm font-semibold text-gray-900">① 信販入金（信販会社からの契約金）</h3>
         <p className="mt-1 text-xs text-gray-500">
-          信販会社→Value Ecology の入金イベントです。仕切清算・仕入先支払の前提条件ではありません。
+          信販会社から実際に振り込まれた契約金額を登録します。商品請求に対する顧客入金（下の「顧客入金」）とは別物です。
         </p>
       </div>
       {money.loadError ? (
@@ -135,7 +138,9 @@ function FinanceReceiptPanel({
 
       <div className="space-y-3">
         {money.financeReceipts.length === 0 ? (
-          <p className="text-sm text-gray-500">信販入金はまだありません。</p>
+          <p className="text-sm text-gray-500">
+            信販入金はまだありません。予定登録後に、実入金額（契約金額）を確定してください。
+          </p>
         ) : (
           money.financeReceipts.map((row) => (
             <FinanceReceiptCard
@@ -173,9 +178,9 @@ function FinanceReceiptPanel({
           信販入金の予定を追加登録
         </button>
       ) : (
-        <div className="rounded-lg border border-dashed border-gray-300 p-4">
+        <div className="rounded-lg border border-dashed border-teal-300 bg-teal-50/40 p-4">
           <div className="mb-3 flex items-center justify-between gap-2">
-            <p className="text-xs font-semibold text-gray-600">予定登録</p>
+            <p className="text-xs font-semibold text-teal-900">信販入金の予定登録</p>
             {caseFlow && hasActiveReceipt ? (
               <button
                 type="button"
@@ -186,6 +191,9 @@ function FinanceReceiptPanel({
               </button>
             ) : null}
           </div>
+          <p className="mb-3 text-xs text-teal-900/80">
+            ここに入れる金額は商品請求額ではなく、信販会社からの契約金額です。
+          </p>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="text-xs text-gray-600">
               信販会社
@@ -211,7 +219,7 @@ function FinanceReceiptPanel({
               />
             </label>
             <label className="text-xs text-gray-600">
-              予定金額
+              予定信販入金額（契約金額）
               <input
                 type="number"
                 min={0}
@@ -248,7 +256,7 @@ function FinanceReceiptPanel({
               })
             }
           >
-            予定を登録
+            信販入金の予定を登録
           </button>
         </div>
       )}
@@ -297,7 +305,7 @@ function FinanceReceiptCard({
           <p>{formatDate(row.scheduledDate)}</p>
         </div>
         <div>
-          <p className="text-xs text-gray-400">予定金額</p>
+          <p className="text-xs text-gray-400">予定信販入金額</p>
           <p>{formatYen(row.scheduledAmount)}</p>
         </div>
         <div>
@@ -305,7 +313,7 @@ function FinanceReceiptCard({
           <p>{formatDate(row.actualDate)}</p>
         </div>
         <div>
-          <p className="text-xs text-gray-400">実入金額</p>
+          <p className="text-xs text-gray-400">信販実入金額（契約金額）</p>
           <p>{formatYen(row.actualAmount)}</p>
         </div>
       </div>
@@ -314,7 +322,7 @@ function FinanceReceiptCard({
       {active && row.status === "予定" ? (
         <div className="mt-4 space-y-3 border-t border-gray-100 pt-3">
           <p className="text-xs font-medium text-gray-700">
-            入金確認: 実入金日・実入金額を入力して確定します
+            信販入金の確定: 信販会社から実際に振り込まれた契約金額を入力します（商品請求額ではありません）
           </p>
           <div className="flex flex-wrap items-end gap-2">
             <label className="text-xs text-gray-600">
@@ -328,7 +336,7 @@ function FinanceReceiptCard({
               />
             </label>
             <label className="text-xs text-gray-600">
-              実入金額
+              信販実入金額（契約金額）
               <input
                 type="number"
                 min={0}
@@ -344,7 +352,7 @@ function FinanceReceiptCard({
               className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-50"
               onClick={() => onConfirm(actualDate, Number(actualAmount))}
             >
-              入金確認
+              信販入金を確定
             </button>
             <button
               type="button"
@@ -420,7 +428,7 @@ function FinanceReceiptCard({
               />
             </label>
             <label className="text-xs text-gray-600">
-              予定金額
+              予定信販入金額
               <input
                 type="number"
                 min={0}
@@ -481,20 +489,25 @@ function DealerSettlementPanel({
   const caseFlow = variant === "case_flow";
   const activeReceipt = money.financeReceipts.find((r) => r.status === "入金済")
     || money.financeReceipts.find((r) => r.status === "予定");
-  const activeInvoice = invoices.find((i) => i.status !== "取消");
+  const invoiceTotal = sumActiveInvoiceAmounts(invoices);
+  const financeAmount =
+    activeReceipt?.status === "入金済"
+      ? (activeReceipt.actualAmount ?? activeReceipt.scheduledAmount)
+      : (activeReceipt?.actualAmount ?? activeReceipt?.scheduledAmount ?? null);
+  const primaryInvoiceId = invoices.find((i) => i.status !== "取消")?.id || "";
   const hasUnpaidSettlement = money.dealerSettlements.some(
     (s) => s.status !== "取消" && s.status !== "支払済"
   );
   const [showCreateForm, setShowCreateForm] = useState(!hasUnpaidSettlement);
 
   const [form, setForm] = useState({
-    credit_received_amount: String(activeReceipt?.actualAmount ?? activeReceipt?.scheduledAmount ?? ""),
-    ve_share_amount: String(activeInvoice?.invoiceAmount ?? ""),
+    credit_received_amount: String(financeAmount ?? ""),
+    ve_share_amount: String(invoiceTotal || ""),
     transfer_fee: "0",
     scheduled_payout_date: "",
     memo: "",
     finance_receipt_id: activeReceipt?.id || "",
-    invoice_id: activeInvoice?.id || "",
+    invoice_id: primaryInvoiceId,
   });
 
   const preview = calculateDealerSettlementPayout({
@@ -534,8 +547,8 @@ function DealerSettlementPanel({
         </h3>
         <p className="mt-1 text-xs text-gray-500">
           {caseFlow
-            ? "案件詳細では金額確定まで。販売店への実支払は支払管理で処理します。"
-            : "操作: 下書き作成 → 確定（金額固定）→ 支払済。確定後の金額直接編集は不可。変更は訂正。信販入金の完了は必須ではありません。"}
+            ? "初期仕切額 = 信販入金額 − 有効請求額合計。振込手数料は自動控除しません。案件詳細では金額確定まで。販売店への実支払は支払管理で処理します。"
+            : "操作: 下書き作成 → 確定（金額固定）→ 支払済。確定後の金額直接編集は不可。変更は訂正。初期仕切額 = 信販入金額 − 有効請求額合計。"}
         </p>
       </div>
       {caseFlow ? (
@@ -620,7 +633,7 @@ function DealerSettlementPanel({
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="text-xs text-gray-600">
-              信販会社からの入金額
+              信販入金額（契約金額）
               <input
                 type="number"
                 min={0}
@@ -633,7 +646,7 @@ function DealerSettlementPanel({
               />
             </label>
             <label className="text-xs text-gray-600">
-              Value Ecology売上 / 請求額
+              有効請求額合計（商品請求）
               <input
                 type="number"
                 min={0}
@@ -673,22 +686,25 @@ function DealerSettlementPanel({
           </div>
           <div className="mt-4 overflow-hidden rounded-lg border border-gray-200 text-sm">
             <div className="flex justify-between border-b border-gray-100 px-3 py-2">
-              <span>信販会社からの入金額</span>
+              <span>信販入金額（契約金額）</span>
               <span className="tabular-nums">{formatYen(Number(form.credit_received_amount) || 0)}</span>
             </div>
             <div className="flex justify-between border-b border-gray-100 px-3 py-2 text-gray-700">
-              <span>− Value Ecology売上 / 請求額</span>
+              <span>− 有効請求額合計（商品請求）</span>
               <span className="tabular-nums">{formatYen(Number(form.ve_share_amount) || 0)}</span>
             </div>
             <div className="flex justify-between border-b border-gray-100 px-3 py-2 text-gray-700">
-              <span>− 振込手数料</span>
+              <span>− 振込手数料（初期0・手動調整）</span>
               <span className="tabular-nums">{formatYen(Number(form.transfer_fee) || 0)}</span>
             </div>
             <div className="flex justify-between bg-gray-900 px-3 py-3 font-semibold text-white">
-              <span>＝ 販売店への御振込金額</span>
+              <span>＝ 販売店への御振込金額（仕切額）</span>
               <span className="text-base tabular-nums">{formatYen(preview.payoutAmount)}</span>
             </div>
           </div>
+          <p className="mt-2 text-xs text-gray-500">
+            初期値: 仕切額 = 信販入金額 − 有効請求額合計。必要なら上記を編集してから作成してください。
+          </p>
           <button
             type="button"
             disabled={busy}
@@ -706,13 +722,13 @@ function DealerSettlementPanel({
                 lines: [
                   {
                     line_kind: "credit_in",
-                    description: "クレジット会社入金額",
+                    description: "信販入金額（契約金額）",
                     amount: Number(form.credit_received_amount) || 0,
                     sort_order: 1,
                   },
                   {
                     line_kind: "ve_share",
-                    description: "弊社売上金額",
+                    description: "有効請求額合計（商品請求）",
                     amount: Number(form.ve_share_amount) || 0,
                     sort_order: 2,
                   },
