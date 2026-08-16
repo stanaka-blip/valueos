@@ -14,6 +14,11 @@ import {
   calculateDealerSettlementPayout,
   sumActiveInvoiceAmounts,
 } from "@/lib/threeParty/dealerSettlementCalc";
+import {
+  buildFinanceReceiptPaidConfirmBody,
+  buildFinanceReceiptPaidCorrectBody,
+  buildFinanceReceiptPaidCreateBody,
+} from "@/lib/threeParty/financeReceiptRegister";
 
 import { submitThreePartyMoney } from "./submitThreePartyMoney";
 
@@ -97,8 +102,8 @@ function FinanceReceiptPanel({
   const [showCreateForm, setShowCreateForm] = useState(!hasActiveReceipt);
   const [form, setForm] = useState({
     finance_company: financeCompanyDefault || "",
-    scheduled_date: "",
-    scheduled_amount: "",
+    actual_date: new Date().toISOString().slice(0, 10),
+    actual_amount: "",
     memo: "",
   });
 
@@ -107,19 +112,101 @@ function FinanceReceiptPanel({
     resourceId: string | undefined,
     body: Record<string, unknown>
   ) {
-    setBusy(true);
-    setError("");
     const result = await submitThreePartyMoney({
       action,
       caseId,
       resourceId,
       body,
     });
-    setBusy(false);
     if (!result.ok) {
       setError(result.error_message);
+      return null;
+    }
+    return result;
+  }
+
+  /** 1ステップ: create(予定互換) → confirm(入金済)。予定UIは使わない */
+  async function registerPaid() {
+    setBusy(true);
+    setError("");
+    const paid = {
+      finance_company: form.finance_company,
+      actual_date: form.actual_date,
+      actual_amount: Number(form.actual_amount),
+      memo: form.memo || null,
+    };
+    const created = await run(
+      "finance_receipt.create",
+      undefined,
+      buildFinanceReceiptPaidCreateBody(paid)
+    );
+    if (!created) {
+      setBusy(false);
       return;
     }
+    const confirmed = await run(
+      "finance_receipt.confirm",
+      created.resource_id,
+      buildFinanceReceiptPaidConfirmBody(paid)
+    );
+    setBusy(false);
+    if (!confirmed) return;
+    router.refresh();
+  }
+
+  async function cancelReceipt(id: string) {
+    setBusy(true);
+    setError("");
+    const result = await run("finance_receipt.cancel", id, {
+      cancel_reason: "画面から取消",
+    });
+    setBusy(false);
+    if (!result) return;
+    router.refresh();
+  }
+
+  async function correctPaid(
+    id: string,
+    body: {
+      finance_company: string;
+      actual_date: string;
+      actual_amount: number;
+      memo: string | null;
+    }
+  ) {
+    setBusy(true);
+    setError("");
+    const corrected = await run(
+      "finance_receipt.correct",
+      id,
+      {
+        ...buildFinanceReceiptPaidCorrectBody(body),
+        cancel_reason: "画面から訂正",
+      }
+    );
+    if (!corrected) {
+      setBusy(false);
+      return;
+    }
+    const confirmed = await run(
+      "finance_receipt.confirm",
+      corrected.resource_id,
+      buildFinanceReceiptPaidConfirmBody(body)
+    );
+    setBusy(false);
+    if (!confirmed) return;
+    router.refresh();
+  }
+
+  async function confirmLegacy(id: string, actual_date: string, actual_amount: number) {
+    setBusy(true);
+    setError("");
+    const result = await run("finance_receipt.confirm", id, {
+      actual_date,
+      actual_amount,
+    });
+    setBusy(false);
+    if (!result) return;
     router.refresh();
   }
 
@@ -128,7 +215,7 @@ function FinanceReceiptPanel({
       <div>
         <h3 className="text-sm font-semibold text-gray-900">① 信販入金（信販会社からの契約金）</h3>
         <p className="mt-1 text-xs text-gray-500">
-          信販会社から実際に振り込まれた契約金額を登録します。商品請求に対する顧客入金（下の「顧客入金」）とは別物です。
+          着金後に、信販会社・実入金日・実入金額（契約金額）を登録します。登録時点で入金済になります（予定登録は不要）。商品請求に対する顧客入金とは別物です。
         </p>
       </div>
       {money.loadError ? (
@@ -138,9 +225,7 @@ function FinanceReceiptPanel({
 
       <div className="space-y-3">
         {money.financeReceipts.length === 0 ? (
-          <p className="text-sm text-gray-500">
-            信販入金はまだありません。予定登録後に、実入金額（契約金額）を確定してください。
-          </p>
+          <p className="text-sm text-gray-500">信販入金はまだありません。</p>
         ) : (
           money.financeReceipts.map((row) => (
             <FinanceReceiptCard
@@ -148,22 +233,10 @@ function FinanceReceiptPanel({
               row={row}
               busy={busy}
               onConfirm={(actual_date, actual_amount) =>
-                run("finance_receipt.confirm", row.id, {
-                  actual_date,
-                  actual_amount,
-                })
+                confirmLegacy(row.id, actual_date, actual_amount)
               }
-              onCancel={() =>
-                run("finance_receipt.cancel", row.id, {
-                  cancel_reason: "画面から取消",
-                })
-              }
-              onCorrect={(body) =>
-                run("finance_receipt.correct", row.id, {
-                  ...body,
-                  cancel_reason: "画面から訂正",
-                })
-              }
+              onCancel={() => cancelReceipt(row.id)}
+              onCorrect={(body) => correctPaid(row.id, body)}
             />
           ))
         )}
@@ -175,12 +248,12 @@ function FinanceReceiptPanel({
           className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50"
           onClick={() => setShowCreateForm(true)}
         >
-          信販入金の予定を追加登録
+          信販入金を追加登録
         </button>
       ) : (
         <div className="rounded-lg border border-dashed border-teal-300 bg-teal-50/40 p-4">
           <div className="mb-3 flex items-center justify-between gap-2">
-            <p className="text-xs font-semibold text-teal-900">信販入金の予定登録</p>
+            <p className="text-xs font-semibold text-teal-900">信販入金を登録</p>
             {caseFlow && hasActiveReceipt ? (
               <button
                 type="button"
@@ -192,7 +265,7 @@ function FinanceReceiptPanel({
             ) : null}
           </div>
           <p className="mb-3 text-xs text-teal-900/80">
-            ここに入れる金額は商品請求額ではなく、信販会社からの契約金額です。
+            入力するのは信販会社から実際に振り込まれた契約金額です（商品請求額ではありません）。
           </p>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="text-xs text-gray-600">
@@ -207,27 +280,27 @@ function FinanceReceiptPanel({
               />
             </label>
             <label className="text-xs text-gray-600">
-              予定入金日
+              実入金日
               <input
                 type="date"
                 className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                value={form.scheduled_date}
+                value={form.actual_date}
                 disabled={busy}
                 onChange={(e) =>
-                  setForm((f) => ({ ...f, scheduled_date: e.target.value }))
+                  setForm((f) => ({ ...f, actual_date: e.target.value }))
                 }
               />
             </label>
             <label className="text-xs text-gray-600">
-              予定信販入金額（契約金額）
+              実入金額（契約金額）
               <input
                 type="number"
                 min={0}
                 className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                value={form.scheduled_amount}
+                value={form.actual_amount}
                 disabled={busy}
                 onChange={(e) =>
-                  setForm((f) => ({ ...f, scheduled_amount: e.target.value }))
+                  setForm((f) => ({ ...f, actual_amount: e.target.value }))
                 }
               />
             </label>
@@ -245,18 +318,11 @@ function FinanceReceiptPanel({
           </div>
           <button
             type="button"
-            disabled={busy}
+            disabled={busy || !form.finance_company || !form.actual_date || form.actual_amount === ""}
             className="mt-3 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
-            onClick={() =>
-              run("finance_receipt.create", undefined, {
-                finance_company: form.finance_company,
-                scheduled_date: form.scheduled_date || null,
-                scheduled_amount: Number(form.scheduled_amount),
-                memo: form.memo || null,
-              })
-            }
+            onClick={() => registerPaid()}
           >
-            信販入金の予定を登録
+            信販入金を登録
           </button>
         </div>
       )}
@@ -275,20 +341,29 @@ function FinanceReceiptCard({
   busy: boolean;
   onConfirm: (date: string, amount: number) => void;
   onCancel: () => void;
-  onCorrect: (body: Record<string, unknown>) => void;
+  onCorrect: (body: {
+    finance_company: string;
+    actual_date: string;
+    actual_amount: number;
+    memo: string | null;
+  }) => void;
 }) {
   const [actualDate, setActualDate] = useState(
-    () => new Date().toISOString().slice(0, 10)
+    () => row.actualDate || row.scheduledDate || new Date().toISOString().slice(0, 10)
   );
-  const [actualAmount, setActualAmount] = useState(String(row.scheduledAmount));
+  const [actualAmount, setActualAmount] = useState(
+    String(row.actualAmount ?? row.scheduledAmount)
+  );
   const [correcting, setCorrecting] = useState(false);
   const [correctForm, setCorrectForm] = useState({
     finance_company: row.financeCompany,
-    scheduled_date: row.scheduledDate || "",
-    scheduled_amount: String(row.scheduledAmount),
+    actual_date:
+      row.actualDate || row.scheduledDate || new Date().toISOString().slice(0, 10),
+    actual_amount: String(row.actualAmount ?? row.scheduledAmount),
     memo: row.memo || "",
   });
   const active = row.status !== "取消";
+  const isPaid = row.status === "入金済";
 
   return (
     <div className="rounded-lg border border-gray-200 p-4">
@@ -299,30 +374,26 @@ function FinanceReceiptCard({
         </div>
         <StatusBadge label={row.displayStatus} />
       </div>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 text-sm">
-        <div>
-          <p className="text-xs text-gray-400">予定入金日</p>
-          <p>{formatDate(row.scheduledDate)}</p>
-        </div>
-        <div>
-          <p className="text-xs text-gray-400">予定信販入金額</p>
-          <p>{formatYen(row.scheduledAmount)}</p>
-        </div>
+      <div className="grid gap-3 sm:grid-cols-2 text-sm">
         <div>
           <p className="text-xs text-gray-400">実入金日</p>
-          <p>{formatDate(row.actualDate)}</p>
+          <p>{formatDate(row.actualDate || (isPaid ? null : row.scheduledDate))}</p>
         </div>
         <div>
-          <p className="text-xs text-gray-400">信販実入金額（契約金額）</p>
-          <p>{formatYen(row.actualAmount)}</p>
+          <p className="text-xs text-gray-400">信販入金額（契約金額）</p>
+          <p>
+            {formatYen(
+              row.actualAmount != null ? row.actualAmount : isPaid ? null : row.scheduledAmount
+            )}
+          </p>
         </div>
       </div>
       {row.memo ? <p className="mt-2 text-xs text-gray-500">備考: {row.memo}</p> : null}
 
       {active && row.status === "予定" ? (
         <div className="mt-4 space-y-3 border-t border-gray-100 pt-3">
-          <p className="text-xs font-medium text-gray-700">
-            信販入金の確定: 信販会社から実際に振り込まれた契約金額を入力します（商品請求額ではありません）
+          <p className="text-xs font-medium text-amber-800">
+            旧データ（予定）です。実入金日・実入金額を入力して入金済にしてください。
           </p>
           <div className="flex flex-wrap items-end gap-2">
             <label className="text-xs text-gray-600">
@@ -336,7 +407,7 @@ function FinanceReceiptCard({
               />
             </label>
             <label className="text-xs text-gray-600">
-              信販実入金額（契約金額）
+              実入金額（契約金額）
               <input
                 type="number"
                 min={0}
@@ -352,15 +423,7 @@ function FinanceReceiptCard({
               className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-medium text-white disabled:opacity-50"
               onClick={() => onConfirm(actualDate, Number(actualAmount))}
             >
-              信販入金を確定
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              className="rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 disabled:opacity-50"
-              onClick={() => setCorrecting((v) => !v)}
-            >
-              訂正
+              入金済にする
             </button>
             <button
               type="button"
@@ -374,10 +437,10 @@ function FinanceReceiptCard({
         </div>
       ) : null}
 
-      {active && row.status === "入金済" ? (
+      {active && isPaid ? (
         <div className="mt-4 flex flex-wrap gap-2 border-t border-gray-100 pt-3">
           <p className="w-full text-xs text-gray-500">
-            入金済金額の直接編集はできません。変更は訂正（元行取消＋新規作成）で行います。
+            入金済金額の直接編集はできません。変更は訂正（元行取消＋再登録）で行います。
           </p>
           <button
             type="button"
@@ -401,7 +464,7 @@ function FinanceReceiptCard({
       {active && correcting ? (
         <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50/50 p-3">
           <p className="mb-2 text-xs font-semibold text-amber-900">
-            訂正内容（元レコードは取消され、新しい予定が作成されます）
+            訂正内容（元レコードは取消され、新しい入金済として再登録されます）
           </p>
           <div className="grid gap-2 sm:grid-cols-2">
             <label className="text-xs text-gray-600">
@@ -416,29 +479,29 @@ function FinanceReceiptCard({
               />
             </label>
             <label className="text-xs text-gray-600">
-              予定入金日
+              実入金日
               <input
                 type="date"
                 className="mt-1 w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
-                value={correctForm.scheduled_date}
+                value={correctForm.actual_date}
                 disabled={busy}
                 onChange={(e) =>
-                  setCorrectForm((f) => ({ ...f, scheduled_date: e.target.value }))
+                  setCorrectForm((f) => ({ ...f, actual_date: e.target.value }))
                 }
               />
             </label>
             <label className="text-xs text-gray-600">
-              予定信販入金額
+              実入金額（契約金額）
               <input
                 type="number"
                 min={0}
                 className="mt-1 w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
-                value={correctForm.scheduled_amount}
+                value={correctForm.actual_amount}
                 disabled={busy}
                 onChange={(e) =>
                   setCorrectForm((f) => ({
                     ...f,
-                    scheduled_amount: e.target.value,
+                    actual_amount: e.target.value,
                   }))
                 }
               />
@@ -462,8 +525,8 @@ function FinanceReceiptCard({
             onClick={() =>
               onCorrect({
                 finance_company: correctForm.finance_company,
-                scheduled_date: correctForm.scheduled_date || null,
-                scheduled_amount: Number(correctForm.scheduled_amount),
+                actual_date: correctForm.actual_date,
+                actual_amount: Number(correctForm.actual_amount),
                 memo: correctForm.memo || null,
               })
             }
@@ -475,6 +538,7 @@ function FinanceReceiptCard({
     </div>
   );
 }
+
 
 function DealerSettlementPanel({
   caseId,

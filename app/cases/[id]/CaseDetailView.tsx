@@ -1135,7 +1135,7 @@ function SettlementTab({
             <p className="font-semibold">3社間の流れ（案件詳細 → 支払管理）</p>
             <ol className="mt-2 list-decimal space-y-1 pl-5 text-sky-900/90">
               <li>
-                請求・入金タブ（またはここ）で信販入金を記録する（商品請求への顧客入金ではない）
+                請求・入金タブ（またはここ）で信販入金を登録する（着金後に実入金額を直接登録・予定不要）
               </li>
               <li>金額を確認して仕切を作成する（初期額 = 信販入金 − 有効請求合計）</li>
               <li>仕切を確定する</li>
