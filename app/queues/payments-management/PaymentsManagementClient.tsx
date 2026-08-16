@@ -445,7 +445,7 @@ function ThreePartyActionPanel({
         <div className="mt-4 space-y-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
           <p className="font-semibold">信販入金を確認してください</p>
           <p className="text-xs leading-relaxed text-amber-900/90">
-            納品済みですが、信販入金（入金済）がまだありません。案件詳細の「請求・入金」タブで信販入金（契約金額）を記録・確定してください。回収管理にも同案件が表示されることがあります（安全網）。
+            納品済みですが、信販入金（入金済）がまだありません。案件詳細の「請求・入金」タブで信販入金（契約金額）を登録してください。回収管理にも同案件が表示されることがあります（安全網）。
           </p>
           <Link
             href={row.caseHref}
