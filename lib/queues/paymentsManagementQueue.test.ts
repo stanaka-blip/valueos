@@ -220,6 +220,27 @@ test("仕入先: 納品済で payments 未作成でも出る", () => {
   assert.equal(row!.amount, 500000);
 });
 
+test("仕入先: 決済区分に依存せず前金案件でもキューに出る", () => {
+  // buildSupplierPaymentQueueRow は settlementType を受け取らない（全決済区分共通）
+  const row = buildSupplierPaymentQueueRow({
+    orderId: "o-advance",
+    orderNo: "PO-ADV",
+    caseId: "c-adv",
+    caseNo: "C-ADV",
+    caseStatus: "対応中",
+    customerName: "顧客",
+    supplierId: "sup1",
+    supplierName: "商社",
+    orderStatus: "納品済",
+    deliveredDate: "2026-08-02",
+    orderAmount: 200000,
+    payments: [],
+  });
+  assert.ok(row);
+  assert.equal(row!.stage, "needs_create_and_pay");
+  assert.equal(row!.caseHref, "/cases/c-adv?tab=payment");
+});
+
 test("仕入先: 未納品は出ない", () => {
   const row = buildSupplierPaymentQueueRow({
     orderId: "o1",

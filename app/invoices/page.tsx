@@ -214,7 +214,7 @@ export default async function InvoicesPage() {
                       >
                         <td className="whitespace-nowrap px-5 py-4 font-semibold text-gray-900">
                           <Link
-                            href={`/invoices/${invoice.id}`}
+                            href={`/invoices/${invoice.id}?from=invoices`}
                             className="text-blue-600 hover:underline"
                           >
                             {invoice.invoice_no || "請求番号未設定"}
@@ -277,7 +277,7 @@ export default async function InvoicesPage() {
                         <td className="whitespace-nowrap px-5 py-4 text-center">
                           <div className="flex items-center justify-center gap-2">
                             <Link
-                              href={`/invoices/${invoice.id}`}
+                              href={`/invoices/${invoice.id}?from=invoices`}
                               className="inline-flex rounded-lg border border-gray-300 bg-white px-4 py-2 text-xs font-bold text-gray-700 transition hover:bg-gray-100"
                             >
                               詳細

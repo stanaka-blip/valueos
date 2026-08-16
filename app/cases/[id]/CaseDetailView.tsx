@@ -1428,6 +1428,21 @@ function DeliveryTab({
                   >
                     発注詳細
                   </Link>
+                  {deliveryStatus !== "納品済" ? (
+                    <Link
+                      href={`/orders/${order.id}/edit`}
+                      className="rounded-lg bg-gray-900 px-4 py-2 text-xs font-medium text-white hover:bg-gray-800"
+                    >
+                      納品確認
+                    </Link>
+                  ) : (
+                    <Link
+                      href={`/orders/${order.id}/edit`}
+                      className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                    >
+                      納品内容を確認
+                    </Link>
+                  )}
                 </div>
               </div>
             );
@@ -1435,8 +1450,15 @@ function DeliveryTab({
         </div>
       )}
 
-      <p className="mt-4 text-xs text-gray-400">
-        分納対応の deliveries テーブル連携後、商品単位の実績登録に拡張します。現在は発注の納品予定日・納品日を参照しています。
+      <p className="mt-4 text-xs text-gray-500">
+        日常の納品確認は
+        <Link
+          href="/queues/deliveries"
+          className="mx-1 font-medium text-gray-700 underline"
+        >
+          納品管理
+        </Link>
+        からも行えます。分納（deliveries テーブル）は未対応で、現在は発注単位の納品予定日・納品日を参照します。
       </p>
     </Section>
   );
@@ -1590,7 +1612,7 @@ function InvoiceReceiptTab({
 
                   <div className="mt-4 flex flex-wrap justify-end gap-2 border-t border-gray-100 pt-4">
                     <Link
-                      href={`/invoices/${invoice.id}`}
+                      href={`/invoices/${invoice.id}?from=case`}
                       className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50"
                     >
                       請求詳細
@@ -1701,7 +1723,7 @@ function InvoiceReceiptTab({
                 {payment.invoiceId ? (
                   <div className="mt-4 flex flex-wrap justify-end gap-2 border-t border-gray-100 pt-4">
                     <Link
-                      href={`/invoices/${payment.invoiceId}`}
+                      href={`/invoices/${payment.invoiceId}?from=case`}
                       className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50"
                     >
                       請求詳細
@@ -1751,7 +1773,7 @@ function PaymentTab({
   const activeOrders = orders.filter(
     (order) => order.status !== "キャンセル" && order.status !== "取消"
   );
-  const isSansha = settlementType === "3社間決済";
+  const settlementLabel = settlementType.trim() || "未設定";
 
   return (
     <Section
@@ -1770,36 +1792,28 @@ function PaymentTab({
         />
       </div>
 
-      {isSansha ? (
-        <>
-          <div className="mb-4 rounded-lg border border-sky-100 bg-sky-50/70 px-4 py-3 text-sm text-sky-950">
-            <p>
-              納品済みかつ仕入先未払いの発注は、
-              <Link
-                href="/queues/payments-management?tab=supplier"
-                className="mx-1 font-medium underline"
-              >
-                支払管理
-              </Link>
-              に自動表示されます（supplier_payments の事前作成は不要）。
-            </p>
-          </div>
-          <ThreePartyMoneyPanels
-            caseId={caseId}
-            dealerId={dealerId || null}
-            financeCompanyDefault={financeCompanyDefault}
-            invoices={invoices}
-            orders={orders}
-            money={threePartyMoney}
-            section="supplier"
-            variant="case_flow"
-          />
-        </>
-      ) : (
-        <p className="text-sm text-gray-500">
-          3社間決済以外の仕入先支払も、支払管理の仕入先タブで処理できます。
+      <div className="mb-4 rounded-lg border border-sky-100 bg-sky-50/70 px-4 py-3 text-sm text-sky-950">
+        <p>
+          決済区分（{settlementLabel}）に関わらず、納品済みかつ仕入先未払いの発注は
+          <Link
+            href="/queues/payments-management?tab=supplier"
+            className="mx-1 font-medium underline"
+          >
+            支払管理
+          </Link>
+          に自動表示されます（supplier_payments の事前作成は不要）。ここは確認・取消・訂正などの例外操作用です。
         </p>
-      )}
+      </div>
+      <ThreePartyMoneyPanels
+        caseId={caseId}
+        dealerId={dealerId || null}
+        financeCompanyDefault={financeCompanyDefault}
+        invoices={invoices}
+        orders={orders}
+        money={threePartyMoney}
+        section="supplier"
+        variant="case_flow"
+      />
 
       {activeOrders.length > 0 ? (
         <div className="mt-8 space-y-3 border-t border-gray-100 pt-6">
@@ -1857,8 +1871,16 @@ function ProfitTab({
 
   return (
     <div className="space-y-6">
+      <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+        <p className="font-semibold">参考 / 暫定表示（v1）</p>
+        <p className="mt-1 text-xs leading-relaxed text-amber-900/90">
+          この粗利タブは簡易計算です。3社間の仕切・仕入先支払・その他支払はまだ完全反映していません（その他支払は常に
+          0）。経営ダッシュボードの KPI とは集計基準が異なります。
+        </p>
+      </div>
+
       <Section
-        title="決済条件の反映"
+        title="決済条件の反映（参考）"
         description="粗利計算に使う決済手数料・前金"
       >
         {settlement ? (
@@ -1888,12 +1910,15 @@ function ProfitTab({
         )}
       </Section>
 
-      <Section title="確定粗利（参考）" description="入金・発注額ベースの簡易計算">
+      <Section
+        title="確定粗利（参考・暫定）"
+        description="入金・発注額ベースの簡易計算。その他支払は未接続"
+      >
         <ProfitLines
           rows={[
             { label: "売上（入金合計）", value: totals.paidIn },
             { label: "仕入原価（発注合計）", value: -totals.orderAmount },
-            { label: "その他支払", value: -other },
+            { label: "その他支払（暫定0）", value: -other },
             { label: "決済手数料", value: -actualFee },
           ]}
           profit={actualProfit}
@@ -1906,12 +1931,15 @@ function ProfitTab({
         ) : null}
       </Section>
 
-      <Section title="見込粗利（参考）" description="商品売価・仕入値ベース">
+      <Section
+        title="見込粗利（参考・暫定）"
+        description="商品売価・仕入値ベースの簡易計算。その他支払は未接続"
+      >
         <ProfitLines
           rows={[
             { label: "売上（商品売価）", value: totals.sales },
             { label: "仕入原価（商品仕入）", value: -totals.purchase },
-            { label: "その他支払", value: -other },
+            { label: "その他支払（暫定0）", value: -other },
             { label: "決済手数料", value: -forecastFee },
           ]}
           profit={forecastProfit}

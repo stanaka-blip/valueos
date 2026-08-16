@@ -1105,7 +1105,7 @@ function SupplierPaymentPanel({
         <div className="rounded-lg border border-sky-100 bg-sky-50/70 px-4 py-3 text-sm text-sky-950">
           <p className="font-semibold">支払待ちは支払管理で処理</p>
           <Link
-            href="/queues/payments-management"
+            href="/queues/payments-management?tab=supplier"
             className="mt-2 inline-flex text-xs font-medium text-sky-900 underline"
           >
             支払管理（仕入先支払い）を開く

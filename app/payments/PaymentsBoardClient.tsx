@@ -265,7 +265,7 @@ export default function PaymentsBoardClient({
                     </td>
                     <td className="whitespace-nowrap px-3 py-3">
                       <Link
-                        href={`/invoices/${r.invoiceId}`}
+                        href={`/invoices/${r.invoiceId}?from=payments`}
                         className="text-gray-900 hover:underline"
                       >
                         {r.invoiceNo || "—"}
