@@ -7,6 +7,10 @@ import {
   displayIdentityValue,
   resolveProductIdentity,
 } from "@/app/orders/productIdentity";
+import {
+  buildOrderDisplayLines,
+  type OrderDisplayLine,
+} from "@/lib/orders/orderPackageDisplay";
 
 export const dynamic = "force-dynamic";
 
@@ -58,6 +62,7 @@ type ProductInfo = {
   manufacturer_name: string;
   model_no: string | null;
   unit: string | null;
+  name: string;
 };
 
 function getSingleRelation<T>(
@@ -161,7 +166,7 @@ export default async function OrderDetailPage({
   if (productIds.length > 0) {
     const { data: products } = await supabase
       .from("products")
-      .select("id, model_no, unit, manufacturers(name)")
+      .select("id, name, model_no, unit, manufacturers(name)")
       .in("id", productIds);
 
     for (const product of products || []) {
@@ -178,16 +183,34 @@ export default async function OrderDetailPage({
         manufacturer_name: identity.manufacturerName,
         model_no: identity.modelNo || null,
         unit: (product.unit as string | null) || null,
+        name: (product.name as string | null) || "",
       });
     }
   }
 
-  const itemsTotal = orderItems.reduce(
-    (sum, item) => sum + toNumber(item.amount),
-    0
+  const displayLines = buildOrderDisplayLines(
+    orderItems.map((item) => {
+      const product = item.product_id
+        ? productMap.get(item.product_id)
+        : null;
+      return {
+        id: item.id,
+        product_id: item.product_id,
+        case_product_id: item.case_product_id,
+        quantity: toNumber(item.quantity),
+        unit_price: item.unit_price,
+        amount: item.amount,
+        memo: item.memo,
+        sort_order: item.sort_order,
+        manufacturer_name: product?.manufacturer_name || "",
+        model_no: product?.model_no || "",
+        product_name: product?.name || "",
+      };
+    })
   );
+  const displayTotal = displayLines.reduce((sum, line) => sum + line.amount, 0);
   const orderAmount = toNumber(order.order_amount);
-  const displayedOrderAmount = orderAmount > 0 ? orderAmount : itemsTotal;
+  const displayedOrderAmount = orderAmount > 0 ? orderAmount : displayTotal;
   const today = getTodayString();
   const isDeliveryOverdue =
     order.status !== "納品済" &&
@@ -334,11 +357,11 @@ export default async function OrderDetailPage({
             <div>
               <h2 className="text-lg font-bold text-gray-900">発注明細</h2>
               <p className="mt-1 text-sm text-gray-500">
-                order_items を正式表示しています
+                パッケージは仕入単価×数量、構成部材は内訳（金額なし）として表示します
               </p>
             </div>
             <p className="text-sm font-bold text-gray-900">
-              明細合計：{formatYen(itemsTotal)}
+              明細合計：{formatYen(displayedOrderAmount)}
             </p>
           </div>
 
@@ -350,14 +373,14 @@ export default async function OrderDetailPage({
                 を適用してください。
               </span>
             </div>
-          ) : orderItems.length > 0 ? (
+          ) : displayLines.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="min-w-full text-left text-sm">
                 <thead className="border-b bg-gray-50 text-gray-500">
                   <tr>
                     <th className="px-4 py-3">No.</th>
                     <th className="px-4 py-3">メーカー</th>
-                    <th className="px-4 py-3">型番</th>
+                    <th className="px-4 py-3">型番 / 名称</th>
                     <th className="px-4 py-3 text-right">数量</th>
                     <th className="px-4 py-3 text-right">仕入単価</th>
                     <th className="px-4 py-3 text-right">金額</th>
@@ -365,33 +388,13 @@ export default async function OrderDetailPage({
                   </tr>
                 </thead>
                 <tbody>
-                  {orderItems.map((item, index) => {
-                    const product = item.product_id
-                      ? productMap.get(item.product_id)
-                      : null;
-                    return (
-                      <tr key={item.id} className="border-b last:border-b-0">
-                        <td className="px-4 py-3">{index + 1}</td>
-                        <td className="px-4 py-3 font-semibold text-gray-900">
-                          {displayIdentityValue(product?.manufacturer_name)}
-                        </td>
-                        <td className="px-4 py-3">
-                          {displayIdentityValue(product?.model_no)}
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          {toNumber(item.quantity).toLocaleString("ja-JP")}
-                          {product?.unit ? ` ${product.unit}` : ""}
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          {formatYen(toNumber(item.unit_price))}
-                        </td>
-                        <td className="px-4 py-3 text-right font-bold">
-                          {formatYen(toNumber(item.amount))}
-                        </td>
-                        <td className="px-4 py-3">{item.memo || "-"}</td>
-                      </tr>
-                    );
-                  })}
+                  {displayLines.map((line, index) => (
+                    <OrderDisplayRow
+                      key={line.key}
+                      line={line}
+                      index={index}
+                    />
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -410,6 +413,80 @@ export default async function OrderDetailPage({
         </section>
       </main>
     </>
+  );
+}
+
+function OrderDisplayRow({
+  line,
+  index,
+}: {
+  line: OrderDisplayLine;
+  index: number;
+}) {
+  if (line.kind === "PACKAGE") {
+    return (
+      <tr className="border-b last:border-b-0 align-top">
+        <td className="px-4 py-3">{index + 1}</td>
+        <td className="px-4 py-3 font-semibold text-gray-900">パッケージ</td>
+        <td className="px-4 py-3">
+          <div className="font-semibold text-gray-900">{line.package_name}</div>
+          {line.components.length > 0 ? (
+            <div className="mt-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
+              <p className="text-[11px] font-medium text-gray-500">
+                構成内訳（金額なし）
+              </p>
+              <ul className="mt-1 space-y-1">
+                {line.components.map((c) => (
+                  <li key={c.key} className="text-xs text-gray-700">
+                    {[c.manufacturer_name, c.product_name, c.model_no]
+                      .filter(Boolean)
+                      .join(" / ") || "名称未設定"}
+                    <span className="ml-2 tabular-nums text-gray-500">
+                      × {c.quantity.toLocaleString("ja-JP")}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </td>
+        <td className="px-4 py-3 text-right tabular-nums">
+          {line.quantity.toLocaleString("ja-JP")}
+        </td>
+        <td className="px-4 py-3 text-right tabular-nums">
+          {formatYen(line.unit_price)}
+        </td>
+        <td className="px-4 py-3 text-right font-bold tabular-nums">
+          {formatYen(line.amount)}
+        </td>
+        <td className="px-4 py-3">-</td>
+      </tr>
+    );
+  }
+
+  return (
+    <tr className="border-b last:border-b-0">
+      <td className="px-4 py-3">{index + 1}</td>
+      <td className="px-4 py-3 font-semibold text-gray-900">
+        {displayIdentityValue(line.manufacturer_name)}
+      </td>
+      <td className="px-4 py-3">
+        {displayIdentityValue(line.model_no)}
+        {line.product_name ? (
+          <div className="mt-0.5 text-xs text-gray-500">{line.product_name}</div>
+        ) : null}
+      </td>
+      <td className="px-4 py-3 text-right tabular-nums">
+        {line.quantity.toLocaleString("ja-JP")}
+      </td>
+      <td className="px-4 py-3 text-right tabular-nums">
+        {formatYen(line.unit_price)}
+      </td>
+      <td className="px-4 py-3 text-right font-bold tabular-nums">
+        {formatYen(line.amount)}
+      </td>
+      <td className="px-4 py-3">{line.memo || "-"}</td>
+    </tr>
   );
 }
 

@@ -8,6 +8,9 @@ import { parseCaseExtras } from "@/app/admin/orders/parseCaseExtras";
 import { PrintCompanyFooter } from "@/app/components/print/CompanyPrintBlocks";
 import { fetchCompanySettingsForPrint } from "@/lib/companyInfo/fetchCompanySettingsForPrint";
 import type { PrintCompanyInfo } from "@/lib/companyInfo/printCompanyInfo";
+import {
+  buildDeliveryQuantityLines,
+} from "@/lib/orders/orderPackageDisplay";
 import { supabase } from "@/lib/supabase";
 import { listOrderItemsByOrderId } from "@/lib/repositories/orderItems";
 import type { OrderItemRow } from "@/lib/database.types";
@@ -141,19 +144,19 @@ export default function DeliveryPrintPage() {
         }
 
         if (!cancelled) {
-          setItems(
-            itemsResult.data.map((item) => {
-              const product = item.product_id
-                ? productMap.get(item.product_id)
-                : undefined;
-              return {
-                ...item,
-                manufacturer_name: product?.manufacturer_name || "",
-                model_no: product?.model_no || "",
-                product_name: product?.product_name || "",
-              };
-            })
-          );
+          const enriched = itemsResult.data.map((item) => {
+            const product = item.product_id
+              ? productMap.get(item.product_id)
+              : undefined;
+            return {
+              ...item,
+              manufacturer_name: product?.manufacturer_name || "",
+              model_no: product?.model_no || "",
+              product_name: product?.product_name || "",
+            };
+          });
+          // パッケージ金額行は数量明細に出さない（構成数量行のみ）
+          setItems(buildDeliveryQuantityLines(enriched) as PrintLine[]);
         }
       } catch (e) {
         if (!cancelled) {

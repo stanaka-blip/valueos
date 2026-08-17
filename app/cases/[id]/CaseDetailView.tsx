@@ -74,6 +74,13 @@ export type OrderLineRow = {
   quantity: number;
   unitPrice: number;
   amount: number;
+  /** パッケージ行の構成内訳（金額なし） */
+  components?: Array<{
+    id: string;
+    manufacturerName: string;
+    modelNo: string;
+    quantity: number;
+  }>;
 };
 
 export type OrderRow = {
@@ -87,7 +94,10 @@ export type OrderRow = {
   orderAmount: number;
   status: string;
   memo: string;
+  /** 仕入金額表示用（パッケージは1行＋構成内訳） */
   lines: OrderLineRow[];
+  /** 納品数量表示用（パッケージ金額行を除く構成数量） */
+  deliveryLines: OrderLineRow[];
 };
 
 export type InvoiceRow = {
@@ -1251,9 +1261,24 @@ function PurchaseTab({
                     </thead>
                     <tbody>
                       {order.lines.map((line) => (
-                        <tr key={line.id} className="border-t border-gray-50">
+                        <tr key={line.id} className="border-t border-gray-50 align-top">
                           <td className="py-2 pr-3 text-gray-900">
                             {line.manufacturerName || "—"}
+                            {line.components && line.components.length > 0 ? (
+                              <ul className="mt-1 space-y-0.5 text-xs font-normal text-gray-500">
+                                {line.components.map((c) => (
+                                  <li key={c.id}>
+                                    構成：
+                                    {[c.manufacturerName, c.modelNo]
+                                      .filter(Boolean)
+                                      .join(" / ") || "—"}
+                                    <span className="ml-1 tabular-nums">
+                                      × {c.quantity.toLocaleString("ja-JP")}
+                                    </span>
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : null}
                           </td>
                           <td className="py-2 pr-3 text-gray-700">
                             {line.modelNo || "—"}
@@ -1382,7 +1407,7 @@ function DeliveryTab({
                   </div>
                 </div>
 
-                {order.lines.length > 0 ? (
+                {order.deliveryLines.length > 0 ? (
                   <div className="mt-4 overflow-x-auto border-t border-gray-100 pt-4">
                     <table className="min-w-full text-left text-sm">
                       <thead className="text-xs text-gray-500">
@@ -1397,7 +1422,7 @@ function DeliveryTab({
                         </tr>
                       </thead>
                       <tbody>
-                        {order.lines.map((line) => (
+                        {order.deliveryLines.map((line) => (
                           <tr key={line.id} className="border-t border-gray-50">
                             <td className="py-2 pr-3 text-gray-900">
                               {line.manufacturerName || "—"}

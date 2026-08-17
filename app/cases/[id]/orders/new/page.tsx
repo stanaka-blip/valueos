@@ -12,7 +12,10 @@ import {
 } from "react";
 import { useParams, useRouter } from "next/navigation";
 
-import { fetchActivePurchaseUnitPrices } from "@/lib/purchasePrices";
+import {
+  fetchActivePackagePurchaseUnitPrices,
+  fetchActivePurchaseUnitPrices,
+} from "@/lib/purchasePrices";
 import { supabase } from "@/lib/supabase";
 import type { WorkflowResult } from "@/lib/workflow";
 
@@ -44,6 +47,8 @@ import {
   generateUniqueOrderNumbers,
   groupLinesBySupplier,
   groupOrderTargetsBySupplier,
+  packageLineAmount,
+  scalePackageItemQuantities,
   sumOrderAmount,
   validateOrderTargetsForSave,
   type OrderTarget,
@@ -139,12 +144,20 @@ export default function NewOrderPage() {
   );
 
   const unsetPriceLines = useMemo(
-    () => flatLines.filter((line) => isUnitPriceUnset(line.unit_price)),
+    () =>
+      flatLines.filter(
+        (line) =>
+          line.source !== "PACKAGE_ITEM" && isUnitPriceUnset(line.unit_price)
+      ),
     [flatLines]
   );
 
   const zeroPriceLines = useMemo(
-    () => flatLines.filter((line) => isUnitPriceRealZero(line.unit_price)),
+    () =>
+      flatLines.filter(
+        (line) =>
+          line.source !== "PACKAGE_ITEM" && isUnitPriceRealZero(line.unit_price)
+      ),
     [flatLines]
   );
 
@@ -233,6 +246,7 @@ export default function NewOrderPage() {
             `
             id,
             package_id,
+            case_product_id,
             quantity,
             package_name_snapshot,
             packages (
@@ -303,9 +317,35 @@ export default function NewOrderPage() {
       }
 
       const normalizedCase = rawCaseData as unknown as CaseRelation;
+      const purchaseByCaseProductId = new Map<string, number | string | null>();
+      for (const row of rawCaseProducts || []) {
+        const lt = String(
+          (row as { line_type?: string | null }).line_type || ""
+        )
+          .trim()
+          .toUpperCase();
+        if (lt !== "PACKAGE") continue;
+        const id = String((row as { id?: string }).id || "");
+        if (!id) continue;
+        purchaseByCaseProductId.set(
+          id,
+          (row as { purchase_price?: number | string | null }).purchase_price ??
+            null
+        );
+      }
+      const packagesForTargets = (rawCasePackages || []).map((pkg) => {
+        const row = pkg as { case_product_id?: string | null };
+        const cpId = row.case_product_id || null;
+        return {
+          ...pkg,
+          case_product_purchase_price: cpId
+            ? purchaseByCaseProductId.get(cpId) ?? null
+            : null,
+        };
+      });
       let nextTargets = buildOrderTargets(
         (rawCaseProducts || []) as Parameters<typeof buildOrderTargets>[0],
-        (rawCasePackages || []) as Parameters<typeof buildOrderTargets>[1]
+        packagesForTargets as Parameters<typeof buildOrderTargets>[1]
       );
 
       const priced = await refreshPricesForTargets(
@@ -357,56 +397,90 @@ export default function NewOrderPage() {
     currentTargets: OrderTarget[],
     orderDate: string
   ): Promise<{ targets: OrderTarget[]; missingProductNames: string[] }> {
-    const bySupplier = new Map<string, string[]>();
+    const productIdsBySupplier = new Map<string, string[]>();
+    const packageIdsBySupplier = new Map<string, string[]>();
 
     for (const target of currentTargets) {
       const supplierId = target.supplier_id.trim();
       if (!supplierId) continue;
-      const list = bySupplier.get(supplierId) || [];
       if (target.kind === "PRODUCT") {
         if (!target.has_case_snapshot && target.product_id) {
+          const list = productIdsBySupplier.get(supplierId) || [];
           list.push(target.product_id);
+          productIdsBySupplier.set(supplierId, list);
         }
-      } else {
-        for (const item of target.items) {
-          if (!item.has_case_snapshot && item.product_id) {
-            list.push(item.product_id);
-          }
-        }
+      } else if (!target.has_case_snapshot && target.package_id) {
+        const list = packageIdsBySupplier.get(supplierId) || [];
+        list.push(target.package_id);
+        packageIdsBySupplier.set(supplierId, list);
       }
-      bySupplier.set(supplierId, list);
     }
 
     const unitPriceBySupplierProduct = new Map<string, Map<string, number>>();
+    const unitPriceBySupplierPackage = new Map<string, Map<string, number>>();
+    const supplierIds = new Set([
+      ...productIdsBySupplier.keys(),
+      ...packageIdsBySupplier.keys(),
+    ]);
 
     await Promise.all(
-      Array.from(bySupplier.entries()).map(async ([supplierId, productIds]) => {
-        const unique = Array.from(new Set(productIds));
-        if (unique.length === 0) {
-          unitPriceBySupplierProduct.set(supplierId, new Map());
-          return;
-        }
-        const priceResult = await fetchActivePurchaseUnitPrices(supabase, {
-          productIds: unique,
-          supplierId,
-          asOfDate: orderDate || getTodayString(),
-        });
-        if (priceResult.error) {
-          console.warn(
-            "[orders/new] 価格マスタ取得エラー:",
-            priceResult.error
-          );
-        }
-        unitPriceBySupplierProduct.set(
-          supplierId,
-          priceResult.unitPriceByProductId
+      Array.from(supplierIds).map(async (supplierId) => {
+        const productIds = Array.from(
+          new Set(productIdsBySupplier.get(supplierId) || [])
         );
+        const packageIds = Array.from(
+          new Set(packageIdsBySupplier.get(supplierId) || [])
+        );
+
+        if (productIds.length > 0) {
+          const priceResult = await fetchActivePurchaseUnitPrices(supabase, {
+            productIds,
+            supplierId,
+            asOfDate: orderDate || getTodayString(),
+          });
+          if (priceResult.error) {
+            console.warn(
+              "[orders/new] 商品仕入価格マスタ取得エラー:",
+              priceResult.error
+            );
+          }
+          unitPriceBySupplierProduct.set(
+            supplierId,
+            priceResult.unitPriceByProductId
+          );
+        } else {
+          unitPriceBySupplierProduct.set(supplierId, new Map());
+        }
+
+        if (packageIds.length > 0) {
+          const pkgResult = await fetchActivePackagePurchaseUnitPrices(
+            supabase,
+            {
+              packageIds,
+              supplierId,
+              asOfDate: orderDate || getTodayString(),
+            }
+          );
+          if (pkgResult.error) {
+            console.warn(
+              "[orders/new] パッケージ仕入価格マスタ取得エラー:",
+              pkgResult.error
+            );
+          }
+          unitPriceBySupplierPackage.set(
+            supplierId,
+            pkgResult.unitPriceByPackageId
+          );
+        } else {
+          unitPriceBySupplierPackage.set(supplierId, new Map());
+        }
       })
     );
 
     return applySupplierMasterUnitPrices(
       currentTargets,
-      unitPriceBySupplierProduct
+      unitPriceBySupplierProduct,
+      unitPriceBySupplierPackage
     );
   }
 
@@ -497,23 +571,20 @@ export default function NewOrderPage() {
     );
   }
 
-  function handlePackageItemFieldChange(
-    packageLocalId: string,
-    itemLocalId: string,
-    field: "quantity" | "unit_price" | "memo",
+  function handlePackageFieldChange(
+    localId: string,
+    field: "quantity" | "unit_price",
     value: string
   ) {
     setTargets((current) =>
       current.map((target) => {
-        if (target.kind !== "PACKAGE" || target.local_id !== packageLocalId) {
+        if (target.kind !== "PACKAGE" || target.local_id !== localId) {
           return target;
         }
-        return {
-          ...target,
-          items: target.items.map((item) =>
-            item.local_id === itemLocalId ? { ...item, [field]: value } : item
-          ),
-        };
+        if (field === "quantity") {
+          return scalePackageItemQuantities(target, value);
+        }
+        return { ...target, unit_price: value };
       })
     );
   }
@@ -869,7 +940,7 @@ export default function NewOrderPage() {
           <div>
             <h3 className="mb-3 text-base font-bold text-gray-900">発注明細</h3>
             <p className="mb-3 text-xs text-gray-500">
-              仕入先ごとに発注書が分かれます。PRODUCTは商品行ごと、PACKAGEはパッケージ単位で仕入先を選択します（構成品に仕入先選択はありません）。
+              仕入先ごとに発注書が分かれます。PRODUCTは商品行ごと、PACKAGEはパッケージ単位で仕入単価を入力します（構成部材は内訳表示のみ・金額入力なし）。
               初期値は各マスタの標準仕入先です。単価優先: 案件スナップショット →
               選択仕入先の価格マスタ → 手入力。
             </p>
@@ -939,7 +1010,7 @@ export default function NewOrderPage() {
                               suppliers={suppliers}
                               disabled={submitting || priceLoading}
                               onSupplierChange={handlePackageSupplierChange}
-                              onItemFieldChange={handlePackageItemFieldChange}
+                              onFieldChange={handlePackageFieldChange}
                             />
                           )
                         )}
@@ -976,7 +1047,7 @@ export default function NewOrderPage() {
                             suppliers={suppliers}
                             disabled={submitting || priceLoading}
                             onSupplierChange={handlePackageSupplierChange}
-                            onItemFieldChange={handlePackageItemFieldChange}
+                            onFieldChange={handlePackageFieldChange}
                           />
                         )
                       )}
@@ -1144,19 +1215,20 @@ function PackageTargetCard({
   suppliers,
   disabled,
   onSupplierChange,
-  onItemFieldChange,
+  onFieldChange,
 }: {
   target: PackageOrderTarget;
   suppliers: Supplier[];
   disabled: boolean;
   onSupplierChange: (localId: string, supplierId: string) => void;
-  onItemFieldChange: (
-    packageLocalId: string,
-    itemLocalId: string,
-    field: "quantity" | "unit_price" | "memo",
+  onFieldChange: (
+    localId: string,
+    field: "quantity" | "unit_price",
     value: string
   ) => void;
 }) {
+  const amount = packageLineAmount(target);
+
   return (
     <div className="rounded-lg border border-gray-200 p-4">
       <div className="flex flex-wrap items-start justify-between gap-2 border-b border-gray-100 pb-3">
@@ -1165,7 +1237,8 @@ function PackageTargetCard({
             {target.package_name || "パッケージ"}
           </p>
           <p className="mt-0.5 text-xs text-gray-500">
-            パッケージ単位で仕入先を選択（構成品は引き継ぎ）
+            パッケージ単位の仕入（構成品に金額入力はありません）
+            {target.has_case_snapshot ? " · 案件スナップショット単価" : ""}
           </p>
         </div>
         <label className="block min-w-[220px] flex-1">
@@ -1193,94 +1266,67 @@ function PackageTargetCard({
         </label>
       </div>
 
-      <div className="mt-3 space-y-3">
-        {target.items.map((item) => {
-          const qty = parseOrderQuantity(item.quantity) ?? 0;
-          const unit = parseUnitPriceInput(item.unit_price);
-          const amount =
-            unit == null || unit < 0 ? 0 : calcLineAmount(qty, unit);
-          return (
-            <div
+      <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
+        <label className="block">
+          <span className="text-xs font-bold text-gray-600">数量</span>
+          <input
+            type="text"
+            inputMode="numeric"
+            value={target.quantity}
+            onChange={(e) =>
+              onFieldChange(target.local_id, "quantity", e.target.value)
+            }
+            disabled={disabled}
+            className={`${inputClassName} mt-1`}
+          />
+        </label>
+        <label className="block">
+          <span className="text-xs font-bold text-gray-600">仕入単価</span>
+          <input
+            type="text"
+            inputMode="numeric"
+            value={target.unit_price}
+            onChange={(e) =>
+              onFieldChange(target.local_id, "unit_price", e.target.value)
+            }
+            disabled={disabled}
+            className={`${inputClassName} mt-1`}
+          />
+        </label>
+        <div className="block">
+          <span className="text-xs font-bold text-gray-600">仕入金額</span>
+          <p className="mt-1 rounded-lg border border-gray-200 bg-[#f7f7f5] px-4 py-3 text-right text-sm font-semibold text-gray-900">
+            {amount == null ? "—" : formatYen(amount)}
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-4 rounded-md border border-dashed border-gray-200 bg-[#fafafa] p-3">
+        <p className="text-xs font-semibold text-gray-700">
+          構成内訳（参考・金額なし）
+        </p>
+        <ul className="mt-2 space-y-1.5">
+          {target.items.map((item) => (
+            <li
               key={item.local_id}
-              className="rounded-md bg-[#f7f7f5] p-3"
+              className="flex flex-wrap items-baseline justify-between gap-2 text-sm text-gray-800"
             >
-              <p className="text-sm font-medium text-gray-900">
-                {item.manufacturer_name || "—"}
-              </p>
-              <p className="mt-0.5 text-xs text-gray-500">
-                型番: {item.model_no || "—"} · パッケージ構成
-                {item.has_case_snapshot ? " · 既存単価" : ""}
-                {" · 仕入先はパッケージに準拠"}
-              </p>
-              <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
-                <label className="block">
-                  <span className="text-xs font-bold text-gray-600">数量</span>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={item.quantity}
-                    onChange={(e) =>
-                      onItemFieldChange(
-                        target.local_id,
-                        item.local_id,
-                        "quantity",
-                        e.target.value
-                      )
-                    }
-                    disabled={disabled}
-                    className={`${inputClassName} mt-1`}
-                  />
-                </label>
-                <label className="block">
-                  <span className="text-xs font-bold text-gray-600">
-                    仕入単価
+              <span>
+                {item.manufacturer_name ? `${item.manufacturer_name} ` : ""}
+                {item.product_name}
+                {item.model_no ? (
+                  <span className="text-xs text-gray-500">
+                    {" "}
+                    （{item.model_no}）
                   </span>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={item.unit_price}
-                    placeholder="未設定"
-                    onChange={(e) =>
-                      onItemFieldChange(
-                        target.local_id,
-                        item.local_id,
-                        "unit_price",
-                        e.target.value
-                      )
-                    }
-                    disabled={disabled}
-                    className={`${inputClassName} mt-1 text-right`}
-                  />
-                </label>
-                <div>
-                  <p className="text-xs font-bold text-gray-600">金額</p>
-                  <p className="mt-3 text-sm font-semibold text-gray-900">
-                    {isUnitPriceUnset(item.unit_price)
-                      ? "—"
-                      : formatYen(amount)}
-                  </p>
-                </div>
-                <label className="block">
-                  <span className="text-xs font-bold text-gray-600">備考</span>
-                  <input
-                    type="text"
-                    value={item.memo}
-                    onChange={(e) =>
-                      onItemFieldChange(
-                        target.local_id,
-                        item.local_id,
-                        "memo",
-                        e.target.value
-                      )
-                    }
-                    disabled={disabled}
-                    className={`${inputClassName} mt-1`}
-                  />
-                </label>
-              </div>
-            </div>
-          );
-        })}
+                ) : null}
+              </span>
+              <span className="tabular-nums text-gray-600">
+                × {item.quantity || "—"}
+              </span>
+            </li>
+          ))}
+        </ul>
       </div>
     </div>
   );
