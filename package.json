@@ -13,7 +13,7 @@
     "test:profit": "tsx lib/profit/caseProfitCalc.test.ts",
     "test:payments-management": "tsx lib/queues/paymentsManagementQueue.test.ts",
     "test:invoice-lines": "tsx lib/invoices/invoiceLineItems.test.ts",
-    "test:dashboard": "tsx lib/dashboard/period.test.ts && tsx lib/dashboard/aggregateDashboardV1.test.ts && tsx lib/dashboard/invoiceUnpaid.test.ts",
+    "test:dashboard": "tsx lib/dashboard/period.test.ts && tsx lib/dashboard/aggregateDashboardV1.test.ts && tsx lib/dashboard/invoiceUnpaid.test.ts && tsx lib/dashboard/kpiDrilldown.test.ts",
     "test:auth-invite": "tsx lib/auth/inviteSession.test.ts",
     "test:master-delete": "tsx lib/masters/masterDeleteCore.test.ts",
     "test:product-bulk": "tsx lib/productBulkSetup/createProductBulkSetupLogic.test.ts && node scripts/pr-product-bulk-setup-test.mjs",

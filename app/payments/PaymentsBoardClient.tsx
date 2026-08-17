@@ -5,6 +5,12 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
 import FinanceReceiptPaidForm from "@/app/components/threeParty/FinanceReceiptPaidForm";
+import {
+  dashboardKpiBannerTitle,
+  matchesDashboardOverdueInvoice,
+  matchesDashboardUnpaidInvoice,
+  type DashboardKpiSource,
+} from "@/lib/dashboard/kpiDrilldown";
 import { INVOICE_PAYMENT_STATUSES } from "@/lib/payments/constants";
 import type { PaymentBoardRow, PaymentBoardSummary } from "@/lib/payments/loadPaymentBoard";
 import { SETTLEMENT_RULE_LIST } from "@/lib/workflow";
@@ -14,6 +20,7 @@ type Props = {
   summary: PaymentBoardSummary;
   initialUnpaid?: boolean;
   initialOverdue?: boolean;
+  fromDashboard?: DashboardKpiSource;
 };
 
 function formatYen(value: number): string {
@@ -43,6 +50,7 @@ export default function PaymentsBoardClient({
   summary,
   initialUnpaid = false,
   initialOverdue = false,
+  fromDashboard,
 }: Props) {
   const [status, setStatus] = useState("");
   const [settlementType, setSettlementType] = useState("");
@@ -78,8 +86,14 @@ export default function PaymentsBoardClient({
             ));
         if (!match) return false;
       }
-      if (overdueOnly && r.displayStatus !== "期限超過") return false;
-      if (
+      if (fromDashboard === "overdue") {
+        if (!matchesDashboardOverdueInvoice(r)) return false;
+      } else if (overdueOnly && r.displayStatus !== "期限超過") {
+        return false;
+      }
+      if (fromDashboard === "unpaid" || fromDashboard === "unpaid-amount") {
+        if (!matchesDashboardUnpaidInvoice(r)) return false;
+      } else if (
         unpaidOnly &&
         !(
           r.displayStatus === "未入金" ||
@@ -101,6 +115,7 @@ export default function PaymentsBoardClient({
     rows,
     status,
     settlementType,
+    fromDashboard,
     overdueOnly,
     unpaidOnly,
     dueFrom,
@@ -111,17 +126,47 @@ export default function PaymentsBoardClient({
     invoiceNo,
   ]);
 
+  const filteredUnpaidTotal = useMemo(
+    () => filtered.reduce((sum, r) => sum + r.unpaidAmount, 0),
+    [filtered]
+  );
+
   return (
     <div className="space-y-6">
+      {fromDashboard ? (
+        <div className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+          <p className="font-medium">{dashboardKpiBannerTitle(fromDashboard)}</p>
+          <p className="mt-0.5 text-xs text-sky-800">
+            {filtered.length}件 / {formatYen(filteredUnpaidTotal)}
+          </p>
+          <Link
+            href="/payments"
+            className="mt-2 inline-block font-medium underline"
+          >
+            解除
+          </Link>
+        </div>
+      ) : null}
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <SummaryCard label="未入金総額" value={formatYen(summary.unpaidTotal)} />
+        <SummaryCard
+          label="未入金総額"
+          value={formatYen(
+            fromDashboard === "unpaid" || fromDashboard === "unpaid-amount"
+              ? filteredUnpaidTotal
+              : summary.unpaidTotal
+          )}
+        />
         <SummaryCard
           label="今月入金予定額"
           value={formatYen(summary.dueThisMonthTotal)}
         />
         <SummaryCard
           label="期限超過額"
-          value={formatYen(summary.overdueTotal)}
+          value={formatYen(
+            fromDashboard === "overdue"
+              ? filteredUnpaidTotal
+              : summary.overdueTotal
+          )}
           alert
         />
         <SummaryCard

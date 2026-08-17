@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
+import { buildDashboardKpiHref } from "@/lib/dashboard/kpiDrilldown";
 import type { DashboardData } from "@/lib/dashboard/loadDashboard";
 import {
   PERIOD_PRESET_OPTIONS,
@@ -45,11 +46,15 @@ export default function DashboardClient({ data }: Props) {
     });
   }
 
-  const invoicesPeriodHref = "/invoices";
-  const paymentsUnpaidHref = "/payments?unpaid=1";
-  const paymentsOverdueHref = "/payments?overdue=1";
-  const casesUnorderedHref = "/cases?alert=unordered";
-  const casesUninvoicedHref = "/cases?alert=uninvoiced";
+  const period = { from: data.period.from, to: data.period.to };
+  const salesHref = buildDashboardKpiHref("sales", period);
+  const profitHref = buildDashboardKpiHref("profit", period);
+  const profitRateHref = buildDashboardKpiHref("profit-rate", period);
+  const unpaidAmountHref = buildDashboardKpiHref("unpaid-amount", period);
+  const unorderedHref = buildDashboardKpiHref("unordered", period);
+  const uninvoicedHref = buildDashboardKpiHref("uninvoiced", period);
+  const unpaidHref = buildDashboardKpiHref("unpaid", period);
+  const overdueHref = buildDashboardKpiHref("overdue", period);
 
   return (
     <div className="min-h-full bg-[#f4f5f7]">
@@ -140,22 +145,22 @@ export default function DashboardClient({ data }: Props) {
             <KpiCard
               label="売上"
               value={formatYen(data.kpis.sales)}
-              href={invoicesPeriodHref}
+              href={salesHref}
             />
             <KpiCard
               label="実粗利"
               value={formatYen(data.kpis.profit)}
-              href={invoicesPeriodHref}
+              href={profitHref}
             />
             <KpiCard
               label="粗利率"
               value={formatRate(data.kpis.profitRate)}
-              href={invoicesPeriodHref}
+              href={profitRateHref}
             />
             <KpiCard
               label="未入金額"
               value={formatYen(data.kpis.unpaidAmount)}
-              href={paymentsUnpaidHref}
+              href={unpaidAmountHref}
               hint="現在時点の未回収残高"
               alert={data.kpis.unpaidAmount > 0}
             />
@@ -171,25 +176,25 @@ export default function DashboardClient({ data }: Props) {
             <AlertCard
               label="未発注"
               count={data.alerts.unorderedCount}
-              href={casesUnorderedHref}
+              href={unorderedHref}
               hint="案件単位 / canOrderかつ発注0"
             />
             <AlertCard
               label="未請求"
               count={data.alerts.uninvoicedCount}
-              href={casesUninvoicedHref}
+              href={uninvoicedHref}
               hint="案件単位 / canInvoiceかつ請求0"
             />
             <AlertCard
               label="未入金"
               count={data.alerts.unpaidInvoiceCount}
-              href={paymentsUnpaidHref}
+              href={unpaidHref}
               hint="請求単位"
             />
             <AlertCard
               label="期限超過"
               count={data.alerts.overdueInvoiceCount}
-              href={paymentsOverdueHref}
+              href={overdueHref}
               hint="請求単位"
               alert
             />

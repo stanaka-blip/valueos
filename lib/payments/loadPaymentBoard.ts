@@ -20,6 +20,7 @@ import {
 export type PaymentBoardRow = {
   invoiceId: string;
   invoiceNo: string;
+  invoiceStatus: string | null;
   invoiceAmount: number;
   invoiceDate: string | null;
   dueDate: string | null;
@@ -297,6 +298,7 @@ export async function loadPaymentBoard(today?: string): Promise<PaymentBoardData
     let row: PaymentBoardRow = {
       invoiceId,
       invoiceNo: (inv.invoice_no as string) || "",
+      invoiceStatus: (inv.status as string) || null,
       invoiceAmount: summary.invoiceAmount,
       invoiceDate: (inv.invoice_date as string) || null,
       dueDate: (inv.due_date as string) || null,
