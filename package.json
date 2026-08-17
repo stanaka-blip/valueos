@@ -17,6 +17,7 @@
     "test:auth-invite": "tsx lib/auth/inviteSession.test.ts",
     "test:master-delete": "tsx lib/masters/masterDeleteCore.test.ts",
     "test:product-bulk": "tsx lib/productBulkSetup/createProductBulkSetupLogic.test.ts && node scripts/pr-product-bulk-setup-test.mjs",
+    "test:organization-core": "tsx lib/organizations/organizationCoreLogic.test.ts && node scripts/pr-organization-core-contract-test.mjs",
     "gen:db-types": "bash scripts/generate-database-types.sh"
   },
   "dependencies": {
