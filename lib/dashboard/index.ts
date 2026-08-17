@@ -14,3 +14,7 @@ export {
 export { sumSalesAndProfit } from "@/lib/dashboard/salesMetrics";
 export { aggregateDashboardV1 } from "@/lib/dashboard/aggregateDashboardV1";
 export { loadWorkflowAlertCaseIds } from "@/lib/dashboard/caseAlerts";
+export {
+  buildDashboardKpiHref,
+  dashboardKpiBannerTitle,
+} from "@/lib/dashboard/kpiDrilldown";

@@ -1,4 +1,9 @@
 import { loadWorkflowAlertCaseIds } from "@/lib/dashboard/caseAlerts";
+import {
+  dashboardKpiBannerTitle,
+  formatDashboardPeriodRange,
+} from "@/lib/dashboard/kpiDrilldown";
+import { loadDashboard } from "@/lib/dashboard/loadDashboard";
 import { isDateInRange } from "@/lib/dashboard/period";
 import { loadAllCaseSettlementsAdmin } from "@/lib/queues/loadCaseSettlementsAdmin";
 import { resolveOrderQueueSettlementLabel } from "@/lib/queues/orderQueue";
@@ -42,6 +47,10 @@ function getSingleRelation<T>(
   return relation;
 }
 
+function formatYen(value: number): string {
+  return new Intl.NumberFormat("ja-JP").format(Math.round(value)) + "円";
+}
+
 export default async function CasesPage({
   searchParams,
 }: {
@@ -50,17 +59,24 @@ export default async function CasesPage({
     to?: string;
     orderReceivedFrom?: string;
     orderReceivedTo?: string;
+    invoiceFrom?: string;
+    invoiceTo?: string;
+    fromDashboard?: string;
     alert?: string;
   }>;
 }) {
   const params = await searchParams;
-  // 互換: from/to も受注日期間として扱う
+  // 互換: from/to も受注日期間として扱う（売上KPIの請求日とは別）
   const orderReceivedFrom =
     params.orderReceivedFrom || params.from || "";
   const orderReceivedTo = params.orderReceivedTo || params.to || "";
+  const invoiceFrom = params.invoiceFrom || "";
+  const invoiceTo = params.invoiceTo || "";
+  const fromDashboard = params.fromDashboard || "";
   const alert = params.alert || "";
+  const hasInvoicePeriod = Boolean(invoiceFrom && invoiceTo);
 
-  const [{ data: cases, error }, settlementsResult] = await Promise.all([
+  const [{ data: cases, error }, settlementsResult, dashboard] = await Promise.all([
     supabase
       .from("cases")
       .select(
@@ -110,6 +126,13 @@ export default async function CasesPage({
       )
       .order("created_at", { ascending: false }),
     loadAllCaseSettlementsAdmin(),
+    hasInvoicePeriod
+      ? loadDashboard({
+          preset: "custom",
+          from: invoiceFrom,
+          to: invoiceTo,
+        })
+      : Promise.resolve(null),
   ]);
 
   if (error) {
@@ -150,6 +173,13 @@ export default async function CasesPage({
 
   let filterIds: Set<string> | null = null;
   let filterLabel = "";
+  let filterBanner:
+    | {
+        title: string;
+        period?: string;
+        summary?: string;
+      }
+    | undefined;
 
   if (alert === "unordered" || alert === "uninvoiced") {
     const alerts = await loadWorkflowAlertCaseIds();
@@ -159,6 +189,45 @@ export default async function CasesPage({
         : alerts.uninvoicedCaseIds
     );
     filterLabel = alert === "unordered" ? "未発注アラート" : "未請求アラート";
+    if (fromDashboard) {
+      filterBanner = {
+        title: dashboardKpiBannerTitle(fromDashboard),
+        summary: `${filterIds.size}件`,
+      };
+    }
+  } else if (hasInvoicePeriod) {
+    if (dashboard?.error) {
+      return (
+        <div className="min-h-full bg-[#f7f7f5]">
+          <header className="border-b border-gray-200/80 bg-white px-6 py-5 md:px-8">
+            <h1 className="text-xl font-semibold text-gray-900">全案件</h1>
+          </header>
+          <div className="p-6 md:p-8">
+            <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-sm text-red-700">
+              データ取得エラー：{dashboard.error}
+            </div>
+          </div>
+        </div>
+      );
+    }
+    filterIds = new Set(dashboard?.periodCaseIds || []);
+    const periodLabel = formatDashboardPeriodRange(invoiceFrom, invoiceTo);
+    filterLabel = `請求日 ${invoiceFrom} 〜 ${invoiceTo}`;
+    const source = fromDashboard || "sales";
+    const salesYen = formatYen(dashboard?.kpis.sales || 0);
+    const profitYen = formatYen(dashboard?.kpis.profit || 0);
+    const profitRate = `${(dashboard?.kpis.profitRate || 0).toFixed(1)}%`;
+    const amountLabel =
+      source === "profit-rate"
+        ? `実粗利 ${profitYen} / 粗利率 ${profitRate}`
+        : source === "profit"
+          ? `実粗利 ${profitYen}`
+          : `売上 ${salesYen}`;
+    filterBanner = {
+      title: dashboardKpiBannerTitle(source),
+      period: periodLabel,
+      summary: `${filterIds.size}件 / ${amountLabel}`,
+    };
   } else if (orderReceivedFrom && orderReceivedTo) {
     const ids = new Set<string>();
     for (const row of (cases || []) as unknown as CaseListRow[]) {
@@ -217,7 +286,11 @@ export default async function CasesPage({
       </header>
 
       <div className="p-6 md:p-8">
-        <CasesList items={items} filterLabel={filterLabel} />
+        <CasesList
+          items={items}
+          filterLabel={filterLabel}
+          filterBanner={filterBanner}
+        />
       </div>
     </div>
   );

@@ -42,9 +42,15 @@ function MultilineCell({ value }: { value: string }) {
 export default function CasesList({
   items,
   filterLabel,
+  filterBanner,
 }: {
   items: CasesListItem[];
   filterLabel?: string;
+  filterBanner?: {
+    title: string;
+    period?: string;
+    summary?: string;
+  };
 }) {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -116,7 +122,20 @@ export default function CasesList({
 
   return (
     <div className="space-y-5">
-      {filterLabel ? (
+      {filterBanner ? (
+        <div className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+          <p className="font-medium">{filterBanner.title}</p>
+          {filterBanner.period ? (
+            <p className="mt-0.5">{filterBanner.period}</p>
+          ) : null}
+          {filterBanner.summary ? (
+            <p className="mt-0.5 text-xs text-sky-800">{filterBanner.summary}</p>
+          ) : null}
+          <Link href="/cases" className="mt-2 inline-block font-medium underline">
+            解除
+          </Link>
+        </div>
+      ) : filterLabel ? (
         <div className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
           ダッシュボードから絞り込み中: {filterLabel}
           <Link href="/cases" className="ml-3 font-medium underline">
