@@ -38,7 +38,7 @@ const PKG_MASTER = "44444444-4444-4444-8444-444444444444";
 
 const packages = [
   {
-    id: "pkg1",
+    id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
     package_id: PKG_MASTER,
     case_product_id: "cp-pkg",
     quantity: 1,
@@ -47,7 +47,7 @@ const packages = [
     packages: { name: "全負荷単機能11.1kwシステム", default_supplier_id: SUP },
     case_package_items: [
       {
-        id: "i1",
+        id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
         product_id: P1,
         quantity: 1,
         unit_purchase_price: null,
@@ -62,7 +62,7 @@ const packages = [
         products: { name: "ニチコン ESS-U4M1", model_no: "ESS-U4M1" },
       },
       {
-        id: "i2",
+        id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
         product_id: P2,
         quantity: 1,
         unit_purchase_price: null,

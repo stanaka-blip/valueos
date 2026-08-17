@@ -9,6 +9,14 @@
 export const VE_PKG_AMT_PREFIX = "[VE_PKG_AMT]";
 export const VE_PKG_COMP_PREFIX = "[VE_PKG_COMP]";
 
+/** case_packages.id 想定の UUID（誤判定防止） */
+const CASE_PACKAGE_ID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function isCasePackageId(value: string): boolean {
+  return CASE_PACKAGE_ID_RE.test(value);
+}
+
 export function buildPackageAmountMemo(input: {
   casePackageId: string;
   packageName: string;
@@ -20,6 +28,24 @@ export function buildPackageAmountMemo(input: {
 
 export function buildPackageComponentMemo(casePackageId: string): string {
   return `${VE_PKG_COMP_PREFIX}|${casePackageId}`;
+}
+
+/** 内部識別子で始まるか（パース成否に関わらず UI 露出防止用） */
+export function containsPackageMemoMarker(
+  memo: string | null | undefined
+): boolean {
+  const raw = (memo || "").trim();
+  return (
+    raw.startsWith(VE_PKG_AMT_PREFIX) || raw.startsWith(VE_PKG_COMP_PREFIX)
+  );
+}
+
+/** ユーザー向け備考。内部マーカーは空文字（帳票・詳細に出さない） */
+export function displaySafeOrderItemMemo(
+  memo: string | null | undefined
+): string {
+  if (containsPackageMemoMarker(memo)) return "";
+  return (memo || "").trim();
 }
 
 export function parsePackageAmountMemo(memo: string | null | undefined): {
@@ -34,7 +60,11 @@ export function parsePackageAmountMemo(memo: string | null | undefined): {
   const casePackageId = parts[1]?.trim() || "";
   const packageName = parts[2]?.trim() || "パッケージ";
   const packageQty = Number(parts[3]);
-  if (!casePackageId || !Number.isInteger(packageQty) || packageQty < 1) {
+  if (
+    !isCasePackageId(casePackageId) ||
+    !Number.isInteger(packageQty) ||
+    packageQty < 1
+  ) {
     return null;
   }
   return { casePackageId, packageName, packageQty };
@@ -46,7 +76,7 @@ export function parsePackageComponentMemo(
   const raw = (memo || "").trim();
   if (!raw.startsWith(VE_PKG_COMP_PREFIX + "|")) return null;
   const casePackageId = raw.slice((VE_PKG_COMP_PREFIX + "|").length).trim();
-  if (!casePackageId) return null;
+  if (!isCasePackageId(casePackageId)) return null;
   return { casePackageId };
 }
 
@@ -176,7 +206,7 @@ export function buildOrderDisplayLines(
       quantity: toNumber(item.quantity) || 0,
       unit_price: toNumber(item.unit_price),
       amount: toNumber(item.amount),
-      memo: (item.memo || "").trim(),
+      memo: displaySafeOrderItemMemo(item.memo),
     });
     orderKeys.push(key);
   }

@@ -987,7 +987,7 @@ export default function NewOrderPage() {
                           <span>
                             明細件数:{" "}
                             <span className="font-medium text-gray-900">
-                              {groupLines.length}件
+                              {group.targets.length}件
                             </span>
                           </span>
                         </div>
