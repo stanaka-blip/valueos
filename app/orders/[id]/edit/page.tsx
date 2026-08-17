@@ -33,6 +33,10 @@ import {
   displayIdentityValue,
   resolveProductIdentity,
 } from "@/app/orders/productIdentity";
+import {
+  containsPackageMemoMarker,
+  displaySafeOrderItemMemo,
+} from "@/lib/orders/orderPackageDisplay";
 
 type LineDraft = {
   id: string | null;
@@ -629,19 +633,25 @@ export default function EditOrderPage() {
                           )}
                         </td>
                         <td className="px-3 py-3">
-                          <input
-                            type="text"
-                            value={line.memo}
-                            onChange={(e) =>
-                              handleLineChange(
-                                line.local_id,
-                                "memo",
-                                e.target.value
-                              )
-                            }
-                            disabled={submitting}
-                            className={inputClassName}
-                          />
+                          {containsPackageMemoMarker(line.memo) ? (
+                            <span className="text-xs text-gray-500">
+                              {displaySafeOrderItemMemo(line.memo) || "—"}
+                            </span>
+                          ) : (
+                            <input
+                              type="text"
+                              value={line.memo}
+                              onChange={(e) =>
+                                handleLineChange(
+                                  line.local_id,
+                                  "memo",
+                                  e.target.value
+                                )
+                              }
+                              disabled={submitting}
+                              className={inputClassName}
+                            />
+                          )}
                         </td>
                       </tr>
                     ))}

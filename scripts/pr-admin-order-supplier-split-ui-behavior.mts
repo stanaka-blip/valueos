@@ -60,14 +60,14 @@ const products = [
 
 const packages = [
   {
-    id: "pkg1",
+    id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
     package_id: "44444444-4444-4444-8444-444444444444",
     quantity: 1,
     package_name_snapshot: "PKG",
     packages: { name: "PKG", default_supplier_id: SUP_A },
     case_package_items: [
       {
-        id: "i1",
+        id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
         product_id: P3,
         quantity: 2,
         unit_purchase_price: null,
@@ -149,25 +149,28 @@ check("PACKAGE 1件・構成品に仕入先なし・パッケージ仕入先を�
   if (targets[0].kind !== "PACKAGE") throw new Error("kind");
   assert.equal(targets[0].supplier_id, SUP_A);
   assert.equal(targets[0].items.length, 1);
-  const flat = flattenOrderTargets(targets);
+  // 単価未設定時は構成行のみ（金額行は検証通過後に付く）
+  const flat = flattenOrderTargets([
+    { ...targets[0], unit_price: "1000" },
+  ]);
+  assert.equal(flat[0].source, "PACKAGE_AMOUNT");
   assert.equal(flat[0].supplier_id, SUP_A);
-  assert.equal(flat[0].source, "PACKAGE_ITEM");
+  assert.equal(flat[1].source, "PACKAGE_ITEM");
+  assert.equal(flat[1].unit_price, "0");
   assert.ok(!("supplier_id" in targets[0].items[0]));
 });
 
 check("PRODUCT+PACKAGE混在の振り分け", () => {
   const targets = buildOrderTargets(products, packages).map((t) => {
     if (t.kind === "PRODUCT") return { ...t, unit_price: "100" };
-    return {
-      ...t,
-      items: t.items.map((i) => ({ ...i, unit_price: "50" })),
-    };
+    return { ...t, unit_price: "500" };
   });
   const buckets = groupLinesBySupplier(flattenOrderTargets(targets));
   assert.equal(buckets.length, 2);
   const a = buckets.find((b) => b.supplier_id === SUP_A);
   const b = buckets.find((b) => b.supplier_id === SUP_B);
-  assert.equal(a?.lines.length, 2);
+  // SUP_A: PRODUCT + PACKAGE_AMOUNT + PACKAGE_ITEM
+  assert.equal(a?.lines.length, 3);
   assert.equal(b?.lines.length, 1);
 });
 
@@ -228,7 +231,7 @@ check("UIグループ: 仕入先単位でPACKAGE構造を維持", () => {
     return {
       ...t,
       supplier_id: t.default_supplier_id || "",
-      items: t.items.map((item) => ({ ...item, unit_price: "50" })),
+      unit_price: "50",
     };
   });
   const groups = groupOrderTargetsBySupplier(targets);

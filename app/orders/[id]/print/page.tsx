@@ -9,6 +9,10 @@ import { PrintCompanyFooter } from "@/app/components/print/CompanyPrintBlocks";
 import { fetchCompanySettingsForPrint } from "@/lib/companyInfo/fetchCompanySettingsForPrint";
 import type { PrintCompanyInfo } from "@/lib/companyInfo/printCompanyInfo";
 import { buildOrderPrintTaxDisplay } from "@/lib/orders/orderPrintTaxDisplay";
+import {
+  buildOrderDisplayLines,
+  type OrderDisplayLine,
+} from "@/lib/orders/orderPackageDisplay";
 import { supabase } from "@/lib/supabase";
 import { listOrderItemsByOrderId } from "@/lib/repositories/orderItems";
 import type { OrderItemRow } from "@/lib/database.types";
@@ -44,7 +48,7 @@ type CaseRow = {
   construction_detail: string | null;
 };
 
-type PrintLine = OrderItemRow & {
+type EnrichedItem = OrderItemRow & {
   manufacturer_name: string;
   model_no: string;
   product_name: string;
@@ -69,7 +73,7 @@ export default function OrderPrintPage() {
 
   const [order, setOrder] = useState<OrderRow | null>(null);
   const [caseRow, setCaseRow] = useState<CaseRow | null>(null);
-  const [items, setItems] = useState<PrintLine[]>([]);
+  const [items, setItems] = useState<EnrichedItem[]>([]);
   const [company, setCompany] = useState<PrintCompanyInfo | null>(null);
   const [loading, setLoading] = useState(!orderIdError);
   const [error, setError] = useState<string | null>(orderIdError);
@@ -157,7 +161,6 @@ export default function OrderPrintPage() {
         }
 
         if (!cancelled) {
-          // order_items は構成品・単体商品行のみ（PACKAGE親行は保存されない）
           setItems(
             itemsResult.data.map((item) => {
               const product = item.product_id
@@ -202,10 +205,15 @@ export default function OrderPrintPage() {
     );
   }
 
-  // 税抜小計: 明細ありは明細合計、なしは orders.order_amount（既存フォールバック）
+  // 税抜小計: 表示行合計（パッケージ金額行を正とする）→ なければ orders.order_amount
+  const displayLines = buildOrderDisplayLines(items);
+  const displaySubtotal = displayLines.reduce(
+    (sum, line) => sum + line.amount,
+    0
+  );
   const subtotalExTax =
-    items.length > 0
-      ? items.reduce((sum, item) => sum + toNumber(item.amount), 0)
+    displayLines.length > 0
+      ? displaySubtotal
       : toNumber(order.order_amount);
   const taxDisplay = buildOrderPrintTaxDisplay(subtotalExTax);
 
@@ -311,31 +319,15 @@ export default function OrderPrintPage() {
               </tr>
             </thead>
             <tbody>
-              {items.length === 0 ? (
+              {displayLines.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="order-print-empty">
                     明細なし
                   </td>
                 </tr>
               ) : (
-                items.map((item) => (
-                  <tr key={item.id} className="order-print-row">
-                    <td>{displayIdentityValue(item.manufacturer_name)}</td>
-                    <td>{displayIdentityValue(item.model_no)}</td>
-                    <td>{displayText(item.product_name)}</td>
-                    <td className="order-print-num tabular-nums">
-                      {item.quantity}
-                    </td>
-                    <td className="order-print-num tabular-nums">
-                      {formatYen(toNumber(item.unit_price))}
-                    </td>
-                    <td className="order-print-num tabular-nums">
-                      {formatYen(toNumber(item.amount))}
-                    </td>
-                    <td className="order-print-memo whitespace-pre-wrap">
-                      {displayText(item.memo)}
-                    </td>
-                  </tr>
+                displayLines.map((line) => (
+                  <OrderPrintDisplayRows key={line.key} line={line} />
                 ))
               )}
             </tbody>
@@ -541,6 +533,16 @@ export default function OrderPrintPage() {
           color: #374151;
         }
 
+        .order-print-comp-label {
+          color: #6b7280;
+          font-size: 9pt;
+        }
+
+        .order-print-comp-row td {
+          color: #4b5563;
+          font-size: 9.5pt;
+        }
+
         .order-print-empty {
           padding: 24px 10px !important;
           text-align: center;
@@ -709,6 +711,58 @@ export default function OrderPrintPage() {
         }
       `}</style>
     </>
+  );
+}
+
+function OrderPrintDisplayRows({ line }: { line: OrderDisplayLine }) {
+  if (line.kind === "PACKAGE") {
+    return (
+      <>
+        <tr className="order-print-row">
+          <td>—</td>
+          <td>—</td>
+          <td>{displayText(line.package_name)}</td>
+          <td className="order-print-num tabular-nums">{line.quantity}</td>
+          <td className="order-print-num tabular-nums">
+            {formatYen(line.unit_price)}
+          </td>
+          <td className="order-print-num tabular-nums">
+            {formatYen(line.amount)}
+          </td>
+          <td className="order-print-memo">パッケージ</td>
+        </tr>
+        {line.components.map((c) => (
+          <tr key={c.key} className="order-print-row order-print-comp-row">
+            <td>{displayIdentityValue(c.manufacturer_name)}</td>
+            <td>{displayIdentityValue(c.model_no)}</td>
+            <td>
+              <span className="order-print-comp-label">構成：</span>
+              {displayText(c.product_name)}
+            </td>
+            <td className="order-print-num tabular-nums">{c.quantity}</td>
+            <td className="order-print-num tabular-nums">—</td>
+            <td className="order-print-num tabular-nums">—</td>
+            <td className="order-print-memo">構成内訳</td>
+          </tr>
+        ))}
+      </>
+    );
+  }
+
+  return (
+    <tr className="order-print-row">
+      <td>{displayIdentityValue(line.manufacturer_name)}</td>
+      <td>{displayIdentityValue(line.model_no)}</td>
+      <td>{displayText(line.product_name)}</td>
+      <td className="order-print-num tabular-nums">{line.quantity}</td>
+      <td className="order-print-num tabular-nums">
+        {formatYen(line.unit_price)}
+      </td>
+      <td className="order-print-num tabular-nums">{formatYen(line.amount)}</td>
+      <td className="order-print-memo whitespace-pre-wrap">
+        {displayText(line.memo)}
+      </td>
+    </tr>
   );
 }
 

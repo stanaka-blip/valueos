@@ -229,6 +229,66 @@ export async function fetchActivePurchaseUnitPrice(
 }
 
 /**
+ * 複数パッケージの有効仕入単価を一括取得（PACKAGE のみ）。
+ */
+export async function fetchActivePackagePurchaseUnitPrices(
+  client: SupabaseClient,
+  params: {
+    packageIds: string[];
+    supplierId: string;
+    asOfDate?: string;
+  }
+): Promise<{
+  unitPriceByPackageId: Map<string, number>;
+  missingPackageIds: string[];
+  error: string | null;
+}> {
+  const uniqueIds = Array.from(
+    new Set(params.packageIds.filter((id) => Boolean(id)))
+  );
+  if (uniqueIds.length === 0 || !params.supplierId) {
+    return {
+      unitPriceByPackageId: new Map(),
+      missingPackageIds: uniqueIds,
+      error: null,
+    };
+  }
+
+  const asOfDate = params.asOfDate || getTodayDateString();
+  const { data, error } = await client
+    .from("purchase_prices")
+    .select("package_id, purchase_price, start_date")
+    .in("package_id", uniqueIds)
+    .eq("supplier_id", params.supplierId)
+    .eq("price_target_type", "PACKAGE")
+    .eq("is_active", true)
+    .lte("start_date", asOfDate)
+    .or(`end_date.is.null,end_date.gte.${asOfDate}`)
+    .order("start_date", { ascending: false });
+
+  if (error) {
+    return {
+      unitPriceByPackageId: new Map(),
+      missingPackageIds: uniqueIds,
+      error: error.message,
+    };
+  }
+
+  const unitPriceByPackageId = new Map<string, number>();
+  for (const row of data || []) {
+    const packageId = row.package_id as string | null;
+    if (!packageId || unitPriceByPackageId.has(packageId)) continue;
+    const unitPrice = toUnitPrice(row.purchase_price);
+    if (unitPrice > 0) unitPriceByPackageId.set(packageId, unitPrice);
+  }
+
+  const missingPackageIds = uniqueIds.filter(
+    (id) => !unitPriceByPackageId.has(id)
+  );
+  return { unitPriceByPackageId, missingPackageIds, error: null };
+}
+
+/**
  * 複数商品の有効仕入単価を一括取得（PRODUCT のみ）。
  * PACKAGE 向け価格行を誤って採用しないよう price_target_type を明示する。
  * 同一 product_id が複数行ある場合は start_date 降順で先頭を採用。

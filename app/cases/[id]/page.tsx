@@ -2,12 +2,15 @@ import Link from "next/link";
 
 import { supabase } from "@/lib/supabase";
 import { resolveProductIdentity } from "@/app/orders/productIdentity";
+import {
+  buildDeliveryQuantityLines,
+  buildOrderDisplayLines,
+} from "@/lib/orders/orderPackageDisplay";
 
 import CaseDetailView, {
   type CaseDetailViewData,
   type CaseProductRow,
   type InvoiceRow,
-  type OrderLineRow,
   type OrderRow,
   type PaymentRow,
   type TaskRow,
@@ -314,7 +317,22 @@ export default async function CaseDetailPage({
   });
 
   const orderIds = ordersBase.map((o) => o.id);
-  const linesByOrder = new Map<string, OrderLineRow[]>();
+  const rawLinesByOrder = new Map<
+    string,
+    Array<{
+      id: string;
+      product_id: string | null;
+      case_product_id: string | null;
+      quantity: number;
+      unit_price: number | null;
+      amount: number | null;
+      memo: string | null;
+      sort_order: number;
+      manufacturer_name: string;
+      model_no: string;
+      product_name: string;
+    }>
+  >();
   if (orderIds.length > 0) {
     const { data: orderItemsData, error: orderItemsError } = await supabase
       .from("order_items")
@@ -322,11 +340,15 @@ export default async function CaseDetailPage({
         `
         id,
         order_id,
+        product_id,
+        case_product_id,
         quantity,
         unit_price,
         amount,
+        memo,
         sort_order,
         products (
+          name,
           model_no,
           manufacturers (
             name
@@ -348,24 +370,67 @@ export default async function CaseDetailPage({
           item.products as ProductRelation | ProductRelation[] | null
         );
         const identity = resolveProductIdentity(product);
-        const list = linesByOrder.get(orderId) || [];
+        const list = rawLinesByOrder.get(orderId) || [];
         list.push({
           id: item.id as string,
-          manufacturerName: identity.manufacturerName,
-          modelNo: identity.modelNo,
+          product_id: (item.product_id as string | null) || null,
+          case_product_id: (item.case_product_id as string | null) || null,
           quantity: toNumber(item.quantity as number | string | null),
-          unitPrice: toNumber(item.unit_price as number | string | null),
-          amount: toNumber(item.amount as number | string | null),
+          unit_price: item.unit_price as number | null,
+          amount: item.amount as number | null,
+          memo: (item.memo as string | null) || null,
+          sort_order: toNumber(item.sort_order as number | string | null),
+          manufacturer_name: identity.manufacturerName,
+          model_no: identity.modelNo,
+          product_name: (product as { name?: string | null } | null)?.name || "",
         });
-        linesByOrder.set(orderId, list);
+        rawLinesByOrder.set(orderId, list);
       }
     }
   }
 
-  const orders: OrderRow[] = ordersBase.map((order) => ({
-    ...order,
-    lines: linesByOrder.get(order.id) || [],
-  }));
+  const orders: OrderRow[] = ordersBase.map((order) => {
+    const raw = rawLinesByOrder.get(order.id) || [];
+    const displayLines = buildOrderDisplayLines(raw);
+    const deliveryRaw = buildDeliveryQuantityLines(raw);
+    return {
+      ...order,
+      lines: displayLines.map((line) => {
+        if (line.kind === "PACKAGE") {
+          return {
+            id: line.key,
+            manufacturerName: "パッケージ",
+            modelNo: line.package_name,
+            quantity: line.quantity,
+            unitPrice: line.unit_price,
+            amount: line.amount,
+            components: line.components.map((c) => ({
+              id: c.key,
+              manufacturerName: c.manufacturer_name,
+              modelNo: c.model_no || c.product_name,
+              quantity: c.quantity,
+            })),
+          };
+        }
+        return {
+          id: line.key,
+          manufacturerName: line.manufacturer_name,
+          modelNo: line.model_no,
+          quantity: line.quantity,
+          unitPrice: line.unit_price,
+          amount: line.amount,
+        };
+      }),
+      deliveryLines: deliveryRaw.map((item) => ({
+        id: item.id,
+        manufacturerName: item.manufacturer_name || "",
+        modelNo: item.model_no || "",
+        quantity: toNumber(item.quantity),
+        unitPrice: toNumber(item.unit_price),
+        amount: toNumber(item.amount),
+      })),
+    };
+  });
 
   const invoices: InvoiceRow[] = (invoicesData || []).map((row) => ({
     id: row.id as string,

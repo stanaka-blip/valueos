@@ -1,6 +1,9 @@
 /**
  * 管理者発注画面の対象モデル（PRODUCT行 / PACKAGE単位）と
  * 仕入先バケット分割・発注番号採番の純関数。
+ *
+ * PACKAGE: UI・金額はパッケージ仕入単価×数量が正。
+ * 保存時は構成部材行（数量・unit_price=0）＋パッケージ金額行を order_items に書く。
  */
 
 import {
@@ -8,11 +11,14 @@ import {
   generateOrderNumber,
 } from "@/app/orders/orderUtils";
 import {
+  buildPackageAmountMemo,
+  buildPackageComponentMemo,
+} from "@/lib/orders/orderPackageDisplay";
+import {
   isProductCaseLine,
   isUnitPriceUnset,
   parseOrderQuantity,
   parseUnitPriceInput,
-  resolveItemSnapshotUnitPrice,
   resolvePackageItemOrderQuantity,
   resolveSnapshotUnitPrice,
   type CasePackageItemSource,
@@ -42,18 +48,25 @@ export type PackageItemOrderTarget = {
   product_name: string;
   manufacturer_name: string;
   model_no: string;
+  /** 構成×パッケージの発注数量（納品用） */
   quantity: string;
-  unit_price: string;
+  /** 構成1セットあたり数量（パッケージ数量変更時の再計算用） */
+  unit_component_qty: number;
   memo: string;
-  has_case_snapshot: boolean;
 };
 
 export type PackageOrderTarget = {
   kind: "PACKAGE";
   local_id: string;
   case_package_id: string;
+  case_product_id: string | null;
   package_id: string | null;
   package_name: string;
+  /** パッケージ数量 */
+  quantity: string;
+  /** パッケージ仕入単価 */
+  unit_price: string;
+  has_case_snapshot: boolean;
   supplier_id: string;
   default_supplier_id: string | null;
   items: PackageItemOrderTarget[];
@@ -71,13 +84,19 @@ type ProductMasterRelation = {
     | null;
 };
 
-export type CaseProductWithDefaultSupplier = Omit<CaseProductSource, "products"> & {
+export type CaseProductWithDefaultSupplier = Omit<
+  CaseProductSource,
+  "products"
+> & {
   products: ProductMasterRelation | ProductMasterRelation[] | null;
 };
 
 export type CasePackageWithDefaultSupplier = CasePackageSource & {
   package_id?: string | null;
+  case_product_id?: string | null;
   package_name_snapshot?: string | null;
+  /** 紐づく case_products（PACKAGE）の仕入スナップショット */
+  case_product_purchase_price?: number | string | null;
   packages?:
     | {
         name: string | null;
@@ -93,6 +112,20 @@ export type CasePackageWithDefaultSupplier = CasePackageSource & {
 function getSingleRelation<T>(value: T | T[] | null | undefined): T | null {
   if (!value) return null;
   return Array.isArray(value) ? value[0] || null : value;
+}
+
+function resolveUnitComponentQty(
+  storedItemQty: number | null,
+  packageQty: number | null
+): number {
+  if (storedItemQty == null || packageQty == null || packageQty < 1) {
+    return storedItemQty != null && storedItemQty >= 1 ? storedItemQty : 1;
+  }
+  if (storedItemQty % packageQty === 0) {
+    const unit = storedItemQty / packageQty;
+    return unit >= 1 ? unit : storedItemQty;
+  }
+  return storedItemQty;
 }
 
 export function buildOrderTargets(
@@ -130,6 +163,7 @@ export function buildOrderTargets(
   for (const pkg of casePackages) {
     const pkgMaster = getSingleRelation(pkg.packages);
     const defaultSupplierId = pkgMaster?.default_supplier_id || null;
+    const packageQty = parseOrderQuantity(pkg.quantity);
     const itemsSrc = Array.isArray(pkg.case_package_items)
       ? pkg.case_package_items
       : pkg.case_package_items
@@ -151,11 +185,6 @@ export function buildOrderTargets(
         storedItemQuantity: item.quantity,
         packageQuantity: pkg.quantity,
       });
-      const snap = resolveItemSnapshotUnitPrice(
-        item.unit_purchase_price,
-        item.total_purchase_price,
-        quantity
-      );
       return {
         local_id: `cpi-${item.id}`,
         product_id: item.product_id as string,
@@ -168,21 +197,29 @@ export function buildOrderTargets(
           getSingleRelation(product?.manufacturers)?.name?.trim() || "",
         model_no: item.model_no_snapshot || product?.model_no || "",
         quantity: quantity == null ? "" : String(quantity),
-        unit_price: snap.unitPrice,
+        unit_component_qty: resolveUnitComponentQty(quantity, packageQty),
         memo: item.memo || "",
-        has_case_snapshot: snap.hasCaseSnapshot,
       };
     });
 
     if (items.length === 0) continue;
 
+    const pkgSnap = resolveSnapshotUnitPrice(
+      pkg.case_product_purchase_price,
+      packageQty
+    );
+
     targets.push({
       kind: "PACKAGE",
       local_id: `pkg-${pkg.id}`,
       case_package_id: pkg.id,
+      case_product_id: pkg.case_product_id || null,
       package_id: pkg.package_id || null,
       package_name:
         pkg.package_name_snapshot || pkgMaster?.name || "パッケージ",
+      quantity: packageQty == null ? "" : String(packageQty),
+      unit_price: pkgSnap.unitPrice,
+      has_case_snapshot: pkgSnap.hasCaseSnapshot,
       supplier_id: defaultSupplierId || "",
       default_supplier_id: defaultSupplierId,
       items,
@@ -202,10 +239,14 @@ export type FlattenedOrderLine = {
   unit_price: string;
   memo: string;
   supplier_id: string;
-  source: "PRODUCT" | "PACKAGE_ITEM";
+  source: "PRODUCT" | "PACKAGE_ITEM" | "PACKAGE_AMOUNT";
   package_local_id?: string;
 };
 
+/**
+ * PRODUCT はそのまま。
+ * PACKAGE は構成行（unit_price=0）＋金額行（package_unit × package_qty）。
+ */
 export function flattenOrderTargets(targets: OrderTarget[]): FlattenedOrderLine[] {
   const lines: FlattenedOrderLine[] = [];
   for (const target of targets) {
@@ -223,6 +264,46 @@ export function flattenOrderTargets(targets: OrderTarget[]): FlattenedOrderLine[
       });
       continue;
     }
+
+    const packageQty = parseOrderQuantity(target.quantity);
+    const packageUnit = parseUnitPriceInput(target.unit_price);
+    const carrierProductId = target.items[0]?.product_id;
+    if (!carrierProductId || packageQty == null || packageUnit == null) {
+      // 検証前の途中状態でも構成行は出す
+      for (const item of target.items) {
+        lines.push({
+          local_id: item.local_id,
+          product_id: item.product_id,
+          case_product_id: null,
+          product_name: item.product_name,
+          quantity: item.quantity,
+          unit_price: "0",
+          memo: buildPackageComponentMemo(target.case_package_id),
+          supplier_id: target.supplier_id,
+          source: "PACKAGE_ITEM",
+          package_local_id: target.local_id,
+        });
+      }
+      continue;
+    }
+
+    lines.push({
+      local_id: `${target.local_id}-amt`,
+      product_id: carrierProductId,
+      case_product_id: target.case_product_id,
+      product_name: target.package_name,
+      quantity: String(packageQty),
+      unit_price: String(packageUnit),
+      memo: buildPackageAmountMemo({
+        casePackageId: target.case_package_id,
+        packageName: target.package_name,
+        packageQty,
+      }),
+      supplier_id: target.supplier_id,
+      source: "PACKAGE_AMOUNT",
+      package_local_id: target.local_id,
+    });
+
     for (const item of target.items) {
       lines.push({
         local_id: item.local_id,
@@ -230,8 +311,8 @@ export function flattenOrderTargets(targets: OrderTarget[]): FlattenedOrderLine[
         case_product_id: null,
         product_name: item.product_name,
         quantity: item.quantity,
-        unit_price: item.unit_price,
-        memo: item.memo,
+        unit_price: "0",
+        memo: buildPackageComponentMemo(target.case_package_id),
         supplier_id: target.supplier_id,
         source: "PACKAGE_ITEM",
         package_local_id: target.local_id,
@@ -250,12 +331,19 @@ export function sumOrderAmount(lines: FlattenedOrderLine[]): number {
   }, 0);
 }
 
+/** パッケージ仕入金額（単価×数量）。未設定時は null */
+export function packageLineAmount(target: PackageOrderTarget): number | null {
+  const qty = parseOrderQuantity(target.quantity);
+  const unit = parseUnitPriceInput(target.unit_price);
+  if (qty == null || unit == null || unit < 0) return null;
+  return calcLineAmount(qty, unit);
+}
+
 export type SupplierBucket = {
   supplier_id: string;
   lines: FlattenedOrderLine[];
 };
 
-/** 仕入先ごとに明細をグループ化。supplier_id 空は別バケットにしない（呼び出し側で検証） */
 export function groupLinesBySupplier(
   lines: FlattenedOrderLine[]
 ): SupplierBucket[] {
@@ -273,7 +361,6 @@ export function groupLinesBySupplier(
   }));
 }
 
-/** UI表示用: OrderTarget を仕入先単位でグループ化（PACKAGE構造を維持）。空仕入先は含めない */
 export type SupplierTargetGroup = {
   supplier_id: string;
   targets: OrderTarget[];
@@ -296,7 +383,6 @@ export function groupOrderTargetsBySupplier(
   }));
 }
 
-/** 発注書①…⑳（21件目以降は数字） */
 export function formatPurchaseOrderSheetLabel(indexOneBased: number): string {
   const circled = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳";
   if (indexOneBased >= 1 && indexOneBased <= 20) {
@@ -305,7 +391,6 @@ export function formatPurchaseOrderSheetLabel(indexOneBased: number): string {
   return `発注書${indexOneBased}`;
 }
 
-/** 同一秒でも衝突しにくいよう、2件目以降に連番サフィックスを付与 */
 export function generateUniqueOrderNumbers(
   caseNo: string | null,
   count: number
@@ -377,6 +462,25 @@ export function validateOrderTargetsForSave(
         error_message: `「${target.package_name || "パッケージ"}」の構成商品がありません。`,
       };
     }
+    if (parseOrderQuantity(target.quantity) == null) {
+      return {
+        ok: false,
+        error_message: `「${target.package_name || "パッケージ"}」の数量は1以上の整数で入力してください。`,
+      };
+    }
+    if (isUnitPriceUnset(target.unit_price)) {
+      return {
+        ok: false,
+        error_message: `「${target.package_name || "パッケージ"}」の仕入単価が未設定です。単価を入力してください。`,
+      };
+    }
+    const pkgUnit = parseUnitPriceInput(target.unit_price);
+    if (pkgUnit == null || pkgUnit < 0) {
+      return {
+        ok: false,
+        error_message: `「${target.package_name || "パッケージ"}」の仕入単価は0以上で入力してください。`,
+      };
+    }
     for (const item of target.items) {
       if (!item.product_id) {
         return { ok: false, error_message: "商品が紐づいていない明細があります。" };
@@ -384,20 +488,7 @@ export function validateOrderTargetsForSave(
       if (parseOrderQuantity(item.quantity) == null) {
         return {
           ok: false,
-          error_message: `「${item.product_name || "名称未設定"}」の数量は1以上の整数で入力してください。`,
-        };
-      }
-      if (isUnitPriceUnset(item.unit_price)) {
-        return {
-          ok: false,
-          error_message: `「${item.product_name || "名称未設定"}」の仕入単価が未設定です。単価を入力してください。`,
-        };
-      }
-      const unit = parseUnitPriceInput(item.unit_price);
-      if (unit == null || unit < 0) {
-        return {
-          ok: false,
-          error_message: `「${item.product_name || "名称未設定"}」の仕入単価は0以上で入力してください。`,
+          error_message: `「${item.product_name || "名称未設定"}」の構成数量は1以上の整数である必要があります。`,
         };
       }
     }
@@ -415,12 +506,14 @@ export function validateOrderTargetsForSave(
 }
 
 /**
- * スナップショットなし明細へ、仕入先別マスタ単価を適用。
- * unitPriceBySupplierProduct: supplier_id → (product_id → unit)
+ * スナップショットなし明細へマスタ単価を適用。
+ * PRODUCT: supplier×product
+ * PACKAGE: supplier×package（unitPriceBySupplierPackage）
  */
 export function applySupplierMasterUnitPrices(
   targets: OrderTarget[],
-  unitPriceBySupplierProduct: Map<string, Map<string, number>>
+  unitPriceBySupplierProduct: Map<string, Map<string, number>>,
+  unitPriceBySupplierPackage?: Map<string, Map<string, number>>
 ): { targets: OrderTarget[]; missingProductNames: string[] } {
   const missingNames: string[] = [];
 
@@ -436,17 +529,19 @@ export function applySupplierMasterUnitPrices(
       return { ...target, unit_price: "" };
     }
 
-    const byProduct = unitPriceBySupplierProduct.get(target.supplier_id);
-    const items = target.items.map((item) => {
-      if (item.has_case_snapshot) return item;
-      const unit = byProduct?.get(item.product_id);
-      if (unit != null && unit > 0) {
-        return { ...item, unit_price: String(unit) };
-      }
-      missingNames.push(item.product_name || "名称未設定");
-      return { ...item, unit_price: "" };
-    });
-    return { ...target, items };
+    if (target.has_case_snapshot) return target;
+    const packageId = target.package_id;
+    if (!packageId) {
+      missingNames.push(target.package_name || "パッケージ");
+      return { ...target, unit_price: "" };
+    }
+    const byPackage = unitPriceBySupplierPackage?.get(target.supplier_id);
+    const unit = byPackage?.get(packageId);
+    if (unit != null && unit > 0) {
+      return { ...target, unit_price: String(unit) };
+    }
+    missingNames.push(target.package_name || "パッケージ");
+    return { ...target, unit_price: "" };
   });
 
   return {
@@ -468,12 +563,7 @@ export function clearNonSnapshotPricesForSupplierChange(
       if (target.kind === "PRODUCT") {
         return target.has_case_snapshot ? target : { ...target, unit_price: "" };
       }
-      return {
-        ...target,
-        items: target.items.map((item) =>
-          item.has_case_snapshot ? item : { ...item, unit_price: "" }
-        ),
-      };
+      return target.has_case_snapshot ? target : { ...target, unit_price: "" };
     }
 
     if (
@@ -489,14 +579,28 @@ export function clearNonSnapshotPricesForSupplierChange(
       target.kind === "PACKAGE" &&
       target.local_id === options.packageLocalId
     ) {
-      return {
-        ...target,
-        items: target.items.map((item) =>
-          item.has_case_snapshot ? item : { ...item, unit_price: "" }
-        ),
-      };
+      return target.has_case_snapshot ? target : { ...target, unit_price: "" };
     }
 
     return target;
   });
+}
+
+/** パッケージ数量変更時に構成数量を unit_component_qty × 新数量へ更新 */
+export function scalePackageItemQuantities(
+  target: PackageOrderTarget,
+  newPackageQty: string
+): PackageOrderTarget {
+  const qty = parseOrderQuantity(newPackageQty);
+  if (qty == null) {
+    return { ...target, quantity: newPackageQty };
+  }
+  return {
+    ...target,
+    quantity: String(qty),
+    items: target.items.map((item) => ({
+      ...item,
+      quantity: String(Math.max(1, item.unit_component_qty * qty)),
+    })),
+  };
 }
