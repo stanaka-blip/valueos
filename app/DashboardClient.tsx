@@ -45,8 +45,7 @@ export default function DashboardClient({ data }: Props) {
     });
   }
 
-  const periodQuery = `orderReceivedFrom=${data.period.from}&orderReceivedTo=${data.period.to}`;
-  const casesPeriodHref = `/cases?${periodQuery}`;
+  const invoicesPeriodHref = "/invoices";
   const paymentsUnpaidHref = "/payments?unpaid=1";
   const paymentsOverdueHref = "/payments?overdue=1";
   const casesUnorderedHref = "/cases?alert=unordered";
@@ -56,7 +55,7 @@ export default function DashboardClient({ data }: Props) {
     <div className="min-h-full bg-[#f4f5f7]">
       <header className="border-b border-gray-200 bg-white px-6 py-4 md:px-8">
         <h1 className="text-xl font-bold tracking-tight text-gray-900 md:text-2xl">
-          経営ダッシュボード
+          ダッシュボード
         </h1>
       </header>
 
@@ -125,7 +124,7 @@ export default function DashboardClient({ data }: Props) {
             <p className="mt-3 text-sm text-gray-500">
               {data.period.from} 〜 {data.period.to}
               <span className="ml-2 text-xs text-gray-400">
-                （売上基準: 顧客受注日 / 推移:{" "}
+                （売上基準: 請求日 / 推移:{" "}
                 {data.period.grain === "day" ? "日別" : "月別"}）
               </span>
             </p>
@@ -141,17 +140,17 @@ export default function DashboardClient({ data }: Props) {
             <KpiCard
               label="売上"
               value={formatYen(data.kpis.sales)}
-              href={casesPeriodHref}
+              href={invoicesPeriodHref}
             />
             <KpiCard
               label="実粗利"
               value={formatYen(data.kpis.profit)}
-              href={casesPeriodHref}
+              href={invoicesPeriodHref}
             />
             <KpiCard
               label="粗利率"
               value={formatRate(data.kpis.profitRate)}
-              href={casesPeriodHref}
+              href={invoicesPeriodHref}
             />
             <KpiCard
               label="未入金額"
