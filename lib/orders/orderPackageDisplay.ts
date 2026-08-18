@@ -320,9 +320,15 @@ export function buildOrderDisplayLines(
   return result;
 }
 
-/** 納品書: パッケージ金額行は除外し、構成数量行＋通常商品のみ */
+/**
+ * 納品数量: パッケージ金額行と自由入力（発注費用）は除外。
+ * 構成数量行＋通常商品のみ。金額計算からは除外しない。
+ */
 export function buildDeliveryQuantityLines(
   items: ReadonlyArray<OrderItemDisplaySource>
 ): OrderItemDisplaySource[] {
-  return items.filter((item) => !parsePackageAmountMemo(item.memo));
+  return items.filter(
+    (item) =>
+      !parsePackageAmountMemo(item.memo) && !isCustomOrderLine(item.memo)
+  );
 }

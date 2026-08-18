@@ -69,10 +69,11 @@ export function validateCustomOrderLineName(lineName: string): string | null {
 export function validateCustomOrderItemMemo(
   memo: string | null | undefined
 ): string | null {
-  if (!isCustomOrderLine(memo)) {
+  const raw = (memo || "").trim();
+  if (!raw.startsWith(VE_CUSTOM_PREFIX + "|")) {
     return "自由入力明細の形式が不正です。";
   }
-  const parsed = parseCustomOrderItemMemo(memo);
+  const parsed = parseCustomOrderItemMemo(raw);
   if (!parsed) {
     return "自由入力明細の明細名を入力してください。";
   }

@@ -243,8 +243,12 @@ check("RPC SQL は自由入力 [VE_CUSTOM] を product_id なしで許可する"
     ),
     "utf8"
   );
-  assert.ok(sql.includes("[VE_CUSTOM]"));
+  assert.ok(sql.includes("[VE_CUSTOM]|%"));
   assert.ok(sql.includes("自由入力明細の明細名を入力してください。"));
+  assert.equal(
+    sql.includes("IF v_item_id IS NULL AND NULLIF(btrim(v_item->>'product_id')"),
+    false
+  );
 });
 
 if (failed > 0) {

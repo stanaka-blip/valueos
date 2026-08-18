@@ -10,7 +10,6 @@ import {
   buildCustomOrderItemMemo,
   isCustomOrderLine,
   validateCustomOrderItemMemo,
-  validateCustomOrderLineName,
 } from "@/lib/orders/orderCustomLine";
 import {
   canDeleteOrderEditLine,
@@ -114,31 +113,25 @@ export function resolveIncomingOrderItemMemo(
   if (isProtectedPackageOrderLine(existing)) {
     return existing || null;
   }
-  if (isCustomOrderLine(existing)) {
-    const lineName = (line.custom_line_name || "").trim();
-    const nameError = validateCustomOrderLineName(lineName);
-    if (nameError) {
-      return existing || null;
+  const hasCustomFields =
+    line.custom_line_name != null ||
+    line.custom_manufacturer != null ||
+    line.custom_user_memo != null;
+  if (isCustomOrderLine(existing) || hasCustomFields) {
+    if (hasCustomFields) {
+      return buildCustomOrderItemMemo({
+        manufacturer: line.custom_manufacturer,
+        lineName: line.custom_line_name || "",
+        userMemo: line.custom_user_memo ?? "",
+      });
     }
-    return buildCustomOrderItemMemo({
-      manufacturer: line.custom_manufacturer,
-      lineName,
-      userMemo: line.custom_user_memo ?? line.memo,
-    });
+    const incomingMemo = (line.memo || "").trim();
+    if (incomingMemo) return incomingMemo;
+    return existing || null;
   }
   if (!(line.product_id || "").trim()) {
     const encoded = (line.memo || "").trim();
-    if (isCustomOrderLine(encoded)) {
-      return encoded || null;
-    }
-    const lineName = (line.custom_line_name || "").trim();
-    if (lineName) {
-      return buildCustomOrderItemMemo({
-        manufacturer: line.custom_manufacturer,
-        lineName,
-        userMemo: line.custom_user_memo ?? line.memo,
-      });
-    }
+    if (encoded) return encoded;
   }
   return (line.memo ?? existingMemo ?? "").trim() || null;
 }
@@ -251,22 +244,15 @@ export function validateReplacePurchaseOrderItems(
         error_message: "単価は0以上で入力してください。",
       };
     }
-    if (!normalized.product_id && !incomingId) {
-      if (isCustomOrderLine(normalized.memo)) {
-        const customError = validateCustomOrderItemMemo(normalized.memo);
-        if (customError) {
-          return {
-            ok: false,
-            error_code: "INVALID_INPUT",
-            error_message: customError,
-          };
-        }
-      } else {
+    if (!normalized.product_id) {
+      const customError = validateCustomOrderItemMemo(normalized.memo);
+      if (customError) {
         return {
           ok: false,
           error_code: "INVALID_INPUT",
-          error_message:
-            "追加した明細はメーカー・製品/型番を選択してください。",
+          error_message: isCustomOrderLine(normalized.memo)
+            ? customError
+            : "追加した明細はメーカー・製品/型番を選択してください。",
         };
       }
     }

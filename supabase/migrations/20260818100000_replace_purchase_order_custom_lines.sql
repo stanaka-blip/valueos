@@ -144,8 +144,8 @@ BEGIN
       v_amount := round(v_quantity * v_unit_price);
     END IF;
 
-    IF v_item_id IS NULL AND NULLIF(btrim(v_item->>'product_id'), '') IS NULL THEN
-      IF COALESCE(v_item_memo, '') NOT LIKE '[VE_CUSTOM]%' THEN
+    IF NULLIF(btrim(v_item->>'product_id'), '') IS NULL THEN
+      IF COALESCE(v_item_memo, '') NOT LIKE '[VE_CUSTOM]|%' THEN
         RAISE EXCEPTION 'APP:INVALID_INPUT:追加した明細はメーカー・製品/型番を選択してください。';
       END IF;
       IF NULLIF(btrim(split_part(COALESCE(v_item_memo, ''), '|', 3)), '') IS NULL THEN

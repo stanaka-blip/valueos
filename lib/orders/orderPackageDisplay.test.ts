@@ -327,6 +327,7 @@ check("delivery: AMT行を除外し構成数量を残す", () => {
   assert.equal(qty[0].quantity, 3);
   assert.equal(qty[1].id, "prod");
   assert.ok(!qty.some((i) => parsePackageAmountMemo(i.memo)));
+  assert.ok(!qty.some((i) => (i.memo || "").startsWith("[VE_CUSTOM]")));
 });
 
 if (failed > 0) {
