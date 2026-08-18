@@ -7,6 +7,12 @@
  */
 
 import {
+  buildCustomOrderItemMemo,
+  isCustomOrderLine,
+  validateCustomOrderItemMemo,
+  validateCustomOrderLineName,
+} from "@/lib/orders/orderCustomLine";
+import {
   canDeleteOrderEditLine,
   canEditOrderLineUnitPrice,
   isProtectedPackageOrderLine,
@@ -32,6 +38,10 @@ export type ReplacePurchaseOrderIncomingItem = {
   unit_price: number | string;
   memo?: string | null;
   sort_order?: number;
+  /** 自由入力行: 明細名（保存時に memo へエンコード） */
+  custom_line_name?: string | null;
+  custom_manufacturer?: string | null;
+  custom_user_memo?: string | null;
 };
 
 export type NormalizedReplacePurchaseOrderItem = {
@@ -96,11 +106,48 @@ export function lineAmountForOrderEdit(input: {
 
 export { canDeleteOrderEditLine, canEditOrderLineUnitPrice };
 
+export function resolveIncomingOrderItemMemo(
+  line: ReplacePurchaseOrderIncomingItem,
+  existingMemo?: string | null
+): string | null {
+  const existing = (existingMemo || "").trim();
+  if (isProtectedPackageOrderLine(existing)) {
+    return existing || null;
+  }
+  if (isCustomOrderLine(existing)) {
+    const lineName = (line.custom_line_name || "").trim();
+    const nameError = validateCustomOrderLineName(lineName);
+    if (nameError) {
+      return existing || null;
+    }
+    return buildCustomOrderItemMemo({
+      manufacturer: line.custom_manufacturer,
+      lineName,
+      userMemo: line.custom_user_memo ?? line.memo,
+    });
+  }
+  if (!(line.product_id || "").trim()) {
+    const encoded = (line.memo || "").trim();
+    if (isCustomOrderLine(encoded)) {
+      return encoded || null;
+    }
+    const lineName = (line.custom_line_name || "").trim();
+    if (lineName) {
+      return buildCustomOrderItemMemo({
+        manufacturer: line.custom_manufacturer,
+        lineName,
+        userMemo: line.custom_user_memo ?? line.memo,
+      });
+    }
+  }
+  return (line.memo ?? existingMemo ?? "").trim() || null;
+}
+
 export function normalizeReplacePurchaseOrderItem(
   line: ReplacePurchaseOrderIncomingItem,
   existingMemo?: string | null
 ): NormalizedReplacePurchaseOrderItem {
-  const memo = (existingMemo ?? line.memo ?? "").trim() || null;
+  const memo = resolveIncomingOrderItemMemo(line, existingMemo);
   const kind = resolveOrderPackageLineKind(memo);
   const quantity = Math.floor(toFiniteNumber(line.quantity));
   const rawPrice = toFiniteNumber(line.unit_price);
@@ -205,11 +252,23 @@ export function validateReplacePurchaseOrderItems(
       };
     }
     if (!normalized.product_id && !incomingId) {
-      return {
-        ok: false,
-        error_code: "INVALID_INPUT",
-        error_message: "追加した明細はメーカー・製品/型番を選択してください。",
-      };
+      if (isCustomOrderLine(normalized.memo)) {
+        const customError = validateCustomOrderItemMemo(normalized.memo);
+        if (customError) {
+          return {
+            ok: false,
+            error_code: "INVALID_INPUT",
+            error_message: customError,
+          };
+        }
+      } else {
+        return {
+          ok: false,
+          error_code: "INVALID_INPUT",
+          error_message:
+            "追加した明細はメーカー・製品/型番を選択してください。",
+        };
+      }
     }
 
     items.push(normalized);

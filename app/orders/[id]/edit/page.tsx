@@ -40,22 +40,33 @@ import {
   displaySafeOrderItemMemo,
 } from "@/lib/orders/orderPackageDisplay";
 import {
+  isCustomOrderLine,
+  parseCustomOrderItemMemo,
+  validateCustomOrderLineName,
+} from "@/lib/orders/orderCustomLine";
+import {
   buildReplacePurchaseOrderRpcPayload,
   lineAmountForOrderEdit,
   validateReplacePurchaseOrderItems,
 } from "@/lib/orders/replacePurchaseOrderLogic";
 
+type OrderLineAddMode = "master" | "custom";
+
 type LineDraft = {
   id: string | null;
   local_id: string;
+  add_mode: OrderLineAddMode;
   product_id: string;
   case_product_id: string | null;
   manufacturer_id: string;
   manufacturer_name: string;
   model_no: string;
+  line_name: string;
   quantity: string;
   unit_price: string;
   memo: string;
+  /** DB保存済み memo（パッケージ保護・自由入力エンコード判定用） */
+  source_memo: string;
 };
 
 type OrderForm = {
@@ -79,22 +90,39 @@ type DeliveryConfirmInfo = {
 const inputClassName =
   "w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-gray-900 focus:ring-1 focus:ring-gray-900 disabled:cursor-not-allowed disabled:bg-gray-100";
 
-function createEmptyLine(): LineDraft {
+function createEmptyLine(addMode: OrderLineAddMode = "master"): LineDraft {
   return {
     id: null,
     local_id:
       typeof crypto !== "undefined" && crypto.randomUUID
         ? crypto.randomUUID()
         : `new-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    add_mode: addMode,
     product_id: "",
     case_product_id: null,
     manufacturer_id: "",
     manufacturer_name: "",
     model_no: "",
+    line_name: "",
     quantity: "1",
     unit_price: "",
     memo: "",
+    source_memo: "",
   };
+}
+
+function isCustomLineDraft(line: LineDraft): boolean {
+  return line.add_mode === "custom" || isCustomOrderLine(line.memo);
+}
+
+function resolveLineDraftMemoForAmount(line: LineDraft): string {
+  if (containsPackageMemoMarker(line.memo)) {
+    return line.memo;
+  }
+  if (isCustomLineDraft(line)) {
+    return "";
+  }
+  return line.memo;
 }
 
 export default function EditOrderPage() {
@@ -133,7 +161,7 @@ export default function EditOrderPage() {
         (sum, line) =>
           sum +
           lineAmountForOrderEdit({
-            memo: line.memo,
+            memo: resolveLineDraftMemoForAmount(line),
             quantity: line.quantity,
             unit_price: line.unit_price,
           }),
@@ -323,23 +351,46 @@ export default function EditOrderPage() {
       setProducts(productsResult.data);
 
       const nextLines = itemsResult.data.map((item) => {
+          const custom = parseCustomOrderItemMemo(item.memo);
           const product = item.product_id
             ? productMap.get(item.product_id)
             : null;
           const unitPrice = canEditOrderLineUnitPrice(item.memo)
             ? toNumber(item.unit_price)
             : 0;
+          if (custom) {
+            return {
+              id: item.id,
+              local_id: item.id,
+              add_mode: "custom" as const,
+              product_id: "",
+              case_product_id: item.case_product_id,
+              manufacturer_id: "",
+              manufacturer_name: custom.manufacturer,
+              model_no: custom.lineName,
+              line_name: custom.lineName,
+              quantity: String(toNumber(item.quantity) || 1),
+              unit_price: String(unitPrice),
+              memo: custom.userMemo,
+              source_memo: item.memo || "",
+            };
+          }
           return {
             id: item.id,
             local_id: item.id,
+            add_mode: "master" as const,
             product_id: item.product_id || "",
             case_product_id: item.case_product_id,
             manufacturer_id: product?.manufacturer_id || "",
             manufacturer_name: product?.manufacturer_name || "",
             model_no: product?.model_no || "",
+            line_name: "",
             quantity: String(toNumber(item.quantity) || 1),
             unit_price: String(unitPrice),
-            memo: item.memo || "",
+            memo: containsPackageMemoMarker(item.memo)
+              ? item.memo || ""
+              : displaySafeOrderItemMemo(item.memo),
+            source_memo: item.memo || "",
           };
         });
       existingLinesRef.current = nextLines;
@@ -365,7 +416,12 @@ export default function EditOrderPage() {
 
   function handleLineChange(
     localId: string,
-    field: "quantity" | "unit_price" | "memo",
+    field:
+      | "quantity"
+      | "unit_price"
+      | "memo"
+      | "manufacturer_name"
+      | "line_name",
     value: string
   ) {
     setLines((current) =>
@@ -379,8 +435,21 @@ export default function EditOrderPage() {
     );
   }
 
-  function handleAddLine() {
-    setLines((current) => [...current, createEmptyLine()]);
+  function handleAddLine(addMode: OrderLineAddMode = "master") {
+    setLines((current) => [...current, createEmptyLine(addMode)]);
+  }
+
+  function handleAddModeChange(localId: string, addMode: OrderLineAddMode) {
+    setLines((current) =>
+      current.map((line) =>
+        line.local_id === localId && line.id == null
+          ? {
+              ...createEmptyLine(addMode),
+              local_id: line.local_id,
+            }
+          : line
+      )
+    );
   }
 
   function handleRemoveLine(localId: string) {
@@ -476,7 +545,13 @@ export default function EditOrderPage() {
     }
 
     for (const line of lines) {
-      if (!line.product_id && line.id == null) {
+      if (isCustomLineDraft(line)) {
+        const customNameError = validateCustomOrderLineName(line.line_name);
+        if (customNameError) {
+          setSubmitError(customNameError);
+          return;
+        }
+      } else if (!line.product_id && line.id == null) {
         setSubmitError("追加した明細はメーカー・製品/型番を選択してください。");
         return;
       }
@@ -492,11 +567,16 @@ export default function EditOrderPage() {
 
     const incoming = lines.map((line, index) => ({
       id: line.id,
-      product_id: line.product_id || null,
+      product_id: isCustomLineDraft(line) ? null : line.product_id || null,
       case_product_id: line.case_product_id,
       quantity: toNumber(line.quantity),
       unit_price: toNumber(line.unit_price),
-      memo: line.memo || null,
+      memo: containsPackageMemoMarker(line.memo) ? line.memo || null : null,
+      custom_line_name: isCustomLineDraft(line) ? line.line_name : null,
+      custom_manufacturer: isCustomLineDraft(line)
+        ? line.manufacturer_name
+        : null,
+      custom_user_memo: isCustomLineDraft(line) ? line.memo : null,
       sort_order: index,
     }));
     const validated = validateReplacePurchaseOrderItems(
@@ -506,7 +586,7 @@ export default function EditOrderPage() {
         case_product_id: line.case_product_id,
         quantity: toNumber(line.quantity),
         unit_price: toNumber(line.unit_price),
-        memo: line.memo || null,
+        memo: line.source_memo || line.memo || null,
       })),
       incoming
     );
@@ -743,18 +823,28 @@ export default function EditOrderPage() {
           <div>
             <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
               <h3 className="text-base font-bold text-gray-900">発注明細</h3>
-              <button
-                type="button"
-                onClick={handleAddLine}
-                disabled={submitting}
-                className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:bg-gray-100"
-              >
-                明細を追加
-              </button>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleAddLine("master")}
+                  disabled={submitting}
+                  className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:bg-gray-100"
+                >
+                  マスタから追加
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleAddLine("custom")}
+                  disabled={submitting}
+                  className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:bg-gray-100"
+                >
+                  自由入力で追加
+                </button>
+              </div>
             </div>
             {lines.length === 0 ? (
               <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-                発注明細がありません。「明細を追加」からメーカー・製品/型番・数量・仕入単価を登録してください。
+                発注明細がありません。「マスタから追加」または「自由入力で追加」から明細を登録してください。
               </div>
             ) : (
               <div className="overflow-x-auto rounded-lg border border-gray-200">
@@ -773,6 +863,8 @@ export default function EditOrderPage() {
                   <tbody>
                     {lines.map((line) => {
                       const isNew = line.id == null;
+                      const isCustom = isCustomLineDraft(line);
+                      const isPackage = containsPackageMemoMarker(line.memo);
                       const productOptions = productsForManufacturer(
                         line.manufacturer_id
                       );
@@ -784,6 +876,39 @@ export default function EditOrderPage() {
                         <td className="px-3 py-3">
                           {isNew ? (
                             <select
+                              value={line.add_mode}
+                              onChange={(e) =>
+                                handleAddModeChange(
+                                  line.local_id,
+                                  e.target.value as OrderLineAddMode
+                                )
+                              }
+                              disabled={submitting}
+                              className={`${inputClassName} min-w-[140px]`}
+                            >
+                              <option value="master">マスタから選択</option>
+                              <option value="custom">自由入力</option>
+                            </select>
+                          ) : null}
+                          {isPackage ? (
+                            displayIdentityValue(line.manufacturer_name)
+                          ) : isCustom ? (
+                            <input
+                              type="text"
+                              value={line.manufacturer_name}
+                              onChange={(e) =>
+                                handleLineChange(
+                                  line.local_id,
+                                  "manufacturer_name",
+                                  e.target.value
+                                )
+                              }
+                              disabled={submitting}
+                              placeholder="任意（例: その他）"
+                              className={`${inputClassName} min-w-[140px]${isNew ? " mt-1" : ""}`}
+                            />
+                          ) : isNew ? (
+                            <select
                               value={line.manufacturer_id}
                               onChange={(e) =>
                                 handleManufacturerChange(
@@ -792,7 +917,7 @@ export default function EditOrderPage() {
                                 )
                               }
                               disabled={submitting}
-                              className={`${inputClassName} min-w-[140px]`}
+                              className={`${inputClassName} min-w-[140px] mt-1`}
                             >
                               <option value="">選択</option>
                               {manufacturers.map((m) => (
@@ -806,7 +931,24 @@ export default function EditOrderPage() {
                           )}
                         </td>
                         <td className="px-3 py-3">
-                          {isNew ? (
+                          {isPackage ? (
+                            displayIdentityValue(line.model_no)
+                          ) : isCustom ? (
+                            <input
+                              type="text"
+                              value={line.line_name}
+                              onChange={(e) =>
+                                handleLineChange(
+                                  line.local_id,
+                                  "line_name",
+                                  e.target.value
+                                )
+                              }
+                              disabled={submitting}
+                              placeholder="明細名（必須）"
+                              className={`${inputClassName} min-w-[180px]`}
+                            />
+                          ) : isNew ? (
                             <select
                               value={line.product_id}
                               onChange={(e) =>
@@ -869,14 +1011,14 @@ export default function EditOrderPage() {
                         <td className="px-3 py-3 text-right">
                           {formatYen(
                             lineAmountForOrderEdit({
-                              memo: line.memo,
+                              memo: resolveLineDraftMemoForAmount(line),
                               quantity: line.quantity,
                               unit_price: line.unit_price,
                             })
                           )}
                         </td>
                         <td className="px-3 py-3">
-                          {containsPackageMemoMarker(line.memo) ? (
+                          {isPackage ? (
                             <span className="text-xs text-gray-500">
                               {displaySafeOrderItemMemo(line.memo) || "—"}
                             </span>

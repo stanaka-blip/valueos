@@ -1,3 +1,9 @@
+import {
+  displayCustomOrderLineUserMemo,
+  isCustomOrderLine,
+  parseCustomOrderItemMemo,
+} from "@/lib/orders/orderCustomLine";
+
 /**
  * 発注保存時のパッケージ金額行 / 構成行を memo で識別し、
  * 詳細・PDF・納品ではパッケージ1行＋構成内訳（金額なし）として再構成する。
@@ -78,6 +84,7 @@ export function displaySafeOrderItemMemo(
   memo: string | null | undefined
 ): string {
   if (containsPackageMemoMarker(memo)) return "";
+  if (isCustomOrderLine(memo)) return displayCustomOrderLineUserMemo(memo);
   return (memo || "").trim();
 }
 
@@ -207,6 +214,24 @@ export function buildOrderDisplayLines(
         });
         orderKeys.push(key);
       }
+      continue;
+    }
+
+    const custom = parseCustomOrderItemMemo(item.memo);
+    if (custom) {
+      const key = `custom-${item.id}`;
+      products.push({
+        kind: "PRODUCT",
+        key,
+        product_name: custom.lineName,
+        manufacturer_name: custom.manufacturer,
+        model_no: custom.lineName,
+        quantity: toNumber(item.quantity) || 0,
+        unit_price: toNumber(item.unit_price),
+        amount: toNumber(item.amount),
+        memo: custom.userMemo,
+      });
+      orderKeys.push(key);
       continue;
     }
 
