@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:workflow": "tsx lib/workflow/WorkflowEngine.test.ts",
+    "test:workflow": "tsx lib/workflow/WorkflowEngine.test.ts && tsx lib/workflow/resolvePaymentDueDisplay.test.ts && tsx lib/invoices/resolveNewInvoiceDueDate.test.ts",
     "test:payments": "tsx lib/payments/invoicePaymentStatus.test.ts",
     "test:three-party": "tsx lib/threeParty/dealerSettlementCalc.test.ts && tsx lib/threeParty/moneyEventStatus.test.ts && tsx lib/threeParty/moneyActionsLogic.test.ts && tsx lib/threeParty/moneyActionPaths.test.ts && tsx lib/threeParty/dealerSettlementPrintModel.test.ts && tsx lib/threeParty/financeReceiptRegister.test.ts && tsx lib/threeParty/threePartyRecovery.test.ts && tsx lib/threeParty/threePartyUiContract.test.ts",
     "test:profit": "tsx lib/profit/caseProfitCalc.test.ts && tsx app/orders/orderConstants.test.ts",

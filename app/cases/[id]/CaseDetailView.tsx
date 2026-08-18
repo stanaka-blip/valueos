@@ -334,6 +334,7 @@ export default function CaseDetailView({
           constructionCompletedDate={caseData.constructionCompletedDate}
           payments={payments}
           orders={orders}
+          invoices={invoices}
         />
       </div>
 

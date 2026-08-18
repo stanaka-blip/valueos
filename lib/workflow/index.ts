@@ -16,6 +16,10 @@ export {
 } from "@/lib/workflow/conditions";
 export { endOfMonth, endOfNextMonth } from "@/lib/workflow/dates";
 export { isPaymentConfirmedFromBilling } from "@/lib/workflow/paymentConfirmation";
+export {
+  resolvePaymentDueDisplay,
+  pickEarliestActiveInvoiceDueDate,
+} from "@/lib/workflow/resolvePaymentDueDisplay";
 export type {
   WorkflowContext,
   WorkflowResult,
