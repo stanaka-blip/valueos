@@ -235,6 +235,22 @@ check("RPC SQL はヘッダ更新・明細置換を同一関数内に置き EXCE
   assert.ok(!sql.includes("CREATE TABLE"));
 });
 
+check("RPC SQL は自由入力 [VE_CUSTOM] を product_id なしで許可する", () => {
+  const sql = readFileSync(
+    join(
+      process.cwd(),
+      "supabase/migrations/20260818100000_replace_purchase_order_custom_lines.sql"
+    ),
+    "utf8"
+  );
+  assert.ok(sql.includes("[VE_CUSTOM]|%"));
+  assert.ok(sql.includes("自由入力明細の明細名を入力してください。"));
+  assert.equal(
+    sql.includes("IF v_item_id IS NULL AND NULLIF(btrim(v_item->>'product_id')"),
+    false
+  );
+});
+
 if (failed > 0) {
   console.error(`\n${failed} failure(s)`);
   process.exit(1);
