@@ -35,13 +35,16 @@ export function getCaseStatusFromOrderStatus(
   }
 }
 
+/**
+ * 実納品日（orders.delivered_date）。
+ * 納品予定日・登録日・updated_at・today・ステータスから推測しない。
+ * 空なら NULL（納品済でも自動補完しない）。入力済みならステータスに関係なく保持する。
+ */
 export function resolveDeliveredDate(
-  status: string,
+  _status: string,
   currentDeliveredDate: string | null | undefined,
-  today: string
+  _today?: string
 ): string | null {
-  if (status === "納品済") {
-    return currentDeliveredDate || today;
-  }
-  return null;
+  const value = (currentDeliveredDate || "").trim();
+  return value || null;
 }

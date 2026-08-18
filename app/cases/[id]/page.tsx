@@ -187,6 +187,8 @@ export default async function CaseDetailPage({
         invoice_date,
         due_date,
         invoice_amount,
+        subtotal_ex_tax,
+        tax_amount,
         status,
         memo
       `
@@ -438,6 +440,14 @@ export default async function CaseDetailPage({
     invoiceDate: (row.invoice_date as string) || null,
     dueDate: (row.due_date as string) || null,
     invoiceAmount: toNumber(row.invoice_amount as number | string | null),
+    subtotalExTax:
+      row.subtotal_ex_tax == null
+        ? null
+        : toNumber(row.subtotal_ex_tax as number | string | null),
+    taxAmount:
+      row.tax_amount == null
+        ? null
+        : toNumber(row.tax_amount as number | string | null),
     status: (row.status as string) || "",
     memo: (row.memo as string) || "",
   }));

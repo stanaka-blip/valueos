@@ -412,7 +412,7 @@ export default function NewPaymentPage({
         </div>
 
         <section className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <SummaryCard label="請求金額" value={formatCurrency(summary.invoiceAmount)} />
+          <SummaryCard label="請求額（税込）" value={formatCurrency(summary.invoiceAmount)} />
           <SummaryCard
             label="入金済額"
             value={formatCurrency(summary.confirmedPaidAmount)}

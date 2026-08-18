@@ -106,6 +106,8 @@ export type InvoiceRow = {
   invoiceDate: string | null;
   dueDate: string | null;
   invoiceAmount: number;
+  subtotalExTax: number | null;
+  taxAmount: number | null;
   status: string;
   memo: string;
 };
@@ -212,6 +214,21 @@ export default function CaseDetailView({
       .filter((p) => p.status !== "取消")
       .reduce((s, p) => s + p.paymentAmount, 0);
     const rate = sales > 0 ? (profit / sales) * 100 : null;
+    const confirmed = computeConfirmedCaseProfit({
+      invoices: invoices.map((i) => ({
+        status: i.status,
+        invoiceAmount: i.invoiceAmount,
+        subtotalExTax: i.subtotalExTax,
+        taxAmount: i.taxAmount,
+      })),
+      orders: orders.map((o) => ({
+        status: o.status,
+        orderAmount: o.orderAmount,
+      })),
+      fee: settlement
+        ? { feeAmount: settlement.feeAmount, feeRate: settlement.feeRate }
+        : null,
+    });
 
     return {
       sales,
@@ -222,8 +239,9 @@ export default function CaseDetailView({
       invoiceAmount,
       paidIn,
       unpaid: Math.max(invoiceAmount - paidIn, 0),
+      confirmed,
     };
-  }, [products, orders, invoices, payments]);
+  }, [products, orders, invoices, payments, settlement]);
 
   const deliverySummary = useMemo(
     () => summarizeDeliveries(orders),
@@ -378,8 +396,14 @@ export default function CaseDetailView({
             <Divider />
 
             <div className="grid grid-cols-2 gap-3">
-              <MiniStat label="売上" value={formatYen(totals.sales)} />
-              <MiniStat label="粗利" value={formatYen(totals.profit)} />
+              <MiniStat
+                label="売上（税抜）"
+                value={formatYen(totals.confirmed.revenue)}
+              />
+              <MiniStat
+                label="粗利"
+                value={formatYen(totals.confirmed.profit)}
+              />
               <MiniStat
                 label="未入金"
                 value={formatYen(totals.unpaid)}
@@ -664,6 +688,12 @@ function SimpleOverview({
     invoiceAmount: number;
     paidIn: number;
     unpaid: number;
+    confirmed: {
+      revenue: number;
+      cost: number;
+      profit: number;
+      rate: number | null;
+    };
   };
   deliverySummary: ReturnType<typeof summarizeDeliveries>;
   paymentSummary: ReturnType<typeof summarizePayments>;
@@ -769,8 +799,11 @@ function SimpleOverview({
           }
         >
           <div className="grid grid-cols-3 gap-3">
-            <MiniStat label="請求" value={formatYen(totals.invoiceAmount)} />
-            <MiniStat label="入金" value={formatYen(totals.paidIn)} />
+            <MiniStat
+              label="請求額（税込）"
+              value={formatYen(totals.invoiceAmount)}
+            />
+            <MiniStat label="入金額（税込）" value={formatYen(totals.paidIn)} />
             <MiniStat
               label="未入金"
               value={formatYen(totals.unpaid)}
@@ -795,13 +828,24 @@ function SimpleOverview({
           }
         >
           <div className="grid grid-cols-2 gap-3">
-            <MiniStat label="売上" value={formatYen(totals.sales)} />
-            <MiniStat label="仕入" value={formatYen(totals.purchase)} />
-            <MiniStat label="粗利" value={formatYen(totals.profit)} />
+            <MiniStat
+              label="売上（税抜）"
+              value={formatYen(totals.confirmed.revenue)}
+            />
+            <MiniStat
+              label="仕入（税抜）"
+              value={formatYen(totals.confirmed.cost)}
+            />
+            <MiniStat
+              label="粗利"
+              value={formatYen(totals.confirmed.profit)}
+            />
             <MiniStat
               label="粗利率"
               value={
-                totals.rate == null ? "—" : `${totals.rate.toFixed(1)}%`
+                totals.confirmed.rate == null
+                  ? "—"
+                  : `${totals.confirmed.rate.toFixed(1)}%`
               }
             />
           </div>
@@ -1396,7 +1440,7 @@ function DeliveryTab({
                     value={formatDate(order.expectedDeliveryDate)}
                   />
                   <Field
-                    label="納品日"
+                    label="実納品日"
                     value={formatDate(order.deliveredDate)}
                   />
                   <div>
@@ -1418,7 +1462,7 @@ function DeliveryTab({
                             数量
                           </th>
                           <th className="py-2 pr-3 font-medium">納品予定</th>
-                          <th className="py-2 font-medium">納品日</th>
+                          <th className="py-2 font-medium">実納品日</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1483,7 +1527,7 @@ function DeliveryTab({
         >
           納品管理
         </Link>
-        からも行えます。分納（deliveries テーブル）は未対応で、現在は発注単位の納品予定日・納品日を参照します。
+        からも行えます。分納（deliveries テーブル）は未対応で、現在は発注単位の納品予定日・実納品日を参照します。
       </p>
     </Section>
   );
@@ -1591,7 +1635,10 @@ function InvoiceReceiptTab({
 
       {isSansha ? (
         <div className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <MiniStat label="商品請求合計" value={formatYen(totals.invoiceAmount)} />
+          <MiniStat
+            label="商品請求合計（税込）"
+            value={formatYen(totals.invoiceAmount)}
+          />
           <MiniStat
             label="信販入金額"
             value={
@@ -1612,8 +1659,14 @@ function InvoiceReceiptTab({
         </div>
       ) : (
         <div className="mb-8 grid grid-cols-3 gap-3">
-          <MiniStat label="請求合計" value={formatYen(totals.invoiceAmount)} />
-          <MiniStat label="入金済み" value={formatYen(totals.paidIn)} />
+          <MiniStat
+            label="請求合計（税込）"
+            value={formatYen(totals.invoiceAmount)}
+          />
+          <MiniStat
+            label="入金済み（税込）"
+            value={formatYen(totals.paidIn)}
+          />
           <MiniStat
             label="未入金残高"
             value={formatYen(totals.unpaid)}
@@ -1678,7 +1731,7 @@ function InvoiceReceiptTab({
                       value={formatDate(invoice.dueDate)}
                     />
                     <Field
-                      label={isSansha ? "商品請求金額" : "請求金額"}
+                      label={isSansha ? "商品請求金額（税込）" : "請求額（税込）"}
                       value={formatYen(invoice.invoiceAmount)}
                     />
                     <Field
@@ -1978,6 +2031,8 @@ function ProfitTab({
     invoices: invoices.map((i) => ({
       status: i.status,
       invoiceAmount: i.invoiceAmount,
+      subtotalExTax: i.subtotalExTax,
+      taxAmount: i.taxAmount,
     })),
     orders: orders.map((o) => ({
       status: o.status,
@@ -1999,8 +2054,8 @@ function ProfitTab({
       <div className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-950">
         <p className="font-semibold">粗利 v1</p>
         <p className="mt-1 text-xs leading-relaxed text-sky-900/90">
-          確定粗利は請求・発注ベース（有効請求 − 有効発注 −
-          決済手数料）です。顧客入金・信販入金・販売店仕切・仕入先支払タイミングはキャッシュフローのため粗利に含めません。見込粗利は商品価格の参考表示です。
+          確定粗利は税抜基準です（税抜売上 − 税抜仕入原価 −
+          税抜決済手数料）。請求額・入金額は税込のまま保持します。顧客入金・信販入金・販売店仕切・仕入先支払タイミングはキャッシュフローのため粗利に含めません。見込粗利は商品価格の参考表示です。
         </p>
       </div>
 
@@ -2037,13 +2092,24 @@ function ProfitTab({
 
       <Section
         title="確定粗利（請求・発注ベース）"
-        description="売上＝有効請求額合計 / 仕入＝有効発注額合計 / 手数料＝case_settlements"
+        description="税抜売上 − 税抜仕入原価 − 税抜決済手数料。粗利率の分母は税抜売上。請求額（税込）は債権額"
       >
+        <div className="mb-4 grid gap-3 sm:grid-cols-3">
+          <MiniStat
+            label="請求額（税込）"
+            value={formatYen(confirmed.billedInclusive)}
+          />
+          <MiniStat
+            label="売上（税抜）"
+            value={formatYen(confirmed.revenue)}
+          />
+          <MiniStat label="消費税" value={formatYen(confirmed.tax)} />
+        </div>
         <ProfitLines
           rows={[
-            { label: "売上（有効請求合計）", value: confirmed.revenue },
-            { label: "仕入原価（有効発注合計）", value: -confirmed.cost },
-            { label: "決済手数料", value: -confirmed.fee },
+            { label: "売上（税抜）", value: confirmed.revenue },
+            { label: "仕入原価（税抜）", value: -confirmed.cost },
+            { label: "決済手数料（税抜）", value: -confirmed.fee },
           ]}
           profit={confirmed.profit}
           rate={confirmed.rate}
@@ -2062,9 +2128,9 @@ function ProfitTab({
       >
         <ProfitLines
           rows={[
-            { label: "売上（商品売価）", value: forecast.revenue },
-            { label: "仕入原価（商品仕入）", value: -forecast.cost },
-            { label: "決済手数料（見込）", value: -forecast.fee },
+            { label: "売上（税抜・商品売価）", value: forecast.revenue },
+            { label: "仕入原価（税抜・商品仕入）", value: -forecast.cost },
+            { label: "決済手数料（税抜・見込）", value: -forecast.fee },
           ]}
           profit={forecast.profit}
           rate={forecast.rate}

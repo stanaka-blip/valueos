@@ -13,10 +13,18 @@ import { useParams, useRouter } from "next/navigation";
 
 import { parseCaseExtras } from "@/app/admin/orders/parseCaseExtras";
 import { supabase } from "@/lib/supabase";
+import { fetchActivePurchaseUnitPrices } from "@/lib/purchasePrices";
 import {
   listOrderItemsByOrderId,
   replaceOrderItemsForOrder,
 } from "@/lib/repositories/orderItems";
+import {
+  fetchActiveManufacturers,
+  fetchActiveProducts,
+  formatProductLabel,
+  type ManufacturerOption,
+  type ProductOption,
+} from "@/app/dealer/orders/new/productMaster";
 import {
   getCaseStatusFromOrderStatus,
   PURCHASE_ORDER_STATUSES,
@@ -25,7 +33,6 @@ import {
 import {
   calcLineAmount,
   formatYen,
-  getTodayString,
   isUuid,
   toNumber,
 } from "@/app/orders/orderUtils";
@@ -43,6 +50,7 @@ type LineDraft = {
   local_id: string;
   product_id: string;
   case_product_id: string | null;
+  manufacturer_id: string;
   manufacturer_name: string;
   model_no: string;
   quantity: string;
@@ -52,10 +60,11 @@ type LineDraft = {
 
 type OrderForm = {
   expected_delivery_date: string;
+  delivered_date: string;
   status: string;
   memo: string;
-  delivered_date: string | null;
   case_id: string | null;
+  supplier_id: string | null;
   order_no: string;
 };
 
@@ -70,6 +79,24 @@ type DeliveryConfirmInfo = {
 const inputClassName =
   "w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-gray-900 focus:ring-1 focus:ring-gray-900 disabled:cursor-not-allowed disabled:bg-gray-100";
 
+function createEmptyLine(): LineDraft {
+  return {
+    id: null,
+    local_id:
+      typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `new-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    product_id: "",
+    case_product_id: null,
+    manufacturer_id: "",
+    manufacturer_name: "",
+    model_no: "",
+    quantity: "1",
+    unit_price: "",
+    memo: "",
+  };
+}
+
 export default function EditOrderPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
@@ -80,13 +107,16 @@ export default function EditOrderPage() {
 
   const [form, setForm] = useState<OrderForm>({
     expected_delivery_date: "",
+    delivered_date: "",
     status: "発注済",
     memo: "",
-    delivered_date: null,
     case_id: null,
+    supplier_id: null,
     order_no: "",
   });
   const [lines, setLines] = useState<LineDraft[]>([]);
+  const [manufacturers, setManufacturers] = useState<ManufacturerOption[]>([]);
+  const [products, setProducts] = useState<ProductOption[]>([]);
   const [headerOrderAmount, setHeaderOrderAmount] = useState(0);
   const [deliveryInfo, setDeliveryInfo] = useState<DeliveryConfirmInfo | null>(
     null
@@ -131,6 +161,7 @@ export default function EditOrderPage() {
           `
           id,
           case_id,
+          supplier_id,
           order_no,
           order_amount,
           expected_delivery_date,
@@ -212,13 +243,13 @@ export default function EditOrderPage() {
 
       const productMap = new Map<
         string,
-        { manufacturer_name: string; model_no: string }
+        { manufacturer_id: string; manufacturer_name: string; model_no: string }
       >();
 
       if (productIds.length > 0) {
         const { data: products, error: productsError } = await supabase
           .from("products")
-          .select("id, model_no, manufacturers(name)")
+          .select("id, model_no, manufacturer_id, manufacturers(name)")
           .in("id", productIds);
 
         if (cancelled) {
@@ -244,6 +275,7 @@ export default function EditOrderPage() {
             }
           );
           productMap.set(product.id as string, {
+            manufacturer_id: (product.manufacturer_id as string) || "",
             manufacturer_name: identity.manufacturerName,
             model_no: identity.modelNo,
           });
@@ -254,16 +286,36 @@ export default function EditOrderPage() {
         return;
       }
 
+      const [manufacturersResult, productsResult] = await Promise.all([
+        fetchActiveManufacturers(),
+        fetchActiveProducts(),
+      ]);
+      if (cancelled) {
+        return;
+      }
+      if (manufacturersResult.errorMessage || productsResult.errorMessage) {
+        setLoadError(
+          manufacturersResult.errorMessage ||
+            productsResult.errorMessage ||
+            "商品マスタの取得に失敗しました。"
+        );
+        setLoading(false);
+        return;
+      }
+
       setForm({
         expected_delivery_date: (order.expected_delivery_date as string) || "",
+        delivered_date: (order.delivered_date as string) || "",
         status: (order.status as string) || "発注済",
         memo: (order.memo as string) || "",
-        delivered_date: (order.delivered_date as string | null) || null,
         case_id: caseId,
+        supplier_id: (order.supplier_id as string | null) || null,
         order_no: (order.order_no as string) || "",
       });
       setHeaderOrderAmount(toNumber(order.order_amount));
       setDeliveryInfo(nextDelivery);
+      setManufacturers(manufacturersResult.data);
+      setProducts(productsResult.data);
 
       setLines(
         itemsResult.data.map((item) => {
@@ -275,6 +327,7 @@ export default function EditOrderPage() {
             local_id: item.id,
             product_id: item.product_id || "",
             case_product_id: item.case_product_id,
+            manufacturer_id: product?.manufacturer_id || "",
             manufacturer_name: product?.manufacturer_name || "",
             model_no: product?.model_no || "",
             quantity: String(toNumber(item.quantity) || 1),
@@ -314,6 +367,79 @@ export default function EditOrderPage() {
     );
   }
 
+  function handleAddLine() {
+    setLines((current) => [...current, createEmptyLine()]);
+  }
+
+  function handleRemoveLine(localId: string) {
+    setLines((current) => current.filter((line) => line.local_id !== localId));
+  }
+
+  function productsForManufacturer(manufacturerId: string): ProductOption[] {
+    if (!manufacturerId) return products;
+    return products.filter((p) => p.manufacturer_id === manufacturerId);
+  }
+
+  function handleManufacturerChange(localId: string, manufacturerId: string) {
+    const manufacturer = manufacturers.find((m) => m.id === manufacturerId);
+    setLines((current) =>
+      current.map((line) =>
+        line.local_id === localId
+          ? {
+              ...line,
+              manufacturer_id: manufacturerId,
+              manufacturer_name: manufacturer?.name || "",
+              product_id: "",
+              model_no: "",
+              unit_price: line.id ? line.unit_price : "",
+            }
+          : line
+      )
+    );
+  }
+
+  async function handleProductChange(localId: string, productId: string) {
+    const product = products.find((p) => p.id === productId);
+    const manufacturer = product
+      ? manufacturers.find((m) => m.id === (product.manufacturer_id || ""))
+      : null;
+
+    setLines((current) =>
+      current.map((line) =>
+        line.local_id === localId
+          ? {
+              ...line,
+              product_id: productId,
+              manufacturer_id: product?.manufacturer_id || line.manufacturer_id,
+              manufacturer_name:
+                manufacturer?.name || line.manufacturer_name,
+              model_no: product?.model_no || "",
+            }
+          : line
+      )
+    );
+
+    if (!productId || !form.supplier_id) {
+      return;
+    }
+
+    const priceResult = await fetchActivePurchaseUnitPrices(supabase, {
+      productIds: [productId],
+      supplierId: form.supplier_id,
+    });
+    const unitPrice = priceResult.unitPriceByProductId.get(productId);
+    if (unitPrice == null) {
+      return;
+    }
+    setLines((current) =>
+      current.map((line) =>
+        line.local_id === localId && line.product_id === productId
+          ? { ...line, unit_price: String(unitPrice) }
+          : line
+      )
+    );
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSubmitError("");
@@ -330,6 +456,10 @@ export default function EditOrderPage() {
     }
 
     for (const line of lines) {
+      if (!line.product_id && line.id == null) {
+        setSubmitError("追加した明細はメーカー・製品/型番を選択してください。");
+        return;
+      }
       if (toNumber(line.quantity) <= 0) {
         setSubmitError("数量は1以上で入力してください。");
         return;
@@ -341,11 +471,9 @@ export default function EditOrderPage() {
     }
 
     setSubmitting(true);
-    const today = getTodayString();
     const deliveredDate = resolveDeliveredDate(
       form.status,
-      form.delivered_date,
-      today
+      form.delivered_date
     );
 
     const { error: orderError } = await supabase
@@ -452,7 +580,7 @@ export default function EditOrderPage() {
           発注編集：{form.order_no || "-"}
         </h1>
         <p className="mt-1 text-sm text-gray-500">
-          納品確認・ステータス変更、および数量・単価・納品予定日・備考を更新できます。
+          明細の追加・削除、数量・仕入単価、納品予定日と実納品日を更新できます。発注金額は明細合計で再計算します。
         </p>
       </header>
 
@@ -541,6 +669,20 @@ export default function EditOrderPage() {
               />
             </Field>
 
+            <Field label="実納品日">
+              <input
+                type="date"
+                name="delivered_date"
+                value={form.delivered_date}
+                onChange={handleChange}
+                disabled={submitting}
+                className={inputClassName}
+              />
+              <p className="mt-2 text-xs text-gray-500">
+                納品予定日とは別です。登録日や更新日時では自動入力しません。
+              </p>
+            </Field>
+
             <Field
               label={
                 lines.length > 0
@@ -560,35 +702,93 @@ export default function EditOrderPage() {
           </div>
 
           <div>
-            <h3 className="mb-3 text-base font-bold text-gray-900">発注明細</h3>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+              <h3 className="text-base font-bold text-gray-900">発注明細</h3>
+              <button
+                type="button"
+                onClick={handleAddLine}
+                disabled={submitting}
+                className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:bg-gray-100"
+              >
+                明細を追加
+              </button>
+            </div>
             {lines.length === 0 ? (
               <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-                発注明細がありません。旧データで明細が未作成の可能性があります。発注詳細・発注書も合わせて確認してください。
+                発注明細がありません。「明細を追加」からメーカー・製品/型番・数量・仕入単価を登録してください。
               </div>
             ) : (
               <div className="overflow-x-auto rounded-lg border border-gray-200">
-                <table className="w-full min-w-[720px] text-left text-sm">
+                <table className="w-full min-w-[960px] text-left text-sm">
                   <thead className="border-b bg-[#f7f7f5] text-gray-500">
                     <tr>
                       <th className="px-3 py-3 font-medium">メーカー</th>
-                      <th className="px-3 py-3 font-medium">型番</th>
+                      <th className="px-3 py-3 font-medium">製品/型番</th>
                       <th className="px-3 py-3 font-medium">数量</th>
                       <th className="px-3 py-3 font-medium">仕入単価</th>
                       <th className="px-3 py-3 font-medium">金額</th>
                       <th className="px-3 py-3 font-medium">備考</th>
+                      <th className="px-3 py-3 font-medium">操作</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {lines.map((line) => (
+                    {lines.map((line) => {
+                      const isNew = line.id == null;
+                      const productOptions = productsForManufacturer(
+                        line.manufacturer_id
+                      );
+                      return (
                       <tr
                         key={line.local_id}
                         className="border-b last:border-b-0"
                       >
                         <td className="px-3 py-3">
-                          {displayIdentityValue(line.manufacturer_name)}
+                          {isNew ? (
+                            <select
+                              value={line.manufacturer_id}
+                              onChange={(e) =>
+                                handleManufacturerChange(
+                                  line.local_id,
+                                  e.target.value
+                                )
+                              }
+                              disabled={submitting}
+                              className={`${inputClassName} min-w-[140px]`}
+                            >
+                              <option value="">選択</option>
+                              {manufacturers.map((m) => (
+                                <option key={m.id} value={m.id}>
+                                  {m.name}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            displayIdentityValue(line.manufacturer_name)
+                          )}
                         </td>
                         <td className="px-3 py-3">
-                          {displayIdentityValue(line.model_no)}
+                          {isNew ? (
+                            <select
+                              value={line.product_id}
+                              onChange={(e) =>
+                                void handleProductChange(
+                                  line.local_id,
+                                  e.target.value
+                                )
+                              }
+                              disabled={submitting || !line.manufacturer_id}
+                              className={`${inputClassName} min-w-[180px]`}
+                            >
+                              <option value="">選択</option>
+                              {productOptions.map((p) => (
+                                <option key={p.id} value={p.id}>
+                                  {formatProductLabel(p)}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            displayIdentityValue(line.model_no)
+                          )}
                         </td>
                         <td className="px-3 py-3">
                           <input
@@ -653,8 +853,19 @@ export default function EditOrderPage() {
                             />
                           )}
                         </td>
+                        <td className="px-3 py-3">
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveLine(line.local_id)}
+                            disabled={submitting}
+                            className="rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:bg-gray-100"
+                          >
+                            削除
+                          </button>
+                        </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { summarizeInvoicePayments } from "@/lib/payments";
+import { resolveInvoicePrintTaxDisplay } from "@/lib/invoices/invoicePrintTaxDisplay";
 import { supabase } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
@@ -30,6 +31,8 @@ type InvoiceDetail = {
   invoice_date: string | null;
   due_date: string | null;
   invoice_amount: number | string | null;
+  subtotal_ex_tax: number | string | null;
+  tax_amount: number | string | null;
   status: string | null;
   memo: string | null;
   created_at: string | null;
@@ -106,6 +109,8 @@ export default async function InvoiceDetailPage({
         invoice_date,
         due_date,
         invoice_amount,
+        subtotal_ex_tax,
+        tax_amount,
         status,
         memo,
         created_at,
@@ -234,6 +239,11 @@ export default async function InvoiceDetailPage({
   const paidAmount = paymentSummary.confirmedPaidAmount;
   const remainingAmount = paymentSummary.unpaidAmount;
   const isOverdue = paymentSummary.isOverdue;
+  const taxDisplay = resolveInvoicePrintTaxDisplay({
+    invoiceAmount: invoice.invoice_amount,
+    subtotalExTax: invoice.subtotal_ex_tax,
+    taxAmount: invoice.tax_amount,
+  });
 
   return (
     <>
@@ -293,19 +303,29 @@ export default async function InvoiceDetailPage({
       </header>
 
       <main className="space-y-6 p-4 md:p-8">
-        <section className="grid gap-4 md:grid-cols-4">
+        <section className="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
           <SummaryCard
-            label="請求金額"
+            label="請求額（税込）"
             value={formatCurrency(invoiceAmount)}
           />
 
           <SummaryCard
-            label="入金済額"
+            label="売上（税抜）"
+            value={formatCurrency(taxDisplay.subtotalExTax)}
+          />
+
+          <SummaryCard
+            label="消費税"
+            value={formatCurrency(taxDisplay.taxAmount)}
+          />
+
+          <SummaryCard
+            label="入金済額（税込）"
             value={formatCurrency(paidAmount)}
           />
 
           <SummaryCard
-            label="未入金金額"
+            label="未入金金額（税込）"
             value={formatCurrency(remainingAmount)}
             alert={remainingAmount > 0}
           />
@@ -367,7 +387,7 @@ export default async function InvoiceDetailPage({
             />
 
             <Info
-              label="請求金額"
+              label="請求額（税込）"
               value={formatCurrency(invoice.invoice_amount)}
             />
           </div>

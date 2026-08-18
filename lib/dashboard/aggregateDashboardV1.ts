@@ -6,6 +6,7 @@
 
 import {
   computeConfirmedCaseProfit,
+  resolveInvoiceProfitTax,
   type CaseProfitFeeInput,
 } from "@/lib/profit/caseProfitCalc";
 import {
@@ -21,6 +22,8 @@ export type DashboardInvoiceInput = {
   case_id?: string | null;
   status?: string | null;
   invoice_amount?: number | string | null;
+  subtotal_ex_tax?: number | string | null;
+  tax_amount?: number | string | null;
   invoice_date?: string | null;
 };
 
@@ -84,8 +87,8 @@ function shareAmount(total: number, part: number, whole: number): number {
 }
 
 /**
- * 期間内の有効請求を売上とし、同じ請求の案件に紐づく発注・手数料を
- * 請求金額比で按分して確定粗利にする（案件全体が期間内なら caseProfitCalc と一致）。
+ * 期間内の有効請求を税抜売上とし、同じ請求の案件に紐づく発注・手数料を
+ * 税抜売上比で按分して確定粗利にする（案件全体が期間内なら caseProfitCalc と一致）。
  */
 export function aggregateDashboardV1(input: {
   cases: readonly DashboardCaseInput[];
@@ -128,6 +131,8 @@ export function aggregateDashboardV1(input: {
       invoices: caseInvoices.map((inv) => ({
         status: inv.status,
         invoiceAmount: inv.invoice_amount,
+        subtotalExTax: inv.subtotal_ex_tax,
+        taxAmount: inv.tax_amount,
       })),
       orders: (ordersByCase.get(caseId) || []).map((o) => ({
         status: o.status,
@@ -140,12 +145,17 @@ export function aggregateDashboardV1(input: {
 
     const inPeriod: Array<{ amount: number; date: string | null }> = [];
     for (const inv of caseInvoices) {
-      const amount = Math.floor(Number(inv.invoice_amount) || 0);
-      if (String(inv.status || "").trim() === "取消" || amount <= 0) continue;
+      if (String(inv.status || "").trim() === "取消") continue;
+      const taxParts = resolveInvoiceProfitTax({
+        invoiceAmount: inv.invoice_amount,
+        subtotalExTax: inv.subtotal_ex_tax,
+        taxAmount: inv.tax_amount,
+      });
+      if (taxParts.billedInclusive <= 0) continue;
       if (!isDateInRange(inv.invoice_date, input.period.from, input.period.to)) {
         continue;
       }
-      inPeriod.push({ amount, date: inv.invoice_date || null });
+      inPeriod.push({ amount: taxParts.subtotalExTax, date: inv.invoice_date || null });
     }
     if (inPeriod.length === 0) continue;
 

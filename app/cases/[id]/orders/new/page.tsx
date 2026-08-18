@@ -84,6 +84,7 @@ type CaseRelation = {
 type OrderForm = {
   order_date: string;
   expected_delivery_date: string;
+  delivered_date: string;
   status: string;
   memo: string;
 };
@@ -116,6 +117,7 @@ export default function NewOrderPage() {
   const [form, setForm] = useState<OrderForm>({
     order_date: getTodayString(),
     expected_delivery_date: "",
+    delivered_date: "",
     status: "発注済",
     memo: "",
   });
@@ -688,8 +690,10 @@ export default function NewOrderPage() {
 
     setSubmitting(true);
 
-    const today = getTodayString();
-    const deliveredDate = resolveDeliveredDate(form.status, null, today);
+    const deliveredDate = resolveDeliveredDate(
+      form.status,
+      form.delivered_date
+    );
     const nextCaseStatus = getCaseStatusFromOrderStatus(form.status);
     const orderNos =
       previewOrderNumbers.length === buckets.length
@@ -912,6 +916,20 @@ export default function NewOrderPage() {
                 disabled={submitting}
                 className={inputClassName}
               />
+            </Field>
+
+            <Field label="実納品日">
+              <input
+                type="date"
+                name="delivered_date"
+                value={form.delivered_date}
+                onChange={handleFormChange}
+                disabled={submitting}
+                className={inputClassName}
+              />
+              <p className="mt-2 text-xs text-gray-500">
+                納品予定日とは別です。登録日では自動入力しません。
+              </p>
             </Field>
 
             <Field label="発注ステータス" required>

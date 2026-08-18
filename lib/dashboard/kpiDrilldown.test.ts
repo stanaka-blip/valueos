@@ -81,7 +81,7 @@ check("未発注/未請求は既存 alert、未入金/期限超過は /payments"
 });
 
 check("バナー文言と期間表示", () => {
-  assert.equal(dashboardKpiBannerTitle("sales"), "ダッシュボード: 売上対象");
+  assert.equal(dashboardKpiBannerTitle("sales"), "ダッシュボード: 売上（税抜）対象");
   assert.equal(dashboardKpiBannerTitle("profit"), "ダッシュボード: 粗利対象");
   assert.equal(
     dashboardKpiBannerTitle("profit-rate"),
@@ -125,7 +125,7 @@ check("periodCaseIds は請求日で売上対象になった案件と一致", ()
     period: { from: "2026-08-01", to: "2026-08-31", grain: "day" },
   });
   assert.deepEqual(r.periodCaseIds, ["in"]);
-  assert.equal(r.sales, 100_000);
+  assert.equal(r.sales, Math.floor(100_000 / 1.1));
 });
 
 check("未入金一覧条件は取消除外・残高>0（期限超過も含む）", () => {

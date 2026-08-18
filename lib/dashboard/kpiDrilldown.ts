@@ -33,7 +33,7 @@ export function isDashboardKpiSource(
 export function dashboardKpiBannerTitle(source: string | null | undefined): string {
   switch (source) {
     case "sales":
-      return "ダッシュボード: 売上対象";
+      return "ダッシュボード: 売上（税抜）対象";
     case "profit":
     case "profit-rate":
       return "ダッシュボード: 粗利対象";

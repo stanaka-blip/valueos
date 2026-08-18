@@ -114,7 +114,7 @@ export default async function InvoicesPage() {
           />
 
           <SummaryCard
-            label="請求金額合計"
+            label="請求額合計（税込）"
             value={formatCurrency(totalInvoiceAmount)}
           />
 
@@ -180,7 +180,7 @@ export default async function InvoicesPage() {
                   </th>
 
                   <th className="whitespace-nowrap px-5 py-4 text-right">
-                    請求金額
+                    請求額（税込）
                   </th>
 
                   <th className="whitespace-nowrap px-5 py-4">

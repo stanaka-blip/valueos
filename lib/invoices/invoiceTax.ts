@@ -7,8 +7,10 @@
  * - 明細ごとには課税せず、請求書単位で1回だけ消費税を計算
  * - 消費税の1円未満は切り捨て: tax = Math.floor(subtotal_ex_tax * 0.10)
  *
- * 請求書印刷は当面 Math.floor(invoiceAmount / 1.1) のまま。
- * スナップショット列（subtotal_ex_tax / tax_amount）利用は後続 PR。
+ * 請求書印刷は resolveInvoicePrintTaxDisplay を使う。
+ * スナップショット列（subtotal_ex_tax / tax_amount）があれば保存値、
+ * 無ければ floor(invoice_amount / 1.1)。invoice_amount（税込）は変更しない。
+ * 粗利の売上はこの税抜額を使う。
  */
 
 export const INVOICE_CONSUMPTION_TAX_RATE = 0.1;

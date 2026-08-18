@@ -20,7 +20,7 @@ function check(name: string, fn: () => void) {
 
 const periodJune = { from: "2026-06-01", to: "2026-06-30", grain: "day" as const };
 
-check("invoice 1,430,000 → 売上 1,430,000", () => {
+check("invoice 1,430,000 税込 → 売上（税抜） 1,300,000", () => {
   const r = aggregateDashboardV1({
     cases: [{ id: "c1", status: "受付済" }],
     invoices: [
@@ -35,7 +35,27 @@ check("invoice 1,430,000 → 売上 1,430,000", () => {
     settlements: [],
     period: periodJune,
   });
-  assert.equal(r.sales, 1_430_000);
+  assert.equal(r.sales, 1_300_000);
+});
+
+check("税スナップショットがあれば税抜売上に使う", () => {
+  const r = aggregateDashboardV1({
+    cases: [{ id: "c1", status: "受付済" }],
+    invoices: [
+      {
+        case_id: "c1",
+        status: "発行済",
+        invoice_amount: 1_100_000,
+        subtotal_ex_tax: 1_000_000,
+        tax_amount: 100_000,
+        invoice_date: "2026-06-10",
+      },
+    ],
+    orders: [],
+    settlements: [],
+    period: periodJune,
+  });
+  assert.equal(r.sales, 1_000_000);
 });
 
 check("取消請求は売上に入れない", () => {
@@ -59,7 +79,7 @@ check("取消請求は売上に入れない", () => {
     settlements: [],
     period: periodJune,
   });
-  assert.equal(r.sales, 1_430_000);
+  assert.equal(r.sales, 1_300_000);
 });
 
 check("order 132,000 → 確定粗利の仕入 132,000（パッケージ order_amount）", () => {
@@ -84,12 +104,13 @@ check("order 132,000 → 確定粗利の仕入 132,000（パッケージ order_a
     orders: [{ status: "発注済", orderAmount: 132_000 }],
   });
   assert.equal(confirmed.cost, 132_000);
-  assert.equal(r.sales, 1_430_000);
+  assert.equal(confirmed.revenue, 1_300_000);
+  assert.equal(r.sales, 1_300_000);
   assert.equal(r.profit, confirmed.profit);
-  assert.equal(r.profit, 1_430_000 - 132_000);
+  assert.equal(r.profit, 1_300_000 - 132_000);
 });
 
-check("信販入金4,000,000でも売上は1,430,000のまま（引数にCFを取らない）", () => {
+check("信販入金4,000,000でも売上は税抜1,300,000のまま（引数にCFを取らない）", () => {
   const finance = 4_000_000;
   const r = aggregateDashboardV1({
     cases: [{ id: "c1", status: "受付済" }],
@@ -105,7 +126,7 @@ check("信販入金4,000,000でも売上は1,430,000のまま（引数にCFを�
     settlements: [],
     period: periodJune,
   });
-  assert.equal(r.sales, 1_430_000);
+  assert.equal(r.sales, 1_300_000);
   assert.notEqual(r.sales, finance);
 });
 
@@ -125,7 +146,7 @@ check("販売店仕切2,570,000を粗利原価に入れない", () => {
     settlements: [],
     period: periodJune,
   });
-  assert.equal(r.profit, 1_430_000 - 132_000);
+  assert.equal(r.profit, 1_300_000 - 132_000);
   assert.notEqual(r.sales - r.profit, dealerPayout);
 });
 
@@ -165,9 +186,9 @@ check("推移は請求日バケット。売上0なら粗利率0", () => {
   });
   const day = r.trend.find((t) => t.key === "2026-06-10");
   assert.ok(day);
-  assert.equal(day?.sales, 1_430_000);
-  assert.equal(day?.profit, 1_298_000);
-  assert.equal(r.profitRate, (1_298_000 / 1_430_000) * 100);
+  assert.equal(day?.sales, 1_300_000);
+  assert.equal(day?.profit, 1_168_000);
+  assert.equal(r.profitRate, (1_168_000 / 1_300_000) * 100);
 
   const empty = aggregateDashboardV1({
     cases: [{ id: "c1", status: "受付済" }],
@@ -180,14 +201,16 @@ check("推移は請求日バケット。売上0なら粗利率0", () => {
   assert.equal(empty.profitRate, 0);
 });
 
-check("手数料は caseProfitCalc と同じ（fee_amount）", () => {
+check("手数料は caseProfitCalc と同じ（fee_amount・税抜売上分母）", () => {
   const r = aggregateDashboardV1({
     cases: [{ id: "c1", status: "受付済" }],
     invoices: [
       {
         case_id: "c1",
         status: "発行済",
-        invoice_amount: 1_000_000,
+        invoice_amount: 1_100_000,
+        subtotal_ex_tax: 1_000_000,
+        tax_amount: 100_000,
         invoice_date: "2026-06-01",
       },
     ],
@@ -196,11 +219,19 @@ check("手数料は caseProfitCalc と同じ（fee_amount）", () => {
     period: periodJune,
   });
   const confirmed = computeConfirmedCaseProfit({
-    invoices: [{ status: "発行済", invoiceAmount: 1_000_000 }],
+    invoices: [
+      {
+        status: "発行済",
+        invoiceAmount: 1_100_000,
+        subtotalExTax: 1_000_000,
+        taxAmount: 100_000,
+      },
+    ],
     orders: [{ status: "発注済", orderAmount: 600_000 }],
     fee: { feeAmount: 10_000, feeRate: 10 },
   });
   assert.equal(r.profit, confirmed.profit);
+  assert.equal(r.sales, 1_000_000);
   assert.equal(r.profit, 390_000);
 });
 

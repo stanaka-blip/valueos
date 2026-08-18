@@ -308,7 +308,7 @@ export default async function OrderDetailPage({
               label="納品予定日"
               value={formatDate(order.expected_delivery_date)}
             />
-            <Info label="納品日" value={formatDate(order.delivered_date)} />
+            <Info label="実納品日" value={formatDate(order.delivered_date)} />
             <Info label="発注金額" value={formatYen(displayedOrderAmount)} />
           </div>
         </section>
