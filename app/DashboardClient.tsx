@@ -129,7 +129,7 @@ export default function DashboardClient({ data }: Props) {
             <p className="mt-3 text-sm text-gray-500">
               {data.period.from} 〜 {data.period.to}
               <span className="ml-2 text-xs text-gray-400">
-                （売上基準: 請求日 / 推移:{" "}
+                （売上＝税抜 / 基準: 請求日 / 推移:{" "}
                 {data.period.grain === "day" ? "日別" : "月別"}）
               </span>
             </p>
@@ -143,7 +143,7 @@ export default function DashboardClient({ data }: Props) {
           </div>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <KpiCard
-              label="売上"
+              label="売上（税抜）"
               value={formatYen(data.kpis.sales)}
               href={salesHref}
             />
@@ -161,7 +161,7 @@ export default function DashboardClient({ data }: Props) {
               label="未入金額"
               value={formatYen(data.kpis.unpaidAmount)}
               href={unpaidAmountHref}
-              hint="現在時点の未回収残高"
+              hint="現在時点の未回収残高（税込）"
               alert={data.kpis.unpaidAmount > 0}
             />
           </div>
@@ -208,12 +208,12 @@ export default function DashboardClient({ data }: Props) {
               <div className="text-xs font-semibold uppercase tracking-wide text-gray-400">
                 売上推移
               </div>
-              <p className="mt-0.5 text-sm text-gray-500">売上 / 実粗利</p>
+              <p className="mt-0.5 text-sm text-gray-500">売上（税抜） / 実粗利</p>
             </div>
             <div className="flex gap-4 text-xs text-gray-500">
               <span className="inline-flex items-center gap-1.5">
                 <span className="inline-block h-2 w-2 rounded-full bg-sky-600" />
-                売上
+                売上（税抜）
               </span>
               <span className="inline-flex items-center gap-1.5">
                 <span className="inline-block h-2 w-2 rounded-full bg-emerald-600" />

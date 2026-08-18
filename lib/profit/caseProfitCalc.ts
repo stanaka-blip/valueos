@@ -1,11 +1,14 @@
 /**
  * 案件粗利 v1（純関数）。
  *
- * 確定粗利 = 有効請求合計 − 有効発注合計 − 決済手数料
+ * 確定粗利 = 税抜売上 − 税抜仕入原価 − 税抜決済手数料
  * 見込粗利 = Σ case_products.sales_price − Σ purchase_price − 手数料見込（参考）
  *
+ * 請求額・入金額（債権/資金移動）は税込のまま保持し、粗利の売上には使わない。
  * 含めない: payments / finance_receipts / dealer_settlements.payout* / supplier_payments
  */
+
+import { resolveInvoicePrintTaxDisplay } from "@/lib/invoices/invoicePrintTaxDisplay";
 
 export type CaseProfitFeeInput = {
   feeAmount?: number | null;
@@ -14,7 +17,11 @@ export type CaseProfitFeeInput = {
 
 export type CaseProfitInvoiceInput = {
   status?: string | null;
+  /** 税込請求額（invoice_amount）。債権額として保持。粗利の売上には使わない */
   invoiceAmount?: number | string | null;
+  /** 税抜売上スナップショット。無い場合は税込から floor(amount / 1.1) */
+  subtotalExTax?: number | string | null;
+  taxAmount?: number | string | null;
 };
 
 export type CaseProfitOrderInput = {
@@ -28,10 +35,18 @@ export type CaseProfitProductInput = {
 };
 
 export type ConfirmedCaseProfit = {
+  /** 売上（税抜） */
   revenue: number;
+  /** 請求額（税込）合計。粗利の加減算には使わない */
+  billedInclusive: number;
+  /** 消費税合計 */
+  tax: number;
+  /** 仕入原価（税抜） */
   cost: number;
+  /** 決済手数料（税抜） */
   fee: number;
   profit: number;
+  /** 粗利率。分母は税抜売上 */
   rate: number | null;
 };
 
@@ -56,7 +71,7 @@ function floorMoney(value: number): number {
   return Math.floor(value);
 }
 
-/** fee_amount 優先。なければ fee_rate % × base（売上） */
+/** fee_amount（税抜）優先。なければ fee_rate % × 税抜売上 */
 export function resolveCaseProfitFee(
   fee: CaseProfitFeeInput | null | undefined,
   revenueBase: number
@@ -71,15 +86,63 @@ export function resolveCaseProfitFee(
   return 0;
 }
 
-/** 取消を除く invoices.invoice_amount 合計 */
+/** 有効請求1件の税区分。invoice_amount は税込のまま、売上は税抜 */
+export function resolveInvoiceProfitTax(inv: CaseProfitInvoiceInput): {
+  billedInclusive: number;
+  subtotalExTax: number;
+  tax: number;
+} {
+  const parts = resolveInvoicePrintTaxDisplay({
+    invoiceAmount: inv.invoiceAmount,
+    subtotalExTax: inv.subtotalExTax,
+    taxAmount: inv.taxAmount,
+  });
+  return {
+    billedInclusive: floorMoney(parts.invoiceAmountInclusive),
+    subtotalExTax: floorMoney(parts.subtotalExTax),
+    tax: floorMoney(parts.taxAmount),
+  };
+}
+
+function isCancelledInvoice(inv: CaseProfitInvoiceInput): boolean {
+  return String(inv.status || "").trim() === "取消";
+}
+
+/** 取消を除く 税抜売上 合計 */
 export function sumActiveInvoiceRevenue(
   invoices: ReadonlyArray<CaseProfitInvoiceInput> | undefined
 ): number {
   if (!invoices) return 0;
   let sum = 0;
   for (const inv of invoices) {
-    if (String(inv.status || "").trim() === "取消") continue;
-    sum += floorMoney(toFiniteNumber(inv.invoiceAmount));
+    if (isCancelledInvoice(inv)) continue;
+    sum += resolveInvoiceProfitTax(inv).subtotalExTax;
+  }
+  return sum;
+}
+
+/** 取消を除く 請求額（税込）合計。債権額。粗利加減算には使わない */
+export function sumActiveInvoiceBilledInclusive(
+  invoices: ReadonlyArray<CaseProfitInvoiceInput> | undefined
+): number {
+  if (!invoices) return 0;
+  let sum = 0;
+  for (const inv of invoices) {
+    if (isCancelledInvoice(inv)) continue;
+    sum += resolveInvoiceProfitTax(inv).billedInclusive;
+  }
+  return sum;
+}
+
+/** 取消を除く 消費税 合計 */
+export function sumActiveInvoiceTax(
+  invoices: ReadonlyArray<CaseProfitInvoiceInput> | undefined
+): number {
+  if (!invoices) return 0;
+  let sum = 0;
+  for (const inv of invoices) {
+    if (isCancelledInvoice(inv)) continue;
+    sum += resolveInvoiceProfitTax(inv).tax;
   }
   return sum;
 }
@@ -99,7 +162,7 @@ export function sumActiveOrderCost(
 }
 
 /**
- * 確定粗利（通常・3社間共通）。
+ * 確定粗利（通常・3社間共通）。税抜基準。
  * CF 台帳（payments / finance_receipts / dealer payout / supplier_payments）は引数に取らない。
  */
 export function computeConfirmedCaseProfit(input: {
@@ -108,11 +171,13 @@ export function computeConfirmedCaseProfit(input: {
   fee?: CaseProfitFeeInput | null;
 }): ConfirmedCaseProfit {
   const revenue = sumActiveInvoiceRevenue(input.invoices);
+  const billedInclusive = sumActiveInvoiceBilledInclusive(input.invoices);
+  const tax = sumActiveInvoiceTax(input.invoices);
   const cost = sumActiveOrderCost(input.orders);
   const fee = resolveCaseProfitFee(input.fee, revenue);
   const profit = revenue - cost - fee;
   const rate = revenue > 0 ? (profit / revenue) * 100 : null;
-  return { revenue, cost, fee, profit, rate };
+  return { revenue, billedInclusive, tax, cost, fee, profit, rate };
 }
 
 /** 見込粗利（参考）。null 価格は合計に 0 加算するが hasUnsetPrices で区別する */

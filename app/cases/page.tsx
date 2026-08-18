@@ -222,7 +222,7 @@ export default async function CasesPage({
         ? `実粗利 ${profitYen} / 粗利率 ${profitRate}`
         : source === "profit"
           ? `実粗利 ${profitYen}`
-          : `売上 ${salesYen}`;
+          : `売上（税抜） ${salesYen}`;
     filterBanner = {
       title: dashboardKpiBannerTitle(source),
       period: periodLabel,

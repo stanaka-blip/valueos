@@ -11,6 +11,8 @@ import {
   buildOrderDisplayLines,
   buildPackageAmountMemo,
   buildPackageComponentMemo,
+  canDeleteOrderEditLine,
+  canEditOrderLineUnitPrice,
   containsPackageMemoMarker,
   displaySafeOrderItemMemo,
   parsePackageAmountMemo,
@@ -65,6 +67,22 @@ check("契約: 通常備考・商品名風メモをパッケージ行と誤判�
     parsePackageComponentMemo(`prefix ${VE_PKG_COMP_PREFIX}|${PKG_ID}`),
     null
   );
+});
+
+check("契約: PACKAGE金額行・構成行は個別削除不可、構成行の単価のみ編集不可", () => {
+  const amt = buildPackageAmountMemo({
+    casePackageId: PKG_ID,
+    packageName: "PKG",
+    packageQty: 1,
+  });
+  const comp = buildPackageComponentMemo(PKG_ID);
+  assert.equal(canDeleteOrderEditLine(amt), false);
+  assert.equal(canDeleteOrderEditLine(comp), false);
+  assert.equal(canDeleteOrderEditLine("[VE_PKG_AMT]|broken"), false);
+  assert.equal(canDeleteOrderEditLine("通常備考"), true);
+  assert.equal(canEditOrderLineUnitPrice(comp), false);
+  assert.equal(canEditOrderLineUnitPrice(amt), true);
+  assert.equal(canEditOrderLineUnitPrice("通常備考"), true);
 });
 
 check("契約: 不完全マーカーも UI には出さない", () => {

@@ -70,7 +70,7 @@ export async function loadDashboard(input: {
     supabase
       .from("invoices")
       .select(
-        "id, case_id, invoice_amount, due_date, status, invoice_date, created_at"
+        "id, case_id, invoice_amount, subtotal_ex_tax, tax_amount, due_date, status, invoice_date, created_at"
       ),
     supabase.from("orders").select("id, case_id, status, order_amount"),
     supabase
@@ -154,6 +154,8 @@ export async function loadDashboard(input: {
       case_id: (inv.case_id as string) || null,
       status: (inv.status as string) || null,
       invoice_amount: inv.invoice_amount as number | string | null,
+      subtotal_ex_tax: inv.subtotal_ex_tax as number | string | null,
+      tax_amount: inv.tax_amount as number | string | null,
       invoice_date: (inv.invoice_date as string) || null,
     })),
     orders: orders.map((o) => ({

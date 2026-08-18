@@ -40,6 +40,39 @@ export function containsPackageMemoMarker(
   );
 }
 
+export type OrderPackageLineKind =
+  | "PRODUCT"
+  | "PACKAGE_AMOUNT"
+  | "PACKAGE_COMPONENT";
+
+/** AMT/COMP は prefix で判定（不完全マーカーも保護対象） */
+export function resolveOrderPackageLineKind(
+  memo: string | null | undefined
+): OrderPackageLineKind {
+  const raw = (memo || "").trim();
+  if (raw.startsWith(VE_PKG_AMT_PREFIX)) return "PACKAGE_AMOUNT";
+  if (raw.startsWith(VE_PKG_COMP_PREFIX)) return "PACKAGE_COMPONENT";
+  return "PRODUCT";
+}
+
+export function isProtectedPackageOrderLine(
+  memo: string | null | undefined
+): boolean {
+  return resolveOrderPackageLineKind(memo) !== "PRODUCT";
+}
+
+export function canDeleteOrderEditLine(
+  memo: string | null | undefined
+): boolean {
+  return !isProtectedPackageOrderLine(memo);
+}
+
+export function canEditOrderLineUnitPrice(
+  memo: string | null | undefined
+): boolean {
+  return resolveOrderPackageLineKind(memo) !== "PACKAGE_COMPONENT";
+}
+
 /** ユーザー向け備考。内部マーカーは空文字（帳票・詳細に出さない） */
 export function displaySafeOrderItemMemo(
   memo: string | null | undefined
