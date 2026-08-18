@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { CARD_STATUSES, LOAN_STATUSES } from "@/lib/workflow";
+import { resolvePaymentDueDisplay } from "@/lib/workflow/resolvePaymentDueDisplay";
 import { writeWorkflowMeta } from "@/lib/workflow/workflowMeta";
 import { supabase } from "@/lib/supabase";
 import type { WorkflowResult } from "@/lib/workflow";
@@ -22,6 +23,11 @@ import {
   type WorkflowPanelPaymentInput,
 } from "./workflowPanelFields";
 
+type WorkflowPanelInvoiceInput = {
+  status: string;
+  dueDate: string | null;
+};
+
 type Props = {
   caseId: string;
   workflow: WorkflowResult;
@@ -29,6 +35,7 @@ type Props = {
   constructionCompletedDate: string | null;
   payments: WorkflowPanelPaymentInput[];
   orders: WorkflowPanelOrderInput[];
+  invoices: WorkflowPanelInvoiceInput[];
 };
 
 export default function WorkflowPanel({
@@ -38,6 +45,7 @@ export default function WorkflowPanel({
   constructionCompletedDate,
   payments,
   orders,
+  invoices,
 }: Props) {
   const router = useRouter();
   const [loanStatus, setLoanStatus] = useState(settlement?.loanStatus || "未申請");
@@ -54,6 +62,14 @@ export default function WorkflowPanel({
   );
   const confirmedPaymentDate = resolveLatestConfirmedPaymentDate(payments);
   const latestDeliveryDate = resolveLatestOrderDeliveryDate(orders);
+  const paymentDueDisplay = resolvePaymentDueDisplay({
+    ruleKey: workflow.ruleKey,
+    invoices: invoices.map((invoice) => ({
+      status: invoice.status,
+      due_date: invoice.dueDate,
+    })),
+    plannedPaymentDueDate: workflow.paymentDueDate,
+  });
 
   async function saveWorkflowFields() {
     if (!settlement?.settlementType) {
@@ -184,18 +200,28 @@ export default function WorkflowPanel({
         />
       </div>
 
-      {(workflow.billingClosingDate || workflow.paymentDueDate) && (
+      {(workflow.billingClosingDate || paymentDueDisplay.date) && (
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <Info
             label="締日（売掛）"
-            value={workflow.billingClosingDate || "—"}
+            value={formatWorkflowPanelDate(workflow.billingClosingDate)}
           />
           <Info
-            label="入金予定日（売掛）"
-            value={workflow.paymentDueDate || "—"}
+            label={paymentDueDisplay.label || "入金予定日（予定）"}
+            value={formatWorkflowPanelDate(paymentDueDisplay.date)}
           />
         </div>
       )}
+
+      {paymentDueDisplay.isMismatch ? (
+        <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          保存済み支払期限（
+          {formatWorkflowPanelDate(paymentDueDisplay.savedDueDate)}
+          ）が業務ルール（実納品月の翌月末{" "}
+          {formatWorkflowPanelDate(paymentDueDisplay.ruleDueDate)}
+          ）と一致していません。保存値は自動訂正していません。
+        </p>
+      ) : null}
 
       {workflow.warnings.length > 0 ? (
         <ul className="mt-3 space-y-1 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">

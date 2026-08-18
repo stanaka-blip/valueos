@@ -30,6 +30,7 @@ import {
   type InvoiceLineDraft,
 } from "@/lib/invoices/invoiceLineItems";
 import { buildInvoiceTaxSnapshotForSave } from "@/lib/invoices/invoiceTaxSnapshot";
+import { resolveNewInvoiceDueDate } from "@/lib/invoices/resolveNewInvoiceDueDate";
 import type { PriceTargetType } from "@/lib/prices/targetType";
 import { fetchActiveSalesPrice } from "@/lib/salesPrices";
 import { supabase } from "@/lib/supabase";
@@ -121,6 +122,7 @@ export default function NewInvoicePage() {
   /** 請求金額をユーザーが手動変更したら true。再計算で上書きしない */
   const [invoiceAmountTouched, setInvoiceAmountTouched] = useState(false);
   const invoiceAmountTouchedRef = useRef(false);
+  const dueDateTouchedRef = useRef(false);
 
   const [initialLoading, setInitialLoading] = useState(!initialRouteError);
   const [submitting, setSubmitting] = useState(false);
@@ -133,7 +135,7 @@ export default function NewInvoicePage() {
   const [form, setForm] = useState<InvoiceForm>({
     invoice_no: "",
     invoice_date: getTodayString(),
-    due_date: getDefaultDueDate(),
+    due_date: "",
     invoice_amount: "",
     status: "請求済",
     memo: "",
@@ -300,9 +302,12 @@ export default function NewInvoicePage() {
           invoice_amount: invoiceAmountTouchedRef.current
             ? current.invoice_amount
             : suggestedInclusive || current.invoice_amount,
-          due_date:
-            workflowLoad.result.paymentDueDate ||
-            current.due_date,
+          due_date: resolveNewInvoiceDueDate({
+            userTouched: dueDateTouchedRef.current,
+            currentDueDate: current.due_date,
+            workflowPaymentDueDate: workflowLoad.result.paymentDueDate,
+            fallbackDueDate: getDefaultDueDate(),
+          }),
         }));
       } else {
         setWorkflow(null);
@@ -317,6 +322,12 @@ export default function NewInvoicePage() {
           invoice_amount: invoiceAmountTouchedRef.current
             ? current.invoice_amount
             : suggestedInclusive || current.invoice_amount,
+          due_date: resolveNewInvoiceDueDate({
+            userTouched: dueDateTouchedRef.current,
+            currentDueDate: current.due_date,
+            workflowPaymentDueDate: null,
+            fallbackDueDate: getDefaultDueDate(),
+          }),
         }));
       }
 
@@ -347,6 +358,9 @@ export default function NewInvoicePage() {
     if (name === "invoice_amount") {
       invoiceAmountTouchedRef.current = true;
       setInvoiceAmountTouched(true);
+    }
+    if (name === "due_date") {
+      dueDateTouchedRef.current = true;
     }
 
     setForm((current) => ({
