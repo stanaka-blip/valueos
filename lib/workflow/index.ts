@@ -19,7 +19,9 @@ export { isPaymentConfirmedFromBilling } from "@/lib/workflow/paymentConfirmatio
 export {
   resolvePaymentDueDisplay,
   pickEarliestActiveInvoiceDueDate,
+  isCreditDueDateMismatch,
 } from "@/lib/workflow/resolvePaymentDueDisplay";
+export { findCreditDueDateMismatches } from "@/lib/workflow/findCreditDueDateMismatches";
 export type {
   WorkflowContext,
   WorkflowResult,

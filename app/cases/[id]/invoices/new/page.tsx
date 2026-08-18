@@ -135,7 +135,7 @@ export default function NewInvoicePage() {
   const [form, setForm] = useState<InvoiceForm>({
     invoice_no: "",
     invoice_date: getTodayString(),
-    due_date: getDefaultDueDate(),
+    due_date: "",
     invoice_amount: "",
     status: "請求済",
     memo: "",
@@ -322,6 +322,12 @@ export default function NewInvoicePage() {
           invoice_amount: invoiceAmountTouchedRef.current
             ? current.invoice_amount
             : suggestedInclusive || current.invoice_amount,
+          due_date: resolveNewInvoiceDueDate({
+            userTouched: dueDateTouchedRef.current,
+            currentDueDate: current.due_date,
+            workflowPaymentDueDate: null,
+            fallbackDueDate: getDefaultDueDate(),
+          }),
         }));
       }
 

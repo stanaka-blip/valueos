@@ -17,7 +17,18 @@ function check(name: string, fn: () => void) {
   }
 }
 
-check("ケースF: workflow paymentDueDate があれば初期値として採用", () => {
+check("ケースB: 2026年8月に開いても初期 due_date は納品月翌月末 2026-08-31", () => {
+  const due = resolveNewInvoiceDueDate({
+    userTouched: false,
+    currentDueDate: "",
+    workflowPaymentDueDate: "2026-08-31",
+    fallbackDueDate: "2026-09-30",
+  });
+  assert.equal(due, "2026-08-31");
+  assert.notEqual(due, "2026-09-30");
+});
+
+check("ケースB: 今日基準 fallback が既に入っていても workflow を優先", () => {
   const due = resolveNewInvoiceDueDate({
     userTouched: false,
     currentDueDate: "2026-09-30",
@@ -27,7 +38,7 @@ check("ケースF: workflow paymentDueDate があれば初期値として採用"
   assert.equal(due, "2026-08-31");
 });
 
-check("ケースG: ユーザーが支払期限を手動変更したら workflow 再取得で上書きしない", () => {
+check("ケースC: ユーザーが due_date を手動変更したら再レンダーで上書きしない", () => {
   const due = resolveNewInvoiceDueDate({
     userTouched: true,
     currentDueDate: "2026-10-15",
@@ -37,11 +48,11 @@ check("ケースG: ユーザーが支払期限を手動変更したら workflow 
   assert.equal(due, "2026-10-15");
 });
 
-check("workflow が無いときは fallback / 現在値", () => {
+check("workflow が無いときだけ今日基準 fallback", () => {
   assert.equal(
     resolveNewInvoiceDueDate({
       userTouched: false,
-      currentDueDate: "2026-09-30",
+      currentDueDate: "",
       workflowPaymentDueDate: null,
       fallbackDueDate: "2026-09-30",
     }),

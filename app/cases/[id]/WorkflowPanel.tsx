@@ -213,6 +213,16 @@ export default function WorkflowPanel({
         </div>
       )}
 
+      {paymentDueDisplay.isMismatch ? (
+        <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          保存済み支払期限（
+          {formatWorkflowPanelDate(paymentDueDisplay.savedDueDate)}
+          ）が業務ルール（実納品月の翌月末{" "}
+          {formatWorkflowPanelDate(paymentDueDisplay.ruleDueDate)}
+          ）と一致していません。保存値は自動訂正していません。
+        </p>
+      ) : null}
+
       {workflow.warnings.length > 0 ? (
         <ul className="mt-3 space-y-1 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
           {workflow.warnings.map((w) => (

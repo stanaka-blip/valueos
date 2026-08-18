@@ -7,9 +7,10 @@ import assert from "node:assert/strict";
 import { summarizeDashboardInvoiceUnpaid } from "@/lib/dashboard/invoiceUnpaid";
 import { buildCollectionQueueRow } from "@/lib/queues/collectionQueue";
 import { computeCreditDates } from "@/lib/workflow/conditions";
+import { findCreditDueDateMismatches } from "@/lib/workflow/findCreditDueDateMismatches";
 import { evaluateWorkflow } from "@/lib/workflow/WorkflowEngine";
 import {
-  pickEarliestActiveInvoiceDueDate,
+  isCreditDueDateMismatch,
   resolvePaymentDueDisplay,
 } from "@/lib/workflow/resolvePaymentDueDisplay";
 
@@ -28,7 +29,7 @@ const julyDeliveryOrders = [
   { id: "o1", status: "納品済", deliveredDate: "2026-07-09" },
 ];
 
-check("ケースA: 売掛・請求前 納品日 2026-07-09 → 入金予定日（予定） 2026-08-31", () => {
+check("ケースA: 実納品日 2026-07-09 → workflow paymentDueDate = 2026-08-31", () => {
   const planned = computeCreditDates(julyDeliveryOrders);
   assert.equal(planned.billingClosingDate, "2026-07-31");
   assert.equal(planned.paymentDueDate, "2026-08-31");
@@ -53,9 +54,10 @@ check("ケースA: 売掛・請求前 納品日 2026-07-09 → 入金予定日�
   assert.equal(display.kind, "planned");
   assert.equal(display.date, "2026-08-31");
   assert.equal(display.label, "入金予定日（予定）");
+  assert.equal(display.isMismatch, false);
 });
 
-check("ケースB: 売掛・請求後 予定 2026-08-31 / due_date 2026-09-30 → 表示 2026-09-30", () => {
+check("ケースD: 保存 due_date 2026-09-30 と業務ルール 2026-08-31 は mismatch", () => {
   const display = resolvePaymentDueDisplay({
     ruleKey: "売掛",
     invoices: [{ status: "請求済", due_date: "2026-09-30" }],
@@ -64,75 +66,53 @@ check("ケースB: 売掛・請求後 予定 2026-08-31 / due_date 2026-09-30 �
   assert.equal(display.kind, "confirmed");
   assert.equal(display.date, "2026-09-30");
   assert.equal(display.label, "支払期限");
+  assert.equal(display.ruleDueDate, "2026-08-31");
+  assert.equal(display.savedDueDate, "2026-09-30");
+  assert.equal(display.isMismatch, true);
+  assert.equal(isCreditDueDateMismatch("2026-08-31", "2026-09-30"), true);
 });
 
-check("ケースC: 有効請求がある場合は予定日より invoice.due_date を優先", () => {
+check("ケースE: 保存 due_date 2026-08-31 は mismatch なし", () => {
   const display = resolvePaymentDueDisplay({
     ruleKey: "売掛",
-    invoices: [
-      { status: "請求済", due_date: "2026-09-30" },
-      { status: "取消", due_date: "2026-07-01" },
-    ],
+    invoices: [{ status: "請求済", due_date: "2026-08-31" }],
     plannedPaymentDueDate: "2026-08-31",
   });
-  assert.equal(display.date, "2026-09-30");
-  assert.equal(
-    pickEarliestActiveInvoiceDueDate([
-      { status: "請求済", due_date: "2026-09-30" },
-      { status: "取消", due_date: "2026-07-01" },
-    ]),
-    "2026-09-30"
-  );
-});
-
-check("ケースD: 有効請求なし → 従来の予定計算へフォールバック", () => {
-  const display = resolvePaymentDueDisplay({
-    ruleKey: "売掛",
-    invoices: [{ status: "取消", due_date: "2026-09-30" }],
-    plannedPaymentDueDate: "2026-08-31",
-  });
-  assert.equal(display.kind, "planned");
   assert.equal(display.date, "2026-08-31");
-  assert.equal(display.label, "入金予定日（予定）");
+  assert.equal(display.isMismatch, false);
+  assert.equal(isCreditDueDateMismatch("2026-08-31", "2026-08-31"), false);
 });
 
-check("複数の有効請求は回収管理と同じく due_date 昇順の先頭", () => {
-  const invoices = [
-    { status: "請求済", due_date: "2026-10-31" },
-    { status: "請求済", due_date: "2026-09-15" },
-  ];
-  const display = resolvePaymentDueDisplay({
-    ruleKey: "売掛",
-    invoices,
-    plannedPaymentDueDate: "2026-08-31",
-  });
-  const collection = buildCollectionQueueRow({
-    id: "c1",
-    case_no: "VE-1",
-    status: "納品済",
-    customer_name: "顧客",
-    order_received_date: "2026-07-01",
-    dealer_name: "店",
-    settlement_type: "売掛",
-    deposit_amount: null,
-    loan_status: null,
-    card_status: null,
-    approval_number: null,
-    orders: [{ id: "o1", status: "納品済", delivered_date: "2026-07-09" }],
-    invoices: invoices.map((inv, i) => ({
-      id: `i${i}`,
-      status: inv.status,
-      invoice_amount: 1000,
-      due_date: inv.due_date,
-    })),
-    payments: [],
-    today: "2026-08-01",
-  });
-  assert.equal(display.date, "2026-09-15");
-  assert.equal(collection?.dueDate, "2026-09-15");
+check("VE-1787020950261 相当は正常一致ではない", () => {
+  const mismatches = findCreditDueDateMismatches([
+    {
+      caseId: "case-ve",
+      caseNo: "VE-1787020950261",
+      settlementType: "売掛",
+      orders: [{ status: "納品済", deliveredDate: "2026-07-09" }],
+      invoices: [{ id: "inv1", status: "請求済", due_date: "2026-09-30" }],
+    },
+  ]);
+  assert.equal(mismatches.length, 1);
+  assert.equal(mismatches[0].caseNo, "VE-1787020950261");
+  assert.equal(mismatches[0].ruleDueDate, "2026-08-31");
+  assert.equal(mismatches[0].savedDueDate, "2026-09-30");
 });
 
-check("ケースE: 3社間は顧客 invoice due があっても dueDate null / isOverdue false", () => {
+check("一致案件は洗い出し対象外", () => {
+  const mismatches = findCreditDueDateMismatches([
+    {
+      caseId: "ok",
+      caseNo: "VE-OK",
+      settlementType: "売掛",
+      orders: [{ status: "納品済", deliveredDate: "2026-07-09" }],
+      invoices: [{ id: "inv1", status: "請求済", due_date: "2026-08-31" }],
+    },
+  ]);
+  assert.equal(mismatches.length, 0);
+});
+
+check("ケースF: 3社間は顧客 invoice due があっても dueDate null / isOverdue false", () => {
   const display = resolvePaymentDueDisplay({
     ruleKey: "3社間決済",
     invoices: [{ status: "請求済", due_date: "2026-07-01" }],
@@ -140,6 +120,7 @@ check("ケースE: 3社間は顧客 invoice due があっても dueDate null / i
   });
   assert.equal(display.kind, "none");
   assert.equal(display.date, null);
+  assert.equal(display.isMismatch, false);
 
   const row = buildCollectionQueueRow({
     id: "c1",

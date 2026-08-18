@@ -1,7 +1,10 @@
 /**
  * 売掛の入金予定日 / 支払期限の表示用。
- * 有効請求の定義と due_date 選択は回収管理 evaluateCredit と同じ。
- * 3社間には適用しない（顧客 due を出さない）。
+ *
+ * 業務ルール: 実納品日が属する月の翌月末（computeCreditDates / paymentDueDate）。
+ * 請求後の表示は原則 invoices.due_date。ただし保存値がルールと違う場合は
+ * 一致と扱わず isMismatch にする（UPDATE はしない）。
+ * 3社間には適用しない。
  */
 
 import { activeInvoicesForCollection } from "@/lib/queues/collectionQueue";
@@ -15,7 +18,21 @@ export type PaymentDueDisplay = {
   kind: "planned" | "confirmed" | "none";
   date: string | null;
   label: string | null;
+  ruleDueDate: string | null;
+  savedDueDate: string | null;
+  isMismatch: boolean;
 };
+
+function emptyDisplay(): PaymentDueDisplay {
+  return {
+    kind: "none",
+    date: null,
+    label: null,
+    ruleDueDate: null,
+    savedDueDate: null,
+    isMismatch: false,
+  };
+}
 
 /**
  * 回収管理 evaluateCredit と同じ:
@@ -31,24 +48,49 @@ export function pickEarliestActiveInvoiceDueDate(
   return dueDates[0] || null;
 }
 
+export function isCreditDueDateMismatch(
+  ruleDueDate: string | null | undefined,
+  savedDueDate: string | null | undefined
+): boolean {
+  const rule = (ruleDueDate || "").trim();
+  const saved = (savedDueDate || "").trim();
+  if (!rule || !saved) return false;
+  return rule !== saved;
+}
+
 export function resolvePaymentDueDisplay(input: {
   ruleKey: string | null | undefined;
   invoices: ReadonlyArray<PaymentDueInvoiceInput>;
   plannedPaymentDueDate: string | null | undefined;
 }): PaymentDueDisplay {
   if (input.ruleKey !== "売掛") {
-    return { kind: "none", date: null, label: null };
+    return emptyDisplay();
   }
 
-  const confirmed = pickEarliestActiveInvoiceDueDate(input.invoices);
-  if (confirmed) {
-    return { kind: "confirmed", date: confirmed, label: "支払期限" };
+  const ruleDueDate = (input.plannedPaymentDueDate || "").trim() || null;
+  const savedDueDate = pickEarliestActiveInvoiceDueDate(input.invoices);
+
+  if (savedDueDate) {
+    return {
+      kind: "confirmed",
+      date: savedDueDate,
+      label: "支払期限",
+      ruleDueDate,
+      savedDueDate,
+      isMismatch: isCreditDueDateMismatch(ruleDueDate, savedDueDate),
+    };
   }
 
-  const planned = (input.plannedPaymentDueDate || "").trim() || null;
-  if (planned) {
-    return { kind: "planned", date: planned, label: "入金予定日（予定）" };
+  if (ruleDueDate) {
+    return {
+      kind: "planned",
+      date: ruleDueDate,
+      label: "入金予定日（予定）",
+      ruleDueDate,
+      savedDueDate: null,
+      isMismatch: false,
+    };
   }
 
-  return { kind: "none", date: null, label: null };
+  return emptyDisplay();
 }
