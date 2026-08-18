@@ -7,6 +7,7 @@ import {
   ReactNode,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { useParams, useRouter } from "next/navigation";
@@ -14,10 +15,7 @@ import { useParams, useRouter } from "next/navigation";
 import { parseCaseExtras } from "@/app/admin/orders/parseCaseExtras";
 import { supabase } from "@/lib/supabase";
 import { fetchActivePurchaseUnitPrices } from "@/lib/purchasePrices";
-import {
-  listOrderItemsByOrderId,
-  replaceOrderItemsForOrder,
-} from "@/lib/repositories/orderItems";
+import { listOrderItemsByOrderId } from "@/lib/repositories/orderItems";
 import {
   fetchActiveManufacturers,
   fetchActiveProducts,
@@ -30,20 +28,22 @@ import {
   PURCHASE_ORDER_STATUSES,
   resolveDeliveredDate,
 } from "@/app/orders/orderConstants";
-import {
-  calcLineAmount,
-  formatYen,
-  isUuid,
-  toNumber,
-} from "@/app/orders/orderUtils";
+import { formatYen, isUuid, toNumber } from "@/app/orders/orderUtils";
 import {
   displayIdentityValue,
   resolveProductIdentity,
 } from "@/app/orders/productIdentity";
 import {
+  canDeleteOrderEditLine,
+  canEditOrderLineUnitPrice,
   containsPackageMemoMarker,
   displaySafeOrderItemMemo,
 } from "@/lib/orders/orderPackageDisplay";
+import {
+  buildReplacePurchaseOrderRpcPayload,
+  lineAmountForOrderEdit,
+  validateReplacePurchaseOrderItems,
+} from "@/lib/orders/replacePurchaseOrderLogic";
 
 type LineDraft = {
   id: string | null;
@@ -115,6 +115,7 @@ export default function EditOrderPage() {
     order_no: "",
   });
   const [lines, setLines] = useState<LineDraft[]>([]);
+  const existingLinesRef = useRef<LineDraft[]>([]);
   const [manufacturers, setManufacturers] = useState<ManufacturerOption[]>([]);
   const [products, setProducts] = useState<ProductOption[]>([]);
   const [headerOrderAmount, setHeaderOrderAmount] = useState(0);
@@ -131,7 +132,11 @@ export default function EditOrderPage() {
       lines.reduce(
         (sum, line) =>
           sum +
-          calcLineAmount(toNumber(line.quantity), toNumber(line.unit_price)),
+          lineAmountForOrderEdit({
+            memo: line.memo,
+            quantity: line.quantity,
+            unit_price: line.unit_price,
+          }),
         0
       ),
     [lines]
@@ -317,11 +322,13 @@ export default function EditOrderPage() {
       setManufacturers(manufacturersResult.data);
       setProducts(productsResult.data);
 
-      setLines(
-        itemsResult.data.map((item) => {
+      const nextLines = itemsResult.data.map((item) => {
           const product = item.product_id
             ? productMap.get(item.product_id)
             : null;
+          const unitPrice = canEditOrderLineUnitPrice(item.memo)
+            ? toNumber(item.unit_price)
+            : 0;
           return {
             id: item.id,
             local_id: item.id,
@@ -331,11 +338,12 @@ export default function EditOrderPage() {
             manufacturer_name: product?.manufacturer_name || "",
             model_no: product?.model_no || "",
             quantity: String(toNumber(item.quantity) || 1),
-            unit_price: String(toNumber(item.unit_price)),
+            unit_price: String(unitPrice),
             memo: item.memo || "",
           };
-        })
-      );
+        });
+      existingLinesRef.current = nextLines;
+      setLines(nextLines);
       setLoading(false);
     }
 
@@ -361,9 +369,13 @@ export default function EditOrderPage() {
     value: string
   ) {
     setLines((current) =>
-      current.map((line) =>
-        line.local_id === localId ? { ...line, [field]: value } : line
-      )
+      current.map((line) => {
+        if (line.local_id !== localId) return line;
+        if (field === "unit_price" && !canEditOrderLineUnitPrice(line.memo)) {
+          return line;
+        }
+        return { ...line, [field]: value };
+      })
     );
   }
 
@@ -372,7 +384,13 @@ export default function EditOrderPage() {
   }
 
   function handleRemoveLine(localId: string) {
-    setLines((current) => current.filter((line) => line.local_id !== localId));
+    setLines((current) => {
+      const target = current.find((line) => line.local_id === localId);
+      if (target && !canDeleteOrderEditLine(target.memo)) {
+        return current;
+      }
+      return current.filter((line) => line.local_id !== localId);
+    });
   }
 
   function productsForManufacturer(manufacturerId: string): ProductOption[] {
@@ -433,7 +451,9 @@ export default function EditOrderPage() {
     }
     setLines((current) =>
       current.map((line) =>
-        line.local_id === localId && line.product_id === productId
+        line.local_id === localId &&
+        line.product_id === productId &&
+        canEditOrderLineUnitPrice(line.memo)
           ? { ...line, unit_price: String(unitPrice) }
           : line
       )
@@ -470,48 +490,67 @@ export default function EditOrderPage() {
       }
     }
 
+    const incoming = lines.map((line, index) => ({
+      id: line.id,
+      product_id: line.product_id || null,
+      case_product_id: line.case_product_id,
+      quantity: toNumber(line.quantity),
+      unit_price: toNumber(line.unit_price),
+      memo: line.memo || null,
+      sort_order: index,
+    }));
+    const validated = validateReplacePurchaseOrderItems(
+      existingLinesRef.current.map((line) => ({
+        id: line.id || "",
+        product_id: line.product_id || null,
+        case_product_id: line.case_product_id,
+        quantity: toNumber(line.quantity),
+        unit_price: toNumber(line.unit_price),
+        memo: line.memo || null,
+      })),
+      incoming
+    );
+    if (!validated.ok) {
+      setSubmitError(validated.error_message);
+      return;
+    }
+
     setSubmitting(true);
     const deliveredDate = resolveDeliveredDate(
       form.status,
       form.delivered_date
     );
 
-    const { error: orderError } = await supabase
-      .from("orders")
-      .update({
-        expected_delivery_date: form.expected_delivery_date || null,
-        status: form.status,
-        memo: form.memo.trim() || null,
-        delivered_date: deliveredDate,
-        order_amount: linesTotal,
-      })
-      .eq("id", orderId);
+    const { data: rpcData, error: rpcError } = await supabase.rpc(
+      "replace_purchase_order",
+      {
+        payload: buildReplacePurchaseOrderRpcPayload({
+          orderId,
+          header: {
+            expected_delivery_date: form.expected_delivery_date || null,
+            delivered_date: deliveredDate,
+            status: form.status,
+            memo: form.memo.trim() || null,
+          },
+          items: validated.items,
+        }),
+      }
+    );
 
-    if (orderError) {
-      setSubmitError(`発注の更新に失敗しました：${orderError.message}`);
+    if (rpcError) {
+      setSubmitError(`発注の更新に失敗しました：${rpcError.message}`);
       setSubmitting(false);
       return;
     }
 
-    const itemsResult = await replaceOrderItemsForOrder(
-      orderId,
-      lines.map((line, index) => {
-        const quantity = toNumber(line.quantity);
-        const unitPrice = toNumber(line.unit_price);
-        return {
-          product_id: line.product_id || null,
-          case_product_id: line.case_product_id,
-          quantity,
-          unit_price: unitPrice,
-          amount: calcLineAmount(quantity, unitPrice),
-          memo: line.memo.trim() || null,
-          sort_order: index,
-        };
-      })
-    );
-
-    if (itemsResult.error) {
-      setSubmitError(`発注明細の更新に失敗しました：${itemsResult.error}`);
+    const rpcResult = (rpcData || {}) as {
+      ok?: boolean;
+      error_message?: string;
+    };
+    if (rpcResult.ok !== true) {
+      setSubmitError(
+        rpcResult.error_message || "発注の更新に失敗しました。"
+      );
       setSubmitting(false);
       return;
     }
@@ -820,16 +859,20 @@ export default function EditOrderPage() {
                                 e.target.value
                               )
                             }
-                            disabled={submitting}
+                            disabled={
+                              submitting ||
+                              !canEditOrderLineUnitPrice(line.memo)
+                            }
                             className={`${inputClassName} w-32 text-right`}
                           />
                         </td>
                         <td className="px-3 py-3 text-right">
                           {formatYen(
-                            calcLineAmount(
-                              toNumber(line.quantity),
-                              toNumber(line.unit_price)
-                            )
+                            lineAmountForOrderEdit({
+                              memo: line.memo,
+                              quantity: line.quantity,
+                              unit_price: line.unit_price,
+                            })
                           )}
                         </td>
                         <td className="px-3 py-3">
@@ -854,14 +897,18 @@ export default function EditOrderPage() {
                           )}
                         </td>
                         <td className="px-3 py-3">
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveLine(line.local_id)}
-                            disabled={submitting}
-                            className="rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:bg-gray-100"
-                          >
-                            削除
-                          </button>
+                          {canDeleteOrderEditLine(line.memo) ? (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveLine(line.local_id)}
+                              disabled={submitting}
+                              className="rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:bg-gray-100"
+                            >
+                              削除
+                            </button>
+                          ) : (
+                            <span className="text-xs text-gray-400">削除不可</span>
+                          )}
                         </td>
                       </tr>
                       );

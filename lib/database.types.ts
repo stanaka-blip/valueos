@@ -1621,6 +1621,12 @@ export type Database = {
         };
         Returns: Json;
       };
+      replace_purchase_order: {
+        Args: {
+          payload: Json;
+        };
+        Returns: Json;
+      };
       create_product_setup: {
         Args: {
           payload: Json;
