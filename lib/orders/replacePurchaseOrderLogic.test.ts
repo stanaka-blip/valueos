@@ -218,6 +218,20 @@ check("編集画面は replace_purchase_order を使い逐次DELETE/INSERTしな
   assert.ok(src.includes("replace_purchase_order"));
 });
 
+check("自由入力行はモード切替セレクトを出さず1段表示", () => {
+  const src = readFileSync(
+    join(process.cwd(), "app/orders/[id]/edit/page.tsx"),
+    "utf8"
+  );
+  assert.equal(src.includes("handleAddModeChange"), false);
+  assert.equal(src.includes(">自由入力</option>"), false);
+  assert.equal(src.includes(">マスタから選択</option>"), false);
+  assert.ok(src.includes("handleAddLine(\"custom\")"));
+  assert.ok(src.includes("handleAddLine(\"master\")"));
+  assert.ok(src.includes("メーカー/区分を入力"));
+  assert.ok(src.includes("明細名を入力"));
+});
+
 check("RPC SQL はヘッダ更新・明細置換を同一関数内に置き EXCEPTION でROLLBACKする", () => {
   const sql = readFileSync(
     join(

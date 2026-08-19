@@ -439,19 +439,6 @@ export default function EditOrderPage() {
     setLines((current) => [...current, createEmptyLine(addMode)]);
   }
 
-  function handleAddModeChange(localId: string, addMode: OrderLineAddMode) {
-    setLines((current) =>
-      current.map((line) =>
-        line.local_id === localId && line.id == null
-          ? {
-              ...createEmptyLine(addMode),
-              local_id: line.local_id,
-            }
-          : line
-      )
-    );
-  }
-
   function handleRemoveLine(localId: string) {
     setLines((current) => {
       const target = current.find((line) => line.local_id === localId);
@@ -874,22 +861,6 @@ export default function EditOrderPage() {
                         className="border-b last:border-b-0"
                       >
                         <td className="px-3 py-3">
-                          {isNew ? (
-                            <select
-                              value={line.add_mode}
-                              onChange={(e) =>
-                                handleAddModeChange(
-                                  line.local_id,
-                                  e.target.value as OrderLineAddMode
-                                )
-                              }
-                              disabled={submitting}
-                              className={`${inputClassName} min-w-[140px]`}
-                            >
-                              <option value="master">マスタから選択</option>
-                              <option value="custom">自由入力</option>
-                            </select>
-                          ) : null}
                           {isPackage ? (
                             displayIdentityValue(line.manufacturer_name)
                           ) : isCustom ? (
@@ -904,8 +875,8 @@ export default function EditOrderPage() {
                                 )
                               }
                               disabled={submitting}
-                              placeholder="任意（例: その他）"
-                              className={`${inputClassName} min-w-[140px]${isNew ? " mt-1" : ""}`}
+                              placeholder="メーカー/区分を入力"
+                              className={`${inputClassName} min-w-[140px]`}
                             />
                           ) : isNew ? (
                             <select
@@ -917,7 +888,7 @@ export default function EditOrderPage() {
                                 )
                               }
                               disabled={submitting}
-                              className={`${inputClassName} min-w-[140px] mt-1`}
+                              className={`${inputClassName} min-w-[140px]`}
                             >
                               <option value="">選択</option>
                               {manufacturers.map((m) => (
@@ -945,7 +916,7 @@ export default function EditOrderPage() {
                                 )
                               }
                               disabled={submitting}
-                              placeholder="明細名（必須）"
+                              placeholder="明細名を入力"
                               className={`${inputClassName} min-w-[180px]`}
                             />
                           ) : isNew ? (
