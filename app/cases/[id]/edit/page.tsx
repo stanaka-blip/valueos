@@ -4,6 +4,10 @@ import Link from "next/link";
 import { use, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import {
+  buildConstructionDetailForEdit,
+  parseConstructionDetailForEdit,
+} from "@/app/components/case-registration/caseRegistrationExtras";
 
 type CaseEditForm = {
   case_no: string;
@@ -15,12 +19,19 @@ type CaseEditForm = {
   desired_delivery_date: string;
   delivery_address: string;
   construction_desired_date: string;
-  construction_detail: string;
+  /** 編集UI用。保存時に construction_detail へ再構成 */
+  contractor_name: string;
+  construction_body: string;
+  /** 保存時に担当者・電話ラベル維持用 */
+  construction_detail_source: string;
   assigned_user: string;
   department: string;
   priority: string;
   memo: string;
 };
+
+const inputClassName =
+  "w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-gray-900 focus:ring-1 focus:ring-gray-900 disabled:cursor-not-allowed disabled:bg-gray-100";
 
 export default function EditCasePage({
   params,
@@ -42,7 +53,9 @@ export default function EditCasePage({
     desired_delivery_date: "",
     delivery_address: "",
     construction_desired_date: "",
-    construction_detail: "",
+    contractor_name: "",
+    construction_body: "",
+    construction_detail_source: "",
     assigned_user: "",
     department: "",
     priority: "中",
@@ -81,6 +94,9 @@ export default function EditCasePage({
         return;
       }
 
+      const detail = (data.construction_detail as string) || "";
+      const parsed = parseConstructionDetailForEdit(detail);
+
       setForm({
         case_no: (data.case_no as string) || "",
         customer_name: (data.customer_name as string) || "",
@@ -98,7 +114,9 @@ export default function EditCasePage({
         construction_desired_date: (
           (data.construction_desired_date as string) || ""
         ).slice(0, 10),
-        construction_detail: (data.construction_detail as string) || "",
+        contractor_name: parsed.contractor_name,
+        construction_body: parsed.construction_body,
+        construction_detail_source: detail,
         assigned_user: (data.assigned_user as string) || "",
         department: (data.department as string) || "",
         priority: (data.priority as string) || "中",
@@ -118,6 +136,12 @@ export default function EditCasePage({
     setSaving(true);
     setError("");
 
+    const construction_detail = buildConstructionDetailForEdit({
+      contractor_name: form.contractor_name,
+      construction_body: form.construction_body,
+      previous_detail: form.construction_detail_source,
+    });
+
     const { error: saveError } = await supabase
       .from("cases")
       .update({
@@ -130,7 +154,7 @@ export default function EditCasePage({
         desired_delivery_date: form.desired_delivery_date || null,
         delivery_address: form.delivery_address || null,
         construction_desired_date: form.construction_desired_date || null,
-        construction_detail: form.construction_detail || null,
+        construction_detail,
         assigned_user: form.assigned_user || null,
         department: form.department || null,
         priority: form.priority || null,
@@ -150,7 +174,9 @@ export default function EditCasePage({
   if (loading) {
     return (
       <main className="p-8">
-        <div className="rounded-xl bg-white p-6 shadow-sm">読み込み中...</div>
+        <div className="rounded-xl bg-white p-6 shadow-sm text-gray-900">
+          読み込み中...
+        </div>
       </main>
     );
   }
@@ -192,7 +218,7 @@ export default function EditCasePage({
                 onChange={(e) =>
                   setForm((c) => ({ ...c, case_no: e.target.value }))
                 }
-                className="w-full rounded-lg border px-4 py-3 text-sm"
+                className={inputClassName}
               />
             </label>
 
@@ -210,7 +236,7 @@ export default function EditCasePage({
                     order_received_date: e.target.value,
                   }))
                 }
-                className="w-full rounded-lg border px-4 py-3 text-sm"
+                className={inputClassName}
               />
             </label>
 
@@ -223,7 +249,7 @@ export default function EditCasePage({
                 onChange={(e) =>
                   setForm((c) => ({ ...c, customer_name: e.target.value }))
                 }
-                className="w-full rounded-lg border px-4 py-3 text-sm"
+                className={inputClassName}
               />
             </label>
 
@@ -236,7 +262,7 @@ export default function EditCasePage({
                 onChange={(e) =>
                   setForm((c) => ({ ...c, customer_phone: e.target.value }))
                 }
-                className="w-full rounded-lg border px-4 py-3 text-sm"
+                className={inputClassName}
               />
             </label>
 
@@ -249,30 +275,13 @@ export default function EditCasePage({
                 onChange={(e) =>
                   setForm((c) => ({ ...c, order_type: e.target.value }))
                 }
-                className="w-full rounded-lg border px-4 py-3 text-sm"
+                className={inputClassName}
               >
                 <option>材料のみ</option>
                 <option>材工発注</option>
                 <option>工事のみ</option>
                 <option>見積相談</option>
               </select>
-            </label>
-
-            <label className="block text-sm">
-              <span className="mb-1 block text-xs font-bold text-gray-500">
-                希望納期
-              </span>
-              <input
-                type="date"
-                value={form.desired_delivery_date}
-                onChange={(e) =>
-                  setForm((c) => ({
-                    ...c,
-                    desired_delivery_date: e.target.value,
-                  }))
-                }
-                className="w-full rounded-lg border px-4 py-3 text-sm"
-              />
             </label>
 
             <label className="block text-sm">
@@ -284,7 +293,7 @@ export default function EditCasePage({
                 onChange={(e) =>
                   setForm((c) => ({ ...c, assigned_user: e.target.value }))
                 }
-                className="w-full rounded-lg border px-4 py-3 text-sm"
+                className={inputClassName}
               />
             </label>
 
@@ -297,7 +306,7 @@ export default function EditCasePage({
                 onChange={(e) =>
                   setForm((c) => ({ ...c, department: e.target.value }))
                 }
-                className="w-full rounded-lg border px-4 py-3 text-sm"
+                className={inputClassName}
               />
             </label>
           </div>
@@ -311,9 +320,82 @@ export default function EditCasePage({
               onChange={(e) =>
                 setForm((c) => ({ ...c, site_address: e.target.value }))
               }
-              className="w-full rounded-lg border px-4 py-3 text-sm"
+              className={inputClassName}
             />
           </label>
+
+          <section className="space-y-4 rounded-lg border border-gray-200 bg-[#f7f7f5] p-4">
+            <div>
+              <h2 className="text-sm font-bold text-gray-900">工事情報</h2>
+              <p className="mt-1 text-xs text-gray-500">
+                案件詳細の「工事情報」に反映されます。施工店名は従来どおり
+                construction_detail の【施工店名】形式で保存します。
+              </p>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="block text-sm">
+                <span className="mb-1 block text-xs font-bold text-gray-500">
+                  工事希望日
+                </span>
+                <input
+                  type="date"
+                  value={form.construction_desired_date}
+                  onChange={(e) =>
+                    setForm((c) => ({
+                      ...c,
+                      construction_desired_date: e.target.value,
+                    }))
+                  }
+                  className={inputClassName}
+                />
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block text-xs font-bold text-gray-500">
+                  希望納期
+                </span>
+                <input
+                  type="date"
+                  value={form.desired_delivery_date}
+                  onChange={(e) =>
+                    setForm((c) => ({
+                      ...c,
+                      desired_delivery_date: e.target.value,
+                    }))
+                  }
+                  className={inputClassName}
+                />
+              </label>
+              <label className="block text-sm md:col-span-2">
+                <span className="mb-1 block text-xs font-bold text-gray-500">
+                  施工店名
+                </span>
+                <input
+                  value={form.contractor_name}
+                  onChange={(e) =>
+                    setForm((c) => ({ ...c, contractor_name: e.target.value }))
+                  }
+                  className={inputClassName}
+                />
+              </label>
+              <label className="block text-sm md:col-span-2">
+                <span className="mb-1 block text-xs font-bold text-gray-500">
+                  工事内容
+                </span>
+                <textarea
+                  rows={3}
+                  value={form.construction_body}
+                  onChange={(e) =>
+                    setForm((c) => ({
+                      ...c,
+                      construction_body: e.target.value,
+                    }))
+                  }
+                  className={inputClassName}
+                  placeholder="工事内容の自由記述（【施工店名】以外）"
+                />
+              </label>
+            </div>
+          </section>
 
           <label className="block text-sm">
             <span className="mb-1 block text-xs font-bold text-gray-500">
@@ -323,7 +405,7 @@ export default function EditCasePage({
               rows={3}
               value={form.memo}
               onChange={(e) => setForm((c) => ({ ...c, memo: e.target.value }))}
-              className="w-full rounded-lg border px-4 py-3 text-sm"
+              className={inputClassName}
             />
           </label>
 

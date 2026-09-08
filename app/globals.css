@@ -1,6 +1,12 @@
 @import "tailwindcss";
 
+/*
+ * ValueOS v1 はライト UI 固定。
+ * OS / ブラウザの prefers-color-scheme: dark で
+ * --foreground が薄色化しないようにする。
+ */
 :root {
+  color-scheme: light;
   --background: #ffffff;
   --foreground: #171717;
 }
@@ -12,11 +18,8 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  color-scheme: light;
 }
 
 body {
