@@ -4,13 +4,20 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { assertInvoiceCancelAllowed } from "@/lib/invoices/invoiceEditGuards";
+import { isActivePaymentStatus } from "@/lib/status/activeRecords";
 import { supabase } from "@/lib/supabase";
 
 type SettlementRow = { status: string | null };
+type PaymentRow = { status: string | null };
+
+function formatRpcError(message: string) {
+  const match = message.match(/^APP:[A-Z_]+:([\s\S]+)$/);
+  return match?.[1]?.trim() || message;
+}
 
 /**
  * 請求取消（物理DELETEなし。status='取消'）。
- * 確定済み仕切がある案件は拒否。
+ * クライアント直接 UPDATE 禁止。cancel_invoice RPC のみ。
  */
 export default function InvoiceCancelButton({
   invoiceId,
@@ -52,22 +59,35 @@ export default function InvoiceCancelButton({
         settlements = (data || []) as SettlementRow[];
       }
 
+      const { data: payments, error: paymentError } = await supabase
+        .from("payments")
+        .select("status")
+        .eq("invoice_id", invoiceId);
+      if (paymentError) {
+        setError(`入金情報の確認に失敗しました：${paymentError.message}`);
+        return;
+      }
+
+      const hasActivePayments = ((payments || []) as PaymentRow[]).some((p) =>
+        isActivePaymentStatus(p.status),
+      );
+
       const guardError = assertInvoiceCancelAllowed({
         invoiceStatus: currentStatus,
         dealerSettlementStatuses: settlements.map((s) => s.status),
+        hasActivePayments,
       });
       if (guardError) {
         setError(guardError);
         return;
       }
 
-      const { error: updateError } = await supabase
-        .from("invoices")
-        .update({ status: "取消" })
-        .eq("id", invoiceId);
+      const { error: rpcError } = await supabase.rpc("cancel_invoice", {
+        payload: { invoice_id: invoiceId },
+      });
 
-      if (updateError) {
-        setError(`請求の取消に失敗しました：${updateError.message}`);
+      if (rpcError) {
+        setError(`請求の取消に失敗しました：${formatRpcError(rpcError.message)}`);
         return;
       }
 

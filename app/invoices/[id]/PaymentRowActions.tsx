@@ -8,9 +8,14 @@ import { assertPaymentCancelAllowed } from "@/lib/payments/paymentEditGuards";
 import { isActivePaymentStatus } from "@/lib/status/activeRecords";
 import { supabase } from "@/lib/supabase";
 
+function formatRpcError(message: string) {
+  const match = message.match(/^APP:[A-Z_]+:([\s\S]+)$/);
+  return match?.[1]?.trim() || message;
+}
+
 /**
  * 入金行の編集・取消アクション。
- * 取消は status='取消'（物理DELETEなし）。
+ * 取消は cancel_payment RPC のみ（物理DELETEなし。直接 table UPDATE 禁止）。
  */
 export default function PaymentRowActions({
   invoiceId,
@@ -44,14 +49,12 @@ export default function PaymentRowActions({
         return;
       }
 
-      const { error: updateError } = await supabase
-        .from("payments")
-        .update({ status: "取消" })
-        .eq("id", paymentId)
-        .eq("invoice_id", invoiceId);
+      const { error: rpcError } = await supabase.rpc("cancel_payment", {
+        payload: { payment_id: paymentId },
+      });
 
-      if (updateError) {
-        setError(`入金の取消に失敗しました：${updateError.message}`);
+      if (rpcError) {
+        setError(`入金の取消に失敗しました：${formatRpcError(rpcError.message)}`);
         return;
       }
 

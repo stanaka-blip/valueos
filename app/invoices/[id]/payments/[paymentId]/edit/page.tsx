@@ -15,7 +15,7 @@ import {
   isPaymentRecordStatus,
   sumActivePaymentsExcluding,
 } from "@/lib/payments/paymentEditGuards";
-import { isActivePaymentStatus } from "@/lib/status/activeRecords";
+import { isActiveInvoiceStatus, isActivePaymentStatus } from "@/lib/status/activeRecords";
 import { supabase } from "@/lib/supabase";
 
 type InvoiceData = {
@@ -257,45 +257,30 @@ export default function EditPaymentPage() {
       return;
     }
 
-    setSubmitting(true);
-
-    const updatePayload: Record<string, unknown> = {
-      payment_date: form.payment_date,
-      payment_amount: nextAmount,
-      status: form.status,
-      memo: form.memo.trim() || null,
-    };
-
-    // 拡張カラムは存在環境でのみ送る（新規登録と同様のフォールバック）
-    const withExtras = {
-      ...updatePayload,
-      payment_method: form.payment_method,
-      payer_name: form.payer_name.trim() || null,
-      bank_account: form.bank_account.trim() || null,
-    };
-
-    let { error: updateError } = await supabase
-      .from("payments")
-      .update(withExtras)
-      .eq("id", paymentId)
-      .eq("invoice_id", invoiceId);
-
-    if (
-      updateError &&
-      /payment_method|payer_name|bank_account|schema cache/i.test(
-        updateError.message
-      )
-    ) {
-      const fallback = await supabase
-        .from("payments")
-        .update(updatePayload)
-        .eq("id", paymentId)
-        .eq("invoice_id", invoiceId);
-      updateError = fallback.error;
+    if (!isActiveInvoiceStatus(invoice.status)) {
+      setSubmitError("取消済の請求に紐づく入金は編集できません。");
+      return;
     }
 
-    if (updateError) {
-      setSubmitError(`入金の更新に失敗しました：${updateError.message}`);
+    setSubmitting(true);
+
+    const { error: rpcError } = await supabase.rpc("replace_payment", {
+      payload: {
+        payment_id: paymentId,
+        payment_date: form.payment_date,
+        payment_amount: nextAmount,
+        payment_method: form.payment_method,
+        payer_name: form.payer_name.trim() || null,
+        bank_account: form.bank_account.trim() || null,
+        status: form.status,
+        memo: form.memo.trim() || null,
+      },
+    });
+
+    if (rpcError) {
+      const match = rpcError.message.match(/^APP:[A-Z_]+:([\s\S]+)$/);
+      const msg = match?.[1]?.trim() || rpcError.message;
+      setSubmitError(`入金の更新に失敗しました：${msg}`);
       setSubmitting(false);
       return;
     }

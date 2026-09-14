@@ -75,9 +75,14 @@ export function assertInvoiceAmountChangeAllowed(input: {
 export function assertInvoiceCancelAllowed(input: {
   invoiceStatus: string | null | undefined;
   dealerSettlementStatuses?: Array<string | null | undefined>;
+  /** 取消以外の入金が1件でもあれば取消不可 */
+  hasActivePayments?: boolean;
 }): string | null {
   if (!isActiveInvoiceStatus(input.invoiceStatus)) {
     return "既に取消済の請求です。";
+  }
+  if (input.hasActivePayments) {
+    return "この請求には入金履歴があります。先に入金を取消してから、請求を取消してください。";
   }
   if (
     input.dealerSettlementStatuses &&

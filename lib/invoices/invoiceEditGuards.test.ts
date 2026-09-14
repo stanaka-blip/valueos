@@ -63,11 +63,21 @@ function testCancelBlockedBySettlement() {
   assert.match(err!, /仕切/);
 }
 
+function testCancelBlockedByActivePayments() {
+  const err = assertInvoiceCancelAllowed({
+    invoiceStatus: "請求済",
+    hasActivePayments: true,
+  });
+  assert.ok(err);
+  assert.match(err!, /入金を取消/);
+}
+
 function testCancelOk() {
   assert.equal(
     assertInvoiceCancelAllowed({
       invoiceStatus: "請求済",
       dealerSettlementStatuses: ["下書き", "取消"],
+      hasActivePayments: false,
     }),
     null,
   );
@@ -86,6 +96,7 @@ testAmountChangeRejectBelowPayments();
 testAmountChangeOk();
 testAmountChangeBlockedBySettlement();
 testCancelBlockedBySettlement();
+testCancelBlockedByActivePayments();
 testCancelOk();
 testHasLocking();
 console.log("invoiceEditGuards: ok");
