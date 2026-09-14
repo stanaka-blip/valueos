@@ -83,10 +83,10 @@ const sidebar = readFileSync(
 );
 assert.ok(sidebar.includes('/queues/payments-management'));
 assert.ok(sidebar.includes('name: "支払管理"'));
-assert.ok(sidebar.includes('name: "入金管理"'));
-assert.ok(sidebar.includes('href: "/payments"'));
-assert.ok(sidebar.includes('name: "請求一覧"'));
-assert.ok(sidebar.includes('href: "/invoices"'));
+// Phase1: /payments・/invoices の route は残すが、サイドバーからは出さない
+assert.ok(!sidebar.includes('name: "入金管理"'));
+assert.ok(!sidebar.includes('name: "請求一覧"'));
+assert.ok(sidebar.includes("/payments・/invoices の route は残す"));
 
 const invoiceDetail = readFileSync(
   join(root, "app/invoices/[id]/page.tsx"),
