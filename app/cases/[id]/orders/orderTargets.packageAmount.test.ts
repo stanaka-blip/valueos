@@ -237,6 +237,197 @@ check("別仕入先の構成品単価は使わない", () => {
 });
 
 
+check("PACKAGE部分構成品のみ価格あり → 未設定（部分合計しない）", () => {
+  const P3 = "33333333-3333-4333-8333-333333333335";
+  const targets: PackageOrderTarget[] = [
+    {
+      kind: "PACKAGE",
+      local_id: "pkg-partial",
+      case_package_id: "cpkg-partial",
+      case_product_id: null,
+      package_id: PKG_MASTER,
+      package_name: "部分価格パッケージ",
+      quantity: "1",
+      unit_price: "",
+      has_case_snapshot: false,
+      supplier_id: SUP,
+      default_supplier_id: SUP,
+      items: [
+        {
+          local_id: "i1",
+          product_id: P1,
+          product_name: "A",
+          manufacturer_name: "",
+          model_no: "",
+          quantity: "2",
+          unit_component_qty: 2,
+          memo: "",
+        },
+        {
+          local_id: "i2",
+          product_id: P2,
+          product_name: "B",
+          manufacturer_name: "",
+          model_no: "",
+          quantity: "3",
+          unit_component_qty: 3,
+          memo: "",
+        },
+        {
+          local_id: "i3",
+          product_id: P3,
+          product_name: "C",
+          manufacturer_name: "",
+          model_no: "",
+          quantity: "1",
+          unit_component_qty: 1,
+          memo: "",
+        },
+      ],
+    },
+  ];
+  const byProduct = new Map<string, number>([
+    [P1, 10000],
+    [P2, 20000],
+    // P3 missing
+  ]);
+  const priced = applySupplierMasterUnitPrices(
+    targets,
+    new Map([[SUP, byProduct]]),
+    new Map()
+  );
+  assert.equal(priced.targets[0].unit_price, "");
+  assert.ok(priced.missingProductNames.length > 0);
+});
+
+check("PACKAGE全構成品価格あり → fallback 80000", () => {
+  const targets: PackageOrderTarget[] = [
+    {
+      kind: "PACKAGE",
+      local_id: "pkg-full",
+      case_package_id: "cpkg-full",
+      case_product_id: null,
+      package_id: PKG_MASTER,
+      package_name: "全構成価格パッケージ",
+      quantity: "1",
+      unit_price: "",
+      has_case_snapshot: false,
+      supplier_id: SUP,
+      default_supplier_id: SUP,
+      items: [
+        {
+          local_id: "i1",
+          product_id: P1,
+          product_name: "A",
+          manufacturer_name: "",
+          model_no: "",
+          quantity: "2",
+          unit_component_qty: 2,
+          memo: "",
+        },
+        {
+          local_id: "i2",
+          product_id: P2,
+          product_name: "B",
+          manufacturer_name: "",
+          model_no: "",
+          quantity: "3",
+          unit_component_qty: 3,
+          memo: "",
+        },
+      ],
+    },
+  ];
+  const byProduct = new Map<string, number>([
+    [P1, 10000],
+    [P2, 20000],
+  ]);
+  const priced = applySupplierMasterUnitPrices(
+    targets,
+    new Map([[SUP, byProduct]]),
+    new Map()
+  );
+  assert.equal(priced.targets[0].unit_price, "80000");
+  assert.equal(priced.missingProductNames.length, 0);
+});
+
+check("PACKAGE部分欠落時に別仕入先価格を混ぜない", () => {
+  const P3 = "33333333-3333-4333-8333-333333333335";
+  const OTHER = "22222222-2222-4222-8222-222222222222";
+  const targets: PackageOrderTarget[] = [
+    {
+      kind: "PACKAGE",
+      local_id: "pkg-mix",
+      case_package_id: "cpkg-mix",
+      case_product_id: null,
+      package_id: PKG_MASTER,
+      package_name: "混在禁止パッケージ",
+      quantity: "1",
+      unit_price: "",
+      has_case_snapshot: false,
+      supplier_id: SUP,
+      default_supplier_id: SUP,
+      items: [
+        {
+          local_id: "i1",
+          product_id: P1,
+          product_name: "A",
+          manufacturer_name: "",
+          model_no: "",
+          quantity: "2",
+          unit_component_qty: 2,
+          memo: "",
+        },
+        {
+          local_id: "i2",
+          product_id: P2,
+          product_name: "B",
+          manufacturer_name: "",
+          model_no: "",
+          quantity: "3",
+          unit_component_qty: 3,
+          memo: "",
+        },
+        {
+          local_id: "i3",
+          product_id: P3,
+          product_name: "C",
+          manufacturer_name: "",
+          model_no: "",
+          quantity: "1",
+          unit_component_qty: 1,
+          memo: "",
+        },
+      ],
+    },
+  ];
+  const priced = applySupplierMasterUnitPrices(
+    targets,
+    new Map([
+      [SUP, new Map([[P1, 10000], [P2, 20000]])],
+      [OTHER, new Map([[P3, 99999]])],
+    ]),
+    new Map()
+  );
+  assert.equal(priced.targets[0].unit_price, "");
+  assert.ok(priced.missingProductNames.length > 0);
+});
+
+check("PACKAGEマスタ0円は有効（構成品fallbackしない）", () => {
+  const targets = buildOrderTargets([], packages).map((t) =>
+    t.kind === "PACKAGE"
+      ? { ...t, supplier_id: SUP, unit_price: "", has_case_snapshot: false }
+      : t
+  );
+  const priced = applySupplierMasterUnitPrices(
+    targets,
+    new Map([[SUP, new Map([[P1, 80000], [P2, 52000]])]]),
+    new Map([[SUP, new Map([[PKG_MASTER, 0]])]])
+  );
+  assert.equal(priced.targets[0].unit_price, "0");
+});
+
+
 if (failed > 0) {
   console.error(`\n${failed} failure(s)`);
   process.exit(1);

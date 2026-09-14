@@ -318,7 +318,8 @@ export function buildInitialOrderLines(
 
 /**
  * スナップショットなし明細へマスタ単価を適用。
- * 見つからない場合は未設定（空）のまま手入力待ち。実値0はマスタに無い扱い。
+ * 見つからない場合は未設定（空）のまま手入力待ち。
+ * Map に載っている 0 円は有効な仕入単価として扱う。
  */
 export function applyMasterUnitPrices(
   lines: OrderLineDraft[],
@@ -329,7 +330,7 @@ export function applyMasterUnitPrices(
   const next = lines.map((line) => {
     if (line.has_case_snapshot) return line;
     const unit = unitPriceByProductId.get(line.product_id);
-    if (unit != null && unit > 0) {
+    if (unit != null) {
       return { ...line, unit_price: String(unit) };
     }
     missingNames.push(line.product_name || "名称未設定");

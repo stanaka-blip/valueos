@@ -1192,7 +1192,7 @@ function ProductTargetCard({
           <span className="text-xs font-bold text-gray-600">数量</span>
           <input
             type="text"
-            inputMode="numeric"
+            inputMode="decimal"
             value={target.quantity}
             onChange={(e) =>
               onFieldChange(target.local_id, "quantity", e.target.value)
@@ -1299,7 +1299,7 @@ function PackageTargetCard({
           <span className="text-xs font-bold text-gray-600">数量</span>
           <input
             type="text"
-            inputMode="numeric"
+            inputMode="decimal"
             value={target.quantity}
             onChange={(e) =>
               onFieldChange(target.local_id, "quantity", e.target.value)
