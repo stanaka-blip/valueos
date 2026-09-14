@@ -1,7 +1,10 @@
 import Link from "next/link";
 
-import { summarizeInvoicePayments } from "@/lib/payments";
+import InvoiceCancelButton from "@/app/invoices/[id]/InvoiceCancelButton";
+import PaymentRowActions from "@/app/invoices/[id]/PaymentRowActions";
 import { resolveInvoicePrintTaxDisplay } from "@/lib/invoices/invoicePrintTaxDisplay";
+import { summarizeInvoicePayments } from "@/lib/payments";
+import { isActiveInvoiceStatus } from "@/lib/status/activeRecords";
 import { supabase } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
@@ -239,6 +242,7 @@ export default async function InvoiceDetailPage({
   const paidAmount = paymentSummary.confirmedPaidAmount;
   const remainingAmount = paymentSummary.unpaidAmount;
   const isOverdue = paymentSummary.isOverdue;
+  const invoiceActive = isActiveInvoiceStatus(invoice.status);
   const taxDisplay = resolveInvoicePrintTaxDisplay({
     invoiceAmount: invoice.invoice_amount,
     subtotalExTax: invoice.subtotal_ex_tax,
@@ -292,12 +296,31 @@ export default async function InvoiceDetailPage({
               </Link>
             ) : null}
 
-            <Link
-              href={`/invoices/${invoice.id}/payments/new`}
-              className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-bold text-white hover:bg-gray-700"
-            >
-              ＋ 入金登録
-            </Link>
+            {invoiceActive ? (
+              <>
+                <Link
+                  href={`/invoices/${invoice.id}/edit`}
+                  className="rounded-lg border bg-white px-4 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50"
+                >
+                  編集
+                </Link>
+                <InvoiceCancelButton
+                  invoiceId={invoice.id}
+                  caseId={caseData?.id || invoice.case_id}
+                  currentStatus={invoice.status}
+                />
+                <Link
+                  href={`/invoices/${invoice.id}/payments/new`}
+                  className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-bold text-white hover:bg-gray-700"
+                >
+                  ＋ 入金登録
+                </Link>
+              </>
+            ) : (
+              <span className="rounded-full bg-gray-200 px-3 py-2 text-xs font-bold text-gray-600">
+                取消済（編集不可）
+              </span>
+            )}
           </div>
         </div>
       </header>
@@ -483,12 +506,14 @@ export default async function InvoiceDetailPage({
               </p>
             </div>
 
-            <Link
-              href={`/invoices/${invoice.id}/payments/new`}
-              className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-bold text-white hover:bg-gray-700"
-            >
-              ＋ 入金登録
-            </Link>
+            {invoiceActive ? (
+              <Link
+                href={`/invoices/${invoice.id}/payments/new`}
+                className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-bold text-white hover:bg-gray-700"
+              >
+                ＋ 入金登録
+              </Link>
+            ) : null}
           </div>
 
           {paymentError ? (
@@ -550,6 +575,14 @@ export default async function InvoiceDetailPage({
                       </p>
                     </div>
                   ) : null}
+
+                  {invoiceActive ? (
+                    <PaymentRowActions
+                      invoiceId={invoice.id}
+                      paymentId={payment.id}
+                      paymentStatus={payment.status}
+                    />
+                  ) : null}
                 </div>
               ))}
             </div>
@@ -585,7 +618,16 @@ export default async function InvoiceDetailPage({
             </div>
 
             <div className="flex flex-wrap gap-3">
-              {remainingAmount > 0 ? (
+              {invoiceActive ? (
+                <Link
+                  href={`/invoices/${invoice.id}/edit`}
+                  className="rounded-lg border bg-white px-4 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50"
+                >
+                  編集
+                </Link>
+              ) : null}
+
+              {invoiceActive && remainingAmount > 0 ? (
                 <Link
                   href={`/invoices/${invoice.id}/payments/new`}
                   className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-bold text-white hover:bg-gray-700"
@@ -601,6 +643,14 @@ export default async function InvoiceDetailPage({
               >
                 請求書PDF
               </Link>
+
+              {invoiceActive ? (
+                <InvoiceCancelButton
+                  invoiceId={invoice.id}
+                  caseId={caseData?.id || invoice.case_id}
+                  currentStatus={invoice.status}
+                />
+              ) : null}
             </div>
           </div>
         </section>

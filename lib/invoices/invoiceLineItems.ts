@@ -51,6 +51,9 @@ export type InvoiceLineItemRow = {
   amount_ex_tax: number | string;
   tax_rate: number | string | null;
   memo: string | null;
+  case_product_id?: string | null;
+  source_product_id?: string | null;
+  source_package_id?: string | null;
 };
 
 const DEFAULT_TAX_RATE = 0.1;
@@ -243,6 +246,43 @@ export function buildInvoiceLineDraftsFromCaseSeeds(
       case_product_id: seed.caseProductId,
       source_product_id: isPackage ? null : seed.productId,
       source_package_id: isPackage ? seed.packageId : null,
+    };
+  });
+}
+
+/** 既存請求明細行 → 編集フォーム用ドラフト */
+export function buildInvoiceLineDraftsFromRows(
+  rows: readonly InvoiceLineItemRow[]
+): InvoiceLineDraft[] {
+  const sorted = [...rows].sort(
+    (a, b) => Number(a.sort_order) - Number(b.sort_order)
+  );
+  if (sorted.length < 1) {
+    return [emptyCustomInvoiceLine()];
+  }
+  return sorted.map((row) => {
+    const kind =
+      row.line_kind === "product" ||
+      row.line_kind === "package" ||
+      row.line_kind === "custom"
+        ? row.line_kind
+        : "custom";
+    return {
+      key: newInvoiceLineKey(),
+      included: true,
+      line_kind: kind,
+      description: String(row.description || ""),
+      quantity: String(row.quantity ?? "1"),
+      unit: String(row.unit || ""),
+      unit_price_ex_tax: String(row.unit_price_ex_tax ?? ""),
+      tax_rate:
+        row.tax_rate == null || row.tax_rate === ""
+          ? String(DEFAULT_TAX_RATE)
+          : String(row.tax_rate),
+      memo: String(row.memo || ""),
+      case_product_id: row.case_product_id ?? null,
+      source_product_id: row.source_product_id ?? null,
+      source_package_id: row.source_package_id ?? null,
     };
   });
 }

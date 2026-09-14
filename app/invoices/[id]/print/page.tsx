@@ -40,6 +40,7 @@ type Invoice = {
   invoice_amount: number | string | null;
   subtotal_ex_tax: number | string | null;
   tax_amount: number | string | null;
+  status: string | null;
   memo: string | null;
   cases: CaseData | CaseData[] | null;
 };
@@ -63,6 +64,7 @@ export default async function InvoicePrintPage({
         invoice_amount,
         subtotal_ex_tax,
         tax_amount,
+        status,
         memo,
         cases (
           id,
@@ -164,6 +166,14 @@ export default async function InvoicePrintPage({
       </div>
 
       <main className="order-print-page mx-auto bg-white text-gray-900">
+        {invoice.status === "取消" ? (
+          <div
+            className="mb-4 rounded-lg border-2 border-red-600 bg-red-50 px-4 py-3 text-center text-sm font-bold text-red-700"
+            role="status"
+          >
+            この請求書は取消済です（有効な請求ではありません）
+          </div>
+        ) : null}
         <header className="order-print-header">
           <div className="order-print-header-row">
             <h1 className="order-print-title">請求書</h1>
