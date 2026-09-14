@@ -437,7 +437,7 @@ export function validateOrderTargetsForSave(
       if (parseOrderQuantity(target.quantity) == null) {
         return {
           ok: false,
-          error_message: `「${target.product_name || "名称未設定"}」の数量は1以上の整数で入力してください。`,
+          error_message: `「${target.product_name || "名称未設定"}」の数量は0より大きい数で入力してください。`,
         };
       }
       if (isUnitPriceUnset(target.unit_price)) {
@@ -465,7 +465,7 @@ export function validateOrderTargetsForSave(
     if (parseOrderQuantity(target.quantity) == null) {
       return {
         ok: false,
-        error_message: `「${target.package_name || "パッケージ"}」の数量は1以上の整数で入力してください。`,
+        error_message: `「${target.package_name || "パッケージ"}」の数量は0より大きい数で入力してください。`,
       };
     }
     if (isUnitPriceUnset(target.unit_price)) {
@@ -488,7 +488,7 @@ export function validateOrderTargetsForSave(
       if (parseOrderQuantity(item.quantity) == null) {
         return {
           ok: false,
-          error_message: `「${item.product_name || "名称未設定"}」の構成数量は1以上の整数である必要があります。`,
+          error_message: `「${item.product_name || "名称未設定"}」の構成数量は0より大きい数である必要があります。`,
         };
       }
     }
@@ -508,7 +508,7 @@ export function validateOrderTargetsForSave(
 /**
  * スナップショットなし明細へマスタ単価を適用。
  * PRODUCT: supplier×product
- * PACKAGE: supplier×package（unitPriceBySupplierPackage）
+ * PACKAGE: supplier×package。無い場合は同一仕入先の構成品PRODUCT単価合計。
  */
 export function applySupplierMasterUnitPrices(
   targets: OrderTarget[],
@@ -522,7 +522,8 @@ export function applySupplierMasterUnitPrices(
       if (target.has_case_snapshot) return target;
       const byProduct = unitPriceBySupplierProduct.get(target.supplier_id);
       const unit = byProduct?.get(target.product_id);
-      if (unit != null && unit > 0) {
+      // Map に載っている 0 円は有効。未載＝未設定。
+      if (unit != null) {
         return { ...target, unit_price: String(unit) };
       }
       missingNames.push(target.product_name || "名称未設定");
@@ -531,13 +532,33 @@ export function applySupplierMasterUnitPrices(
 
     if (target.has_case_snapshot) return target;
     const packageId = target.package_id;
-    if (!packageId) {
-      missingNames.push(target.package_name || "パッケージ");
-      return { ...target, unit_price: "" };
+    const byPackage = packageId
+      ? unitPriceBySupplierPackage?.get(target.supplier_id)
+      : undefined;
+    let unit = packageId ? byPackage?.get(packageId) : undefined;
+
+    // PACKAGEマスタが無い場合のみ、同一仕入先の構成品PRODUCT単価合計で補完
+    // （別仕入先の単価は使わない。0円マスタは有効なので fallback しない）
+    if (unit == null && target.items.length > 0) {
+      const byProduct = unitPriceBySupplierProduct.get(target.supplier_id);
+      if (byProduct) {
+        let sum = 0;
+        let allFound = true;
+        for (const item of target.items) {
+          const pu = byProduct.get(item.product_id);
+          if (pu == null) {
+            allFound = false;
+            break;
+          }
+          sum += pu * item.unit_component_qty;
+        }
+        if (allFound) {
+          unit = Math.round(sum);
+        }
+      }
     }
-    const byPackage = unitPriceBySupplierPackage?.get(target.supplier_id);
-    const unit = byPackage?.get(packageId);
-    if (unit != null && unit > 0) {
+
+    if (unit != null) {
       return { ...target, unit_price: String(unit) };
     }
     missingNames.push(target.package_name || "パッケージ");
@@ -600,7 +621,7 @@ export function scalePackageItemQuantities(
     quantity: String(qty),
     items: target.items.map((item) => ({
       ...item,
-      quantity: String(Math.max(1, item.unit_component_qty * qty)),
+      quantity: String(item.unit_component_qty * qty),
     })),
   };
 }

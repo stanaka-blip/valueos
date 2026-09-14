@@ -95,20 +95,20 @@ function getSingleRelation<T>(value: T | T[] | null | undefined): T | null {
   return Array.isArray(value) ? value[0] || null : value;
 }
 
-/** 発注数量として有効な正の整数のみ。0/NULL/小数/負は null（1へ補正しない） */
+/** 発注数量: 0より大きい有限数（小数可）。整数限定だったため小数で金額0になる不具合を解消 */
 export function parseOrderQuantity(value: unknown): number | null {
   if (value === null || value === undefined || value === "") {
     return null;
   }
   if (typeof value === "string") {
     const trimmed = value.trim();
-    if (!/^\d+$/.test(trimmed)) return null;
+    if (!/^\d+(\.\d+)?$/.test(trimmed)) return null;
     const n = Number(trimmed);
-    if (!Number.isInteger(n) || n < 1) return null;
+    if (!Number.isFinite(n) || n <= 0) return null;
     return n;
   }
   if (typeof value === "number") {
-    if (!Number.isFinite(value) || !Number.isInteger(value) || value < 1) {
+    if (!Number.isFinite(value) || value <= 0) {
       return null;
     }
     return value;
@@ -318,7 +318,8 @@ export function buildInitialOrderLines(
 
 /**
  * スナップショットなし明細へマスタ単価を適用。
- * 見つからない場合は未設定（空）のまま手入力待ち。実値0はマスタに無い扱い。
+ * 見つからない場合は未設定（空）のまま手入力待ち。
+ * Map に載っている 0 円は有効な仕入単価として扱う。
  */
 export function applyMasterUnitPrices(
   lines: OrderLineDraft[],
@@ -329,7 +330,7 @@ export function applyMasterUnitPrices(
   const next = lines.map((line) => {
     if (line.has_case_snapshot) return line;
     const unit = unitPriceByProductId.get(line.product_id);
-    if (unit != null && unit > 0) {
+    if (unit != null) {
       return { ...line, unit_price: String(unit) };
     }
     missingNames.push(line.product_name || "名称未設定");

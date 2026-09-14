@@ -142,7 +142,7 @@ export function normalizeReplacePurchaseOrderItem(
 ): NormalizedReplacePurchaseOrderItem {
   const memo = resolveIncomingOrderItemMemo(line, existingMemo);
   const kind = resolveOrderPackageLineKind(memo);
-  const quantity = Math.floor(toFiniteNumber(line.quantity));
+  const quantity = toFiniteNumber(line.quantity);
   const rawPrice = toFiniteNumber(line.unit_price);
   const unit_price = kind === "PACKAGE_COMPONENT" ? 0 : rawPrice;
   const amount = kind === "PACKAGE_COMPONENT" ? 0 : calcAmount(quantity, unit_price);
@@ -230,11 +230,11 @@ export function validateReplacePurchaseOrderItems(
       existingMemo
     );
 
-    if (normalized.quantity < 1) {
+    if (normalized.quantity <= 0) {
       return {
         ok: false,
         error_code: "INVALID_INPUT",
-        error_message: "数量は1以上で入力してください。",
+        error_message: "数量は0より大きい数で入力してください。",
       };
     }
     if (normalized.unit_price < 0) {

@@ -10,9 +10,11 @@ import type { PriceTargetType } from "@/lib/prices/targetType";
  * - price_target_type = PRODUCT | PACKAGE
  * - product_id / package_id
  * - is_active = true
- * - start_date <= asOf
+ * - start_date IS NULL OR start_date <= asOf
  * - end_date IS NULL OR end_date >= asOf
- * - 優先: start_date 降順の先頭1件
+ * - 優先: 日付あり start_date 降順 → start_date NULL は fallback
+ *
+ * 単価 0 円は有効。レコード無し / 不正値のみ未設定。
  *
  * ※ purchase_prices に dealer_id 列はない。
  * 丸め: 保存合計は ROUND(unit * quantity)。プレビューは単価を返す。
@@ -61,12 +63,41 @@ export function getTodayDateString(date = new Date()): string {
   return `${year}-${month}-${day}`;
 }
 
-function toUnitPrice(value: unknown): number {
+/**
+ * 明示された仕入単価を解釈する。
+ * - null / undefined / "" / NaN / 負数 → 未設定 (null)
+ * - 0 以上の有限数 → 有効（0円含む）
+ */
+export function parsePurchaseUnitPrice(value: unknown): number | null {
   if (value === null || value === undefined || value === "") {
-    return 0;
+    return null;
   }
   const n = Number(value);
-  return Number.isFinite(n) && n > 0 ? n : 0;
+  if (!Number.isFinite(n) || n < 0) {
+    return null;
+  }
+  return n;
+}
+
+/**
+ * 適用開始日の優先比較（小さいほど優先）。
+ * 1. 日付ありを優先
+ * 2. 同グループ内は start_date 降順（新しい方）
+ * 3. start_date NULL は fallback
+ */
+export function comparePurchaseStartDatePriority(
+  a: string | null | undefined,
+  b: string | null | undefined
+): number {
+  const aDated = Boolean(a);
+  const bDated = Boolean(b);
+  if (aDated !== bDated) {
+    return aDated ? -1 : 1;
+  }
+  if (aDated && bDated) {
+    return String(b).localeCompare(String(a));
+  }
+  return 0;
 }
 
 export function isActivePurchaseFlag(value: unknown): boolean {
@@ -86,7 +117,8 @@ export function matchesActivePurchaseWindow(
   asOfDate: string
 ): boolean {
   if (!isActivePurchaseFlag(row.is_active)) return false;
-  if (!row.start_date || row.start_date > asOfDate) return false;
+  // start_date NULL は開始日未指定＝適用開始済みとして扱う（マスタ登録で省略される）
+  if (row.start_date && row.start_date > asOfDate) return false;
   if (row.end_date && row.end_date < asOfDate) return false;
   return true;
 }
@@ -102,7 +134,8 @@ export type ListPurchasePriceCandidate = {
 
 /**
  * 候補行から対象×仕入先の現行仕入単価を選ぶ。
- * 条件は fetchActivePurchasePrice と同じ（有効・期間内・start_date DESC・金額>0）。
+ * 有効・期間内の行のうち、日付あり start_date 降順を優先し、NULL は fallback。
+ * 単価 0 円は有効。レコード無し / 不正値のみ未設定 (null)。
  */
 export function pickActivePurchaseUnitForTarget(
   candidates: ListPurchasePriceCandidate[],
@@ -118,11 +151,16 @@ export function pickActivePurchaseUnitForTarget(
     )
     .filter((row) => matchesActivePurchaseWindow(row, asOfDate))
     .map((row) => ({
-      start_date: row.start_date || "",
-      unitPrice: toUnitPrice(row.purchase_price),
+      start_date: row.start_date,
+      unitPrice: parsePurchaseUnitPrice(row.purchase_price),
     }))
-    .filter((row) => row.unitPrice > 0)
-    .sort((a, b) => b.start_date.localeCompare(a.start_date));
+    .filter(
+      (row): row is { start_date: string | null; unitPrice: number } =>
+        row.unitPrice != null
+    )
+    .sort((a, b) =>
+      comparePurchaseStartDatePriority(a.start_date, b.start_date)
+    );
 
   return eligible[0]?.unitPrice ?? null;
 }
@@ -140,13 +178,13 @@ export async function fetchActivePurchasePrice(
   const asOfDate = params.asOfDate || getTodayDateString();
   let query = client
     .from("purchase_prices")
-    .select("id, purchase_price")
+    .select("id, purchase_price, start_date")
     .eq("supplier_id", supplierId)
     .eq("is_active", true)
-    .lte("start_date", asOfDate)
+    .or(`start_date.is.null,start_date.lte.${asOfDate}`)
     .or(`end_date.is.null,end_date.gte.${asOfDate}`)
-    .order("start_date", { ascending: false })
-    .limit(1);
+    .order("start_date", { ascending: false, nullsFirst: false })
+    .limit(50);
 
   if (targetType === "PRODUCT") {
     if (!params.productId) {
@@ -164,18 +202,30 @@ export async function fetchActivePurchasePrice(
       .eq("package_id", params.packageId);
   }
 
-  const { data, error } = await query.maybeSingle();
+  const { data, error } = await query;
   if (error) {
     return { found: false, priceId: null, unitPrice: 0, error: error.message };
   }
 
-  const unitPrice = toUnitPrice(data?.purchase_price);
-  return {
-    found: unitPrice > 0,
-    priceId: (data?.id as string | undefined) || null,
-    unitPrice,
-    error: null,
-  };
+  const ranked = [...(data || [])].sort((a, b) =>
+    comparePurchaseStartDatePriority(
+      a.start_date as string | null,
+      b.start_date as string | null
+    )
+  );
+  for (const row of ranked) {
+    const unitPrice = parsePurchaseUnitPrice(row.purchase_price);
+    if (unitPrice != null) {
+      return {
+        found: true,
+        priceId: (row.id as string | undefined) || null,
+        unitPrice,
+        error: null,
+      };
+    }
+  }
+
+  return { found: false, priceId: null, unitPrice: 0, error: null };
 }
 
 /** 単一商品の有効仕入単価を取得（既存互換・PRODUCT） */
@@ -203,22 +253,32 @@ export async function fetchActivePurchaseUnitPrice(
     const asOfDate = params.asOfDate || getTodayDateString();
     const { data, error } = await client
       .from("purchase_prices")
-      .select("purchase_price")
+      .select("purchase_price, start_date")
       .eq("product_id", productId)
       .eq("supplier_id", supplierId)
       .eq("is_active", true)
-      .lte("start_date", asOfDate)
+      .or(`start_date.is.null,start_date.lte.${asOfDate}`)
       .or(`end_date.is.null,end_date.gte.${asOfDate}`)
-      .order("start_date", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .order("start_date", { ascending: false, nullsFirst: false })
+      .limit(50);
 
     if (error) {
       return { unitPrice: 0, found: false, error: error.message };
     }
 
-    const unitPrice = toUnitPrice(data?.purchase_price);
-    return { unitPrice, found: unitPrice > 0, error: null };
+    const ranked = [...(data || [])].sort((a, b) =>
+      comparePurchaseStartDatePriority(
+        a.start_date as string | null,
+        b.start_date as string | null
+      )
+    );
+    for (const row of ranked) {
+      const unitPrice = parsePurchaseUnitPrice(row.purchase_price);
+      if (unitPrice != null) {
+        return { unitPrice, found: true, error: null };
+      }
+    }
+    return { unitPrice: 0, found: false, error: null };
   }
 
   return {
@@ -262,9 +322,9 @@ export async function fetchActivePackagePurchaseUnitPrices(
     .eq("supplier_id", params.supplierId)
     .eq("price_target_type", "PACKAGE")
     .eq("is_active", true)
-    .lte("start_date", asOfDate)
+    .or(`start_date.is.null,start_date.lte.${asOfDate}`)
     .or(`end_date.is.null,end_date.gte.${asOfDate}`)
-    .order("start_date", { ascending: false });
+    .order("start_date", { ascending: false, nullsFirst: false });
 
   if (error) {
     return {
@@ -278,8 +338,8 @@ export async function fetchActivePackagePurchaseUnitPrices(
   for (const row of data || []) {
     const packageId = row.package_id as string | null;
     if (!packageId || unitPriceByPackageId.has(packageId)) continue;
-    const unitPrice = toUnitPrice(row.purchase_price);
-    if (unitPrice > 0) unitPriceByPackageId.set(packageId, unitPrice);
+    const unitPrice = parsePurchaseUnitPrice(row.purchase_price);
+    if (unitPrice != null) unitPriceByPackageId.set(packageId, unitPrice);
   }
 
   const missingPackageIds = uniqueIds.filter(
@@ -291,7 +351,7 @@ export async function fetchActivePackagePurchaseUnitPrices(
 /**
  * 複数商品の有効仕入単価を一括取得（PRODUCT のみ）。
  * PACKAGE 向け価格行を誤って採用しないよう price_target_type を明示する。
- * 同一 product_id が複数行ある場合は start_date 降順で先頭を採用。
+ * 同一 product_id が複数行ある場合は日付あり start_date 降順を優先し、NULL は fallback。
  */
 export async function fetchActivePurchaseUnitPrices(
   client: SupabaseClient,
@@ -322,9 +382,9 @@ export async function fetchActivePurchaseUnitPrices(
     .eq("supplier_id", params.supplierId)
     .eq("price_target_type", "PRODUCT")
     .eq("is_active", true)
-    .lte("start_date", asOfDate)
+    .or(`start_date.is.null,start_date.lte.${asOfDate}`)
     .or(`end_date.is.null,end_date.gte.${asOfDate}`)
-    .order("start_date", { ascending: false });
+    .order("start_date", { ascending: false, nullsFirst: false });
 
   let data = withTargetType.data;
   let error = withTargetType.error;
@@ -340,9 +400,9 @@ export async function fetchActivePurchaseUnitPrices(
       .in("product_id", uniqueIds)
       .eq("supplier_id", params.supplierId)
       .eq("is_active", true)
-      .lte("start_date", asOfDate)
+      .or(`start_date.is.null,start_date.lte.${asOfDate}`)
       .or(`end_date.is.null,end_date.gte.${asOfDate}`)
-      .order("start_date", { ascending: false });
+      .order("start_date", { ascending: false, nullsFirst: false });
     data = legacy.data;
     error = legacy.error;
   }
@@ -359,11 +419,11 @@ export async function fetchActivePurchaseUnitPrices(
   for (const row of data || []) {
     const productId = row.product_id as string | null;
     if (!productId || unitPriceByProductId.has(productId)) {
-      // start_date desc 済みのため、先勝ち = 最新適用開始日
+      // nullsLast + desc 済みのため、先勝ち = 日付あり最新 → NULL fallback
       continue;
     }
-    const unitPrice = toUnitPrice(row.purchase_price);
-    if (unitPrice > 0) {
+    const unitPrice = parsePurchaseUnitPrice(row.purchase_price);
+    if (unitPrice != null) {
       unitPriceByProductId.set(productId, unitPrice);
     }
   }
@@ -417,9 +477,9 @@ export async function fetchListCurrentPurchaseUnitPrices(
     .eq("price_target_type", params.targetType)
     .in(idColumn, targetIds)
     .eq("is_active", true)
-    .lte("start_date", asOfDate)
+    .or(`start_date.is.null,start_date.lte.${asOfDate}`)
     .or(`end_date.is.null,end_date.gte.${asOfDate}`)
-    .order("start_date", { ascending: false });
+    .order("start_date", { ascending: false, nullsFirst: false });
 
   if (error) {
     return { unitPriceByTargetId: new Map(), error: error.message };

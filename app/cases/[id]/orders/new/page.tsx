@@ -411,10 +411,20 @@ export default function NewOrderPage() {
           list.push(target.product_id);
           productIdsBySupplier.set(supplierId, list);
         }
-      } else if (!target.has_case_snapshot && target.package_id) {
-        const list = packageIdsBySupplier.get(supplierId) || [];
-        list.push(target.package_id);
-        packageIdsBySupplier.set(supplierId, list);
+      } else if (!target.has_case_snapshot) {
+        if (target.package_id) {
+          const list = packageIdsBySupplier.get(supplierId) || [];
+          list.push(target.package_id);
+          packageIdsBySupplier.set(supplierId, list);
+        }
+        // PACKAGE単価補完用に構成品PRODUCT単価も取得（選択仕入先のみ）
+        if (target.items.length > 0) {
+          const list = productIdsBySupplier.get(supplierId) || [];
+          for (const item of target.items) {
+            if (item.product_id) list.push(item.product_id);
+          }
+          productIdsBySupplier.set(supplierId, list);
+        }
       }
     }
 
@@ -1182,7 +1192,7 @@ function ProductTargetCard({
           <span className="text-xs font-bold text-gray-600">数量</span>
           <input
             type="text"
-            inputMode="numeric"
+            inputMode="decimal"
             value={target.quantity}
             onChange={(e) =>
               onFieldChange(target.local_id, "quantity", e.target.value)
@@ -1289,7 +1299,7 @@ function PackageTargetCard({
           <span className="text-xs font-bold text-gray-600">数量</span>
           <input
             type="text"
-            inputMode="numeric"
+            inputMode="decimal"
             value={target.quantity}
             onChange={(e) =>
               onFieldChange(target.local_id, "quantity", e.target.value)

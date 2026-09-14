@@ -94,3 +94,46 @@ export function sortProductListRows(rows: ProductListRow[]): ProductListRow[] {
     return (a.name || "").localeCompare(b.name || "", "ja");
   });
 }
+
+/** 一覧クエリを URL クエリ文字列付きパスへ */
+export function buildProductListHref(query: ProductListQuery): string {
+  const sp = new URLSearchParams();
+  if (query.q) sp.set("q", query.q);
+  if (query.manufacturerId) sp.set("manufacturer_id", query.manufacturerId);
+  if (query.category) sp.set("category", query.category);
+  if (query.status !== "all") sp.set("status", query.status);
+  const qs = sp.toString();
+  return qs ? `/products?${qs}` : "/products";
+}
+
+/**
+ * returnTo は商品一覧パスのみ許可（オープンリダイレクト防止）。
+ * 例: /products /products?q=...&category=...
+ */
+export function sanitizeProductsReturnTo(
+  value: string | null | undefined
+): string | null {
+  if (value == null) return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+  let decoded = raw;
+  try {
+    decoded = decodeURIComponent(raw);
+  } catch {
+    return null;
+  }
+  if (!decoded.startsWith("/products")) return null;
+  if (decoded.startsWith("//") || decoded.includes("://")) return null;
+  if (decoded !== "/products" && !decoded.startsWith("/products?")) return null;
+  return decoded;
+}
+
+export function withProductsReturnTo(
+  path: string,
+  returnTo: string | null
+): string {
+  if (!returnTo) return path;
+  const join = path.includes("?") ? "&" : "?";
+  return `${path}${join}returnTo=${encodeURIComponent(returnTo)}`;
+}
+
