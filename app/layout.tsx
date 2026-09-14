@@ -13,11 +13,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ja">
-      <body>
-        <div className="flex min-h-screen bg-gray-100">
+    <html lang="ja" className="light">
+      <body className="bg-white text-gray-900">
+        <div className="flex min-h-screen bg-gray-100 text-gray-900">
           <AppSidebar />
-          <main className="min-w-0 flex-1">{children}</main>
+          <main className="min-w-0 flex-1 text-gray-900">{children}</main>
         </div>
       </body>
     </html>

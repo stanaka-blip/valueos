@@ -78,17 +78,12 @@ function IconOrders() {
   );
 }
 
-function IconInvoice() {
+function IconKey() {
   return (
     <svg className={iconClass} viewBox="0 0 24 24" fill="none" aria-hidden>
+      <circle cx="8" cy="14" r="3.25" stroke="currentColor" strokeWidth="1.75" />
       <path
-        d="M7 3h8l4 4v14H7V3Z"
-        stroke="currentColor"
-        strokeWidth="1.75"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M15 3v4h4M10 12h6M10 16h4"
+        d="M10.5 12.5 20 3.5M17 4.5l2.5 2.5M15.5 7l2 2"
         stroke="currentColor"
         strokeWidth="1.75"
         strokeLinecap="round"
@@ -305,16 +300,8 @@ const navGroups: NavGroup[] = [
         href: "/queues/payments-management",
         icon: <IconPayment />,
       },
-      {
-        name: "入金管理",
-        href: "/payments",
-        icon: <IconInvoice />,
-      },
-      {
-        name: "請求一覧",
-        href: "/invoices",
-        icon: <IconInvoice />,
-      },
+      // /payments・/invoices の route は残す（回収管理・案件詳細・請求詳細等の導線用）。
+      // サイドバーからは「入金管理」「請求一覧」を出さない。
     ],
   },
   {
@@ -349,6 +336,11 @@ const navGroups: NavGroup[] = [
         name: "会社情報",
         href: "/settings/company",
         icon: <IconBuilding />,
+      },
+      {
+        name: "パスワード変更",
+        href: "/settings/password",
+        icon: <IconKey />,
       },
     ],
   },
