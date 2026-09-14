@@ -9,9 +9,11 @@ import MasterListRowActions from "@/app/components/masters/MasterListRowActions"
 
 import ProductListSearchForm from "./ProductListSearchForm";
 import {
+  buildProductListHref,
   filterProductListRows,
   parseProductListQuery,
   sortProductListRows,
+  withProductsReturnTo,
   type ProductListRow,
 } from "./productListQuery";
 
@@ -152,6 +154,9 @@ export default async function ProductsPage({
     Boolean(query.category) ||
     query.status !== "all";
 
+  const listHref = buildProductListHref(query);
+  const returnTo = hasFilters ? listHref : null;
+
   return (
     <>
       <header className="border-b bg-white px-8 py-5">
@@ -236,7 +241,7 @@ export default async function ProductsPage({
                       <td className="px-5 py-4">{item.category || "-"}</td>
                       <td className="px-5 py-4">
                         <Link
-                          href={`/products/${item.id}`}
+                          href={withProductsReturnTo(`/products/${item.id}`, returnTo)}
                           className="font-semibold text-gray-900 underline-offset-2 hover:underline"
                         >
                           {item.model_no || "-"}
@@ -244,7 +249,7 @@ export default async function ProductsPage({
                       </td>
                       <td className="px-5 py-4">
                         <Link
-                          href={`/products/${item.id}`}
+                          href={withProductsReturnTo(`/products/${item.id}`, returnTo)}
                           className="font-semibold text-gray-900 underline-offset-2 hover:underline"
                         >
                           {item.name || "-"}
@@ -282,7 +287,7 @@ export default async function ProductsPage({
                           items={[
                             {
                               label: "編集",
-                              href: `/products/${item.id}/edit`,
+                              href: withProductsReturnTo(`/products/${item.id}/edit`, returnTo),
                             },
                             {
                               label: "仕入価格を追加",

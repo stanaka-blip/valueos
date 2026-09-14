@@ -9,7 +9,12 @@ import {
   useMemo,
   useState,
 } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+
+import {
+  sanitizeProductsReturnTo,
+  withProductsReturnTo,
+} from "@/app/products/productListQuery";
 
 import { supabase } from "@/lib/supabase";
 
@@ -49,10 +54,13 @@ export default function EditProductPage({
 }) {
   const { id } = use(params);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const returnTo = sanitizeProductsReturnTo(searchParams.get("returnTo"));
 
   const [manufacturers, setManufacturers] = useState<Manufacturer[]>([]);
   const [seriesList, setSeriesList] = useState<Series[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -75,7 +83,7 @@ export default function EditProductPage({
       setLoading(true);
       setError("");
 
-      const [mRes, sRes, supplierRes, pRes] = await Promise.all([
+      const [mRes, sRes, supplierRes, pRes, catRes] = await Promise.all([
         supabase
           .from("manufacturers")
           .select("id, name")
@@ -89,6 +97,7 @@ export default function EditProductPage({
           .select("id, name, is_active")
           .order("name", { ascending: true }),
         supabase.from("products").select("*").eq("id", id).maybeSingle(),
+        supabase.from("products").select("category"),
       ]);
 
       if (mRes.error || sRes.error || supplierRes.error || pRes.error || !pRes.data) {
@@ -135,6 +144,19 @@ export default function EditProductPage({
         is_active: Boolean(row.is_active),
         default_supplier_id: currentSupplierId,
       });
+      const currentCategory = (row.category as string) || "";
+      const fromDb = Array.from(
+        new Set(
+          ((catRes.data || []) as { category: string | null }[])
+            .map((r) => (r.category || "").trim())
+            .filter(Boolean)
+        )
+      ).sort((a, b) => a.localeCompare(b, "ja"));
+      const defaults = ["蓄電池", "太陽光", "パワコン", "架台", "部材"];
+      const merged = Array.from(
+        new Set([...(currentCategory ? [currentCategory] : []), ...fromDb, ...defaults])
+      ).sort((a, b) => a.localeCompare(b, "ja"));
+      setCategories(merged);
       setLoading(false);
     }
 
@@ -212,7 +234,7 @@ export default function EditProductPage({
       return;
     }
 
-    router.push(`/products/${id}`);
+    router.push(withProductsReturnTo(`/products/${id}`, returnTo));
     router.refresh();
   }
 
@@ -277,15 +299,21 @@ export default function EditProductPage({
               </select>
             </Field>
 
-            <Field label="カテゴリ">
-              <input
-                type="text"
+            <Field label="カテゴリ" description="登録済みカテゴリから選択できます（変更可）">
+              <select
                 name="category"
                 value={form.category}
                 onChange={handleChange}
                 disabled={submitting}
                 className={inputClassName}
-              />
+              >
+                <option value="">未設定</option>
+                {categories.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
             </Field>
 
             <Field label="商品名" required>
@@ -389,7 +417,7 @@ export default function EditProductPage({
           <div className="mt-8 flex flex-col-reverse gap-3 border-t pt-6 sm:flex-row sm:justify-end">
             <button
               type="button"
-              onClick={() => router.push(`/products/${id}`)}
+              onClick={() => router.push(withProductsReturnTo(`/products/${id}`, returnTo))}
               disabled={submitting}
               className="rounded-lg border border-gray-300 bg-white px-6 py-3 text-sm font-bold text-gray-700"
             >

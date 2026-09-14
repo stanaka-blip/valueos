@@ -230,11 +230,11 @@ export function validateCreatePurchaseOrdersBody(
       }
 
       const quantity = Number(item.quantity);
-      if (!Number.isInteger(quantity) || quantity < 1) {
+      if (!Number.isFinite(quantity) || quantity <= 0) {
         return {
           ok: false,
           error_code: "INVALID_INPUT",
-          error_message: "数量は1以上の整数で入力してください",
+          error_message: "数量は0より大きい数で入力してください",
         };
       }
 

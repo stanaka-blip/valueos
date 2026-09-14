@@ -10,7 +10,7 @@ import type { PriceTargetType } from "@/lib/prices/targetType";
  * - price_target_type = PRODUCT | PACKAGE
  * - product_id / package_id
  * - is_active = true
- * - start_date <= asOf
+ * - start_date IS NULL OR start_date <= asOf
  * - end_date IS NULL OR end_date >= asOf
  * - 優先: start_date 降順の先頭1件
  *
@@ -86,7 +86,8 @@ export function matchesActivePurchaseWindow(
   asOfDate: string
 ): boolean {
   if (!isActivePurchaseFlag(row.is_active)) return false;
-  if (!row.start_date || row.start_date > asOfDate) return false;
+  // start_date NULL は開始日未指定＝適用開始済みとして扱う（マスタ登録で省略される）
+  if (row.start_date && row.start_date > asOfDate) return false;
   if (row.end_date && row.end_date < asOfDate) return false;
   return true;
 }
@@ -143,7 +144,7 @@ export async function fetchActivePurchasePrice(
     .select("id, purchase_price")
     .eq("supplier_id", supplierId)
     .eq("is_active", true)
-    .lte("start_date", asOfDate)
+    .or(`start_date.is.null,start_date.lte.${asOfDate}`)
     .or(`end_date.is.null,end_date.gte.${asOfDate}`)
     .order("start_date", { ascending: false })
     .limit(1);
@@ -207,7 +208,7 @@ export async function fetchActivePurchaseUnitPrice(
       .eq("product_id", productId)
       .eq("supplier_id", supplierId)
       .eq("is_active", true)
-      .lte("start_date", asOfDate)
+      .or(`start_date.is.null,start_date.lte.${asOfDate}`)
       .or(`end_date.is.null,end_date.gte.${asOfDate}`)
       .order("start_date", { ascending: false })
       .limit(1)
@@ -262,7 +263,7 @@ export async function fetchActivePackagePurchaseUnitPrices(
     .eq("supplier_id", params.supplierId)
     .eq("price_target_type", "PACKAGE")
     .eq("is_active", true)
-    .lte("start_date", asOfDate)
+    .or(`start_date.is.null,start_date.lte.${asOfDate}`)
     .or(`end_date.is.null,end_date.gte.${asOfDate}`)
     .order("start_date", { ascending: false });
 
@@ -322,7 +323,7 @@ export async function fetchActivePurchaseUnitPrices(
     .eq("supplier_id", params.supplierId)
     .eq("price_target_type", "PRODUCT")
     .eq("is_active", true)
-    .lte("start_date", asOfDate)
+    .or(`start_date.is.null,start_date.lte.${asOfDate}`)
     .or(`end_date.is.null,end_date.gte.${asOfDate}`)
     .order("start_date", { ascending: false });
 
@@ -340,7 +341,7 @@ export async function fetchActivePurchaseUnitPrices(
       .in("product_id", uniqueIds)
       .eq("supplier_id", params.supplierId)
       .eq("is_active", true)
-      .lte("start_date", asOfDate)
+      .or(`start_date.is.null,start_date.lte.${asOfDate}`)
       .or(`end_date.is.null,end_date.gte.${asOfDate}`)
       .order("start_date", { ascending: false });
     data = legacy.data;
@@ -417,7 +418,7 @@ export async function fetchListCurrentPurchaseUnitPrices(
     .eq("price_target_type", params.targetType)
     .in(idColumn, targetIds)
     .eq("is_active", true)
-    .lte("start_date", asOfDate)
+    .or(`start_date.is.null,start_date.lte.${asOfDate}`)
     .or(`end_date.is.null,end_date.gte.${asOfDate}`)
     .order("start_date", { ascending: false });
 

@@ -47,6 +47,7 @@ export default function NewProductPage() {
   const [manufacturers, setManufacturers] = useState<Manufacturer[]>([]);
   const [seriesList, setSeriesList] = useState<Series[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
   const [initialLoading, setInitialLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [loadError, setLoadError] = useState("");
@@ -70,7 +71,7 @@ export default function NewProductPage() {
       setInitialLoading(true);
       setLoadError("");
 
-      const [mRes, sRes, supplierRes] = await Promise.all([
+      const [mRes, sRes, supplierRes, catRes] = await Promise.all([
         supabase
           .from("manufacturers")
           .select("id, name")
@@ -85,6 +86,7 @@ export default function NewProductPage() {
           .from("suppliers")
           .select("id, name, is_active")
           .order("name", { ascending: true }),
+        supabase.from("products").select("category"),
       ]);
 
       if (mRes.error) {
@@ -110,6 +112,21 @@ export default function NewProductPage() {
           .filter((s) => s.is_active === true || s.is_active === "true" || s.is_active == null)
           .map((s) => ({ id: s.id, name: s.name }))
       );
+      {
+        const fromDb = Array.from(
+          new Set(
+            ((catRes.data || []) as { category: string | null }[])
+              .map((r) => (r.category || "").trim())
+              .filter(Boolean)
+          )
+        );
+        const defaults = ["蓄電池", "太陽光", "パワコン", "架台", "部材"];
+        setCategories(
+          Array.from(new Set([...fromDb, ...defaults])).sort((a, b) =>
+            a.localeCompare(b, "ja")
+          )
+        );
+      }
       setInitialLoading(false);
     }
 
@@ -308,19 +325,21 @@ export default function NewProductPage() {
               </select>
             </Field>
 
-            <Field
-              label="カテゴリ"
-              description="例：太陽光、蓄電池、パワコン、エコキュート"
-            >
-              <input
-                type="text"
+            <Field label="カテゴリ" description="登録済みカテゴリから選択できます">
+              <select
                 name="category"
                 value={form.category}
                 onChange={handleChange}
                 disabled={submitting}
-                placeholder="例：蓄電池"
                 className={inputClassName}
-              />
+              >
+                <option value="">未設定</option>
+                {categories.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
             </Field>
 
             <Field label="商品名" required>

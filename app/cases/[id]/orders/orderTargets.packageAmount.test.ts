@@ -189,6 +189,54 @@ check("PACKAGEマスタ単価適用", () => {
   assert.equal(priced.targets[0].unit_price, "132000");
 });
 
+
+
+
+check("PACKAGEマスタ無しでも同一仕入先の構成品単価合計で補完", () => {
+  const targets = buildOrderTargets([], packages).map((t) =>
+    t.kind === "PACKAGE"
+      ? { ...t, supplier_id: SUP, unit_price: "", has_case_snapshot: false }
+      : t
+  );
+  const byProduct = new Map<string, number>([
+    [P1, 80000],
+    [P2, 52000],
+  ]);
+  const priced = applySupplierMasterUnitPrices(
+    targets,
+    new Map([[SUP, byProduct]]),
+    new Map()
+  );
+  assert.equal(priced.targets[0].kind, "PACKAGE");
+  if (priced.targets[0].kind !== "PACKAGE") throw new Error("kind");
+  const pkgTarget = priced.targets[0];
+  let expected = 0;
+  for (const item of pkgTarget.items) {
+    const pu = byProduct.get(item.product_id);
+    assert.ok(pu != null);
+    expected += pu! * item.unit_component_qty;
+  }
+  assert.equal(pkgTarget.unit_price, String(Math.round(expected)));
+  assert.equal(priced.missingProductNames.length, 0);
+});
+
+check("別仕入先の構成品単価は使わない", () => {
+  const OTHER = "22222222-2222-4222-8222-222222222222";
+  const targets = buildOrderTargets([], packages).map((t) =>
+    t.kind === "PACKAGE"
+      ? { ...t, supplier_id: SUP, unit_price: "", has_case_snapshot: false }
+      : t
+  );
+  const priced = applySupplierMasterUnitPrices(
+    targets,
+    new Map([[OTHER, new Map([[P1, 99999], [P2, 99999]])]]),
+    new Map()
+  );
+  assert.equal(priced.targets[0].unit_price, "");
+  assert.ok(priced.missingProductNames.length > 0);
+});
+
+
 if (failed > 0) {
   console.error(`\n${failed} failure(s)`);
   process.exit(1);

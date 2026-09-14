@@ -95,20 +95,20 @@ function getSingleRelation<T>(value: T | T[] | null | undefined): T | null {
   return Array.isArray(value) ? value[0] || null : value;
 }
 
-/** 発注数量として有効な正の整数のみ。0/NULL/小数/負は null（1へ補正しない） */
+/** 発注数量: 0より大きい有限数（小数可）。整数限定だったため小数で金額0になる不具合を解消 */
 export function parseOrderQuantity(value: unknown): number | null {
   if (value === null || value === undefined || value === "") {
     return null;
   }
   if (typeof value === "string") {
     const trimmed = value.trim();
-    if (!/^\d+$/.test(trimmed)) return null;
+    if (!/^\d+(\.\d+)?$/.test(trimmed)) return null;
     const n = Number(trimmed);
-    if (!Number.isInteger(n) || n < 1) return null;
+    if (!Number.isFinite(n) || n <= 0) return null;
     return n;
   }
   if (typeof value === "number") {
-    if (!Number.isFinite(value) || !Number.isInteger(value) || value < 1) {
+    if (!Number.isFinite(value) || value <= 0) {
       return null;
     }
     return value;

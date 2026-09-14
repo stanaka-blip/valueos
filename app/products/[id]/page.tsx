@@ -1,6 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import {
+  sanitizeProductsReturnTo,
+  withProductsReturnTo,
+} from "@/app/products/productListQuery";
+
 import MasterPricePanels from "@/app/components/prices/MasterPricePanels";
 import { supabase } from "@/lib/supabase";
 
@@ -20,10 +25,16 @@ function relationName(
 
 export default async function ProductDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ returnTo?: string }>;
 }) {
   const { id } = await params;
+  const sp = await searchParams;
+  const returnTo = sanitizeProductsReturnTo(sp.returnTo);
+  const listHref = returnTo || "/products";
+  const editHref = withProductsReturnTo(`/products/${id}/edit`, returnTo);
 
   const { data: product, error } = await supabase
     .from("products")
@@ -52,7 +63,7 @@ export default async function ProductDetailPage({
         <p className="text-sm text-red-600">
           商品の取得に失敗しました：{error.message}
         </p>
-        <Link href="/products" className="mt-4 inline-block text-sm text-gray-700 underline">
+        <Link href={listHref} className="mt-4 inline-block text-sm text-gray-700 underline">
           ← 商品一覧へ戻る
         </Link>
       </main>
@@ -86,13 +97,13 @@ export default async function ProductDetailPage({
           </div>
           <div className="flex flex-wrap gap-2">
             <Link
-              href="/products"
+              href={listHref}
               className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-bold text-gray-700"
             >
               ← 商品一覧へ戻る
             </Link>
             <Link
-              href={`/products/${id}/edit`}
+              href={editHref}
               className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-bold text-white"
             >
               編集
