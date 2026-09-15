@@ -1,5 +1,12 @@
 "use client";
 
+import { useMemo } from "react";
+
+import SearchableSelect from "@/app/components/masters/SearchableSelect";
+import {
+  buildPackageSearchOption,
+  buildProductSearchOption,
+} from "@/app/components/masters/searchableSelect";
 import {
   formatPackageLabel,
   formatProductLabel,
@@ -37,6 +44,32 @@ export default function Step2LinesForm({
   onBack,
   onNext,
 }: Props) {
+  const productOptions = useMemo(
+    () =>
+      products.map((p) =>
+        buildProductSearchOption({
+          id: p.id,
+          name: p.name,
+          model_no: p.model_no,
+          manufacturer_name: p.manufacturer_name,
+          category: p.category,
+          series_name: p.series_name,
+        })
+      ),
+    [products]
+  );
+  const packageOptions = useMemo(
+    () =>
+      packages.map((p) =>
+        buildPackageSearchOption({
+          id: p.id,
+          name: p.name,
+          package_code: p.package_code,
+        })
+      ),
+    [packages]
+  );
+
   function applyLineType(localId: string, lineType: LineType) {
     onChangeLine(localId, {
       line_type: lineType,
@@ -124,31 +157,21 @@ export default function Step2LinesForm({
                   </td>
                   <td className="p-2 min-w-[14rem]">
                     {line.line_type === "PRODUCT" ? (
-                      <select
-                        className={inputClass}
+                      <SearchableSelect
+                        options={productOptions}
                         value={line.product_id}
-                        onChange={(e) => applyProduct(line.local_id, e.target.value)}
-                      >
-                        <option value="">選択してください</option>
-                        {products.map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {formatProductLabel(p)}
-                          </option>
-                        ))}
-                      </select>
+                        onChange={(id) => applyProduct(line.local_id, id)}
+                        placeholder="型番・商品名で検索"
+                        unsetLabel="商品を検索して選択"
+                      />
                     ) : (
-                      <select
-                        className={inputClass}
+                      <SearchableSelect
+                        options={packageOptions}
                         value={line.package_id}
-                        onChange={(e) => applyPackage(line.local_id, e.target.value)}
-                      >
-                        <option value="">選択してください</option>
-                        {packages.map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {formatPackageLabel(p)}
-                          </option>
-                        ))}
-                      </select>
+                        onChange={(id) => applyPackage(line.local_id, id)}
+                        placeholder="パッケージ名・コードで検索"
+                        unsetLabel="パッケージを検索して選択"
+                      />
                     )}
                     {err.product_id || err.package_id || err.supplier_id ? (
                       <p className="mt-1 text-xs text-red-600">
@@ -215,31 +238,25 @@ export default function Step2LinesForm({
                 <label className="block text-sm font-medium">
                   対象
                   {line.line_type === "PRODUCT" ? (
-                    <select
-                      className={`${inputClass} mt-1`}
-                      value={line.product_id}
-                      onChange={(e) => applyProduct(line.local_id, e.target.value)}
-                    >
-                      <option value="">選択してください</option>
-                      {products.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {formatProductLabel(p)}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="mt-1">
+                      <SearchableSelect
+                        options={productOptions}
+                        value={line.product_id}
+                        onChange={(id) => applyProduct(line.local_id, id)}
+                        placeholder="型番・商品名で検索"
+                        unsetLabel="商品を検索して選択"
+                      />
+                    </div>
                   ) : (
-                    <select
-                      className={`${inputClass} mt-1`}
-                      value={line.package_id}
-                      onChange={(e) => applyPackage(line.local_id, e.target.value)}
-                    >
-                      <option value="">選択してください</option>
-                      {packages.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {formatPackageLabel(p)}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="mt-1">
+                      <SearchableSelect
+                        options={packageOptions}
+                        value={line.package_id}
+                        onChange={(id) => applyPackage(line.local_id, id)}
+                        placeholder="パッケージ名・コードで検索"
+                        unsetLabel="パッケージを検索して選択"
+                      />
+                    </div>
                   )}
                 </label>
                 <label className="block text-sm font-medium">

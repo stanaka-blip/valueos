@@ -9,6 +9,7 @@ import {
   useMemo,
   useState,
 } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import {
@@ -252,6 +253,14 @@ export default function EditProductPage({
   return (
     <>
       <PageHeader title="商品編集" description="商品マスタを更新します" />
+      <div className="border-b bg-white px-4 py-3 md:px-8">
+        <Link
+          href={`/products/new?copyFrom=${id}`}
+          className="inline-flex rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-bold text-gray-800"
+        >
+          複製して新規登録
+        </Link>
+      </div>
       <main className="p-4 md:p-8">
         <form
           onSubmit={handleSubmit}

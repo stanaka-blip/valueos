@@ -10,6 +10,10 @@ export type ProductOption = {
   name: string;
   model_no: string | null;
   default_supplier_id: string | null;
+  /** 検索表示用（既存候補条件は is_active のみ維持） */
+  manufacturer_name?: string | null;
+  category?: string | null;
+  series_name?: string | null;
 };
 
 export type PackageOption = {
@@ -80,9 +84,34 @@ export async function fetchActiveProducts(): Promise<{
   try {
     const { data, error } = await supabase
       .from("products")
-      .select("id, name, model_no, is_active, default_supplier_id")
+      .select(
+        `
+        id,
+        name,
+        model_no,
+        is_active,
+        default_supplier_id,
+        category,
+        manufacturers ( name ),
+        series:series_id ( name )
+      `
+      )
       .order("name", { ascending: true });
     if (error) return { data: [], errorMessage: ERR };
+
+    function relationName(
+      value:
+        | { name: string | null }
+        | { name: string | null }[]
+        | null
+        | undefined
+    ): string | null {
+      if (!value) return null;
+      const row = Array.isArray(value) ? value[0] : value;
+      const name = (row?.name || "").trim();
+      return name || null;
+    }
+
     return {
       data: (data || [])
         .filter((p) => isActiveFlag(p.is_active))
@@ -91,6 +120,17 @@ export async function fetchActiveProducts(): Promise<{
           name: (p.name as string | null) || "名称未設定",
           model_no: (p.model_no as string | null) || null,
           default_supplier_id: (p.default_supplier_id as string | null) || null,
+          manufacturer_name: relationName(
+            p.manufacturers as
+              | { name: string | null }
+              | { name: string | null }[]
+              | null
+          ),
+          category: (p.category as string | null) || null,
+          series_name: relationName(
+            (p as { series?: { name: string | null } | { name: string | null }[] | null })
+              .series
+          ),
         })),
       errorMessage: null,
     };
