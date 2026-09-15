@@ -17,6 +17,11 @@ import CaseDetailView, {
 } from "./CaseDetailView";
 import { resolveCaseDetailTabId } from "./caseDetailTabs";
 import { toCaseProductDisplayRow } from "./productDisplay";
+import {
+  aggregateOrderedPurchaseByCaseProduct,
+  enrichCaseProductDisplayRows,
+  type CaseProductCardSourceRow,
+} from "./enrichCaseProductCardPricing";
 import { toSettlementViewData } from "./settlementView";
 import { getCaseSettlementByCaseIdAdmin } from "@/lib/caseSettlements/getCaseSettlementAdmin";
 import { loadThreePartyMoneyByCaseIdAdmin } from "@/lib/threeParty/loadThreePartyMoneyAdmin";
@@ -39,6 +44,7 @@ type ProductRelation = {
   name: string | null;
   model_no: string | null;
   category: string | null;
+  default_supplier_id?: string | null;
   manufacturers: ManufacturerRelation | ManufacturerRelation[] | null;
 };
 
@@ -48,6 +54,7 @@ type SupplierRelation = {
 
 type PackageRelation = {
   name: string | null;
+  default_supplier_id?: string | null;
 };
 
 function getSingleRelation<T>(
@@ -133,6 +140,7 @@ export default async function CaseDetailPage({
         line_type,
         product_id,
         package_id,
+        supplier_id,
         quantity,
         purchase_price,
         sales_price,
@@ -142,12 +150,14 @@ export default async function CaseDetailPage({
           name,
           model_no,
           category,
+          default_supplier_id,
           manufacturers (
             name
           )
         ),
         packages (
-          name
+          name,
+          default_supplier_id
         ),
         suppliers (
           name
@@ -269,7 +279,41 @@ export default async function CaseDetailPage({
       caseData.quantity != null ? String(caseData.quantity) : "",
   };
 
-  const products: CaseProductRow[] = (caseProductsData || []).map((row) => {
+  const productSourceRows: CaseProductCardSourceRow[] = (
+    caseProductsData || []
+  ).map((row) => {
+    const product = getSingleRelation(
+      row.products as ProductRelation | ProductRelation[] | null
+    );
+    const pkg = getSingleRelation(
+      row.packages as PackageRelation | PackageRelation[] | null
+    );
+    const supplier = getSingleRelation(
+      row.suppliers as SupplierRelation | SupplierRelation[] | null
+    );
+    const lineType = String(row.line_type || "").toUpperCase();
+    const defaultSupplierId =
+      lineType === "PACKAGE"
+        ? (pkg?.default_supplier_id as string | null) || null
+        : (product?.default_supplier_id as string | null) || null;
+
+    return {
+      id: row.id as string,
+      line_type: row.line_type as string | null,
+      product_id: row.product_id as string | null,
+      package_id: row.package_id as string | null,
+      quantity: row.quantity as number | string | null,
+      purchase_price: row.purchase_price as number | string | null,
+      sales_price: row.sales_price as number | string | null,
+      gross_profit: row.gross_profit as number | string | null,
+      supplier_id: (row.supplier_id as string | null) || null,
+      supplierName: supplier?.name || "",
+      default_supplier_id: defaultSupplierId,
+      defaultSupplierName: "",
+    };
+  });
+
+  const productsBase: CaseProductRow[] = (caseProductsData || []).map((row) => {
     const product = getSingleRelation(
       row.products as ProductRelation | ProductRelation[] | null
     );
@@ -432,6 +476,32 @@ export default async function CaseDetailPage({
         amount: toNumber(item.amount),
       })),
     };
+  });
+
+  const orderedPurchaseByCaseProductId = aggregateOrderedPurchaseByCaseProduct({
+    orders: ordersBase.map((order) => ({
+      id: order.id,
+      status: order.status,
+      supplierId: order.supplierId,
+      supplierName: order.supplierName,
+    })),
+    orderItems: Array.from(rawLinesByOrder.entries()).flatMap(
+      ([orderId, items]) =>
+        items.map((item) => ({
+          order_id: orderId,
+          case_product_id: item.case_product_id,
+          amount: item.amount,
+        }))
+    ),
+  });
+
+  const products = await enrichCaseProductDisplayRows({
+    client: supabase,
+    dealerId: (caseData.dealer_id as string) || null,
+    asOfDate: (caseData.order_received_date as string) || null,
+    sourceRows: productSourceRows,
+    displayRows: productsBase,
+    orderedPurchaseByCaseProductId,
   });
 
   const invoices: InvoiceRow[] = (invoicesData || []).map((row) => ({
