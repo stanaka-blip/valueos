@@ -29,8 +29,10 @@ import {
   type CaseDetailTabId,
 } from "./caseDetailTabs";
 import {
-  formatNullableYen,
-  formatProfitRate,
+  formatNullableYenWithReference,
+  formatProfitRateWithReference,
+  isMasterPriceSource,
+  isMasterReferenceProfit,
   sumNullableAmounts,
   type CaseProductDisplayRow,
 } from "./productDisplay";
@@ -1017,7 +1019,17 @@ function ProductsTab({
       {!error && products.length > 0 ? (
         <div className="space-y-3">
           {products.map((row) => {
-            const profitRate = formatProfitRate(row.salesPrice, row.grossProfit);
+            const purchaseIsReference = isMasterPriceSource(row.purchaseSource);
+            const salesIsReference = isMasterPriceSource(row.salesSource);
+            const profitIsReference = isMasterReferenceProfit(
+              row.purchaseSource,
+              row.salesSource
+            );
+            const profitRate = formatProfitRateWithReference(
+              row.salesPrice,
+              row.grossProfit,
+              profitIsReference
+            );
 
             return (
               <div
@@ -1034,15 +1046,24 @@ function ProductsTab({
                   <Field label="数量" value={row.quantity} />
                   <Field
                     label="仕入価格"
-                    value={formatNullableYen(row.purchasePrice)}
+                    value={formatNullableYenWithReference(
+                      row.purchasePrice,
+                      purchaseIsReference
+                    )}
                   />
                   <Field
                     label="販売価格"
-                    value={formatNullableYen(row.salesPrice)}
+                    value={formatNullableYenWithReference(
+                      row.salesPrice,
+                      salesIsReference
+                    )}
                   />
                   <Field
                     label="粗利"
-                    value={formatNullableYen(row.grossProfit)}
+                    value={formatNullableYenWithReference(
+                      row.grossProfit,
+                      profitIsReference
+                    )}
                   />
                   <Field label="粗利率" value={profitRate} />
                 </div>

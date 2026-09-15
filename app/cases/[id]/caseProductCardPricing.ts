@@ -113,10 +113,34 @@ export function sumPackageComponentPurchaseUnit(
   return Math.round(sum);
 }
 
+/**
+ * 仕入金額の情報源と仕入先表示を揃える。
+ * 発注金額を出しているときは有効発注の仕入先を優先（複数仕入先表示を含む）。
+ */
+export function resolveSupplierForPurchaseSource(
+  purchaseSource: CaseProductCardPriceSource,
+  input: Pick<
+    CaseProductCardPricingInput,
+    | "caseSupplierId"
+    | "caseSupplierName"
+    | "orderedSupplierId"
+    | "orderedSupplierName"
+    | "defaultSupplierId"
+    | "defaultSupplierName"
+  >
+): { supplierId: string | null; supplierName: string } {
+  if (purchaseSource === "order") {
+    return {
+      supplierId: input.orderedSupplierId,
+      supplierName: (input.orderedSupplierName || "").trim(),
+    };
+  }
+  return resolveCaseProductSupplier(input);
+}
+
 export function resolveCaseProductCardPricing(
   input: CaseProductCardPricingInput
 ): CaseProductCardPricingResult {
-  const supplier = resolveCaseProductSupplier(input);
   const qty = input.quantity;
 
   let purchasePrice: number | null = null;
@@ -132,6 +156,8 @@ export function resolveCaseProductCardPricing(
     purchasePrice = roundMoneyTotal(input.masterPurchaseUnitPrice, qty);
     purchaseSource = "master";
   }
+
+  const supplier = resolveSupplierForPurchaseSource(purchaseSource, input);
 
   let salesPrice: number | null = null;
   let salesSource: CaseProductCardPriceSource = "none";

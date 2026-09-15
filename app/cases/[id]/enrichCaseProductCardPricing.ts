@@ -47,6 +47,8 @@ export type OrderedPurchaseAggregate = {
   amount: number;
   supplierId: string | null;
   supplierName: string;
+  /** 有効発注に登場した仕入先数（取消除外・null 仕入先は数えない） */
+  supplierCount: number;
 };
 
 function toNullableAmount(
@@ -57,9 +59,14 @@ function toNullableAmount(
   return Number.isFinite(n) ? n : null;
 }
 
+function formatMultiSupplierLabel(supplierCount: number): string {
+  return `複数仕入先（${supplierCount}社）`;
+}
+
 /**
  * 有効発注の order_items から case_product_id ごとの仕入金額を集計。
- * 取消/キャンセル発注は除外。
+ * 取消/キャンセル発注は金額・仕入先の両方から除外。
+ * case_product_id が null の行（PACKAGE COMP / CUSTOM 等）は集計しない。
  */
 export function aggregateOrderedPurchaseByCaseProduct(args: {
   orders: Array<{
@@ -80,7 +87,15 @@ export function aggregateOrderedPurchaseByCaseProduct(args: {
       .map((order) => [order.id, order] as const)
   );
 
-  const totals = new Map<string, OrderedPurchaseAggregate>();
+  type Accumulator = {
+    amount: number;
+    supplierIds: Set<string>;
+    supplierNameById: Map<string, string>;
+    firstSupplierId: string | null;
+    firstSupplierName: string;
+  };
+
+  const totals = new Map<string, Accumulator>();
 
   for (const item of args.orderItems) {
     const caseProductId = item.case_product_id;
@@ -92,21 +107,66 @@ export function aggregateOrderedPurchaseByCaseProduct(args: {
 
     const current = totals.get(caseProductId);
     if (!current) {
+      const supplierIds = new Set<string>();
+      const supplierNameById = new Map<string, string>();
+      if (order.supplierId) {
+        supplierIds.add(order.supplierId);
+        supplierNameById.set(
+          order.supplierId,
+          (order.supplierName || "").trim()
+        );
+      }
       totals.set(caseProductId, {
         amount,
-        supplierId: order.supplierId,
-        supplierName: order.supplierName,
+        supplierIds,
+        supplierNameById,
+        firstSupplierId: order.supplierId,
+        firstSupplierName: (order.supplierName || "").trim(),
       });
     } else {
       current.amount += amount;
-      if (!current.supplierId && order.supplierId) {
-        current.supplierId = order.supplierId;
-        current.supplierName = order.supplierName;
+      if (order.supplierId) {
+        current.supplierIds.add(order.supplierId);
+        if (!current.supplierNameById.has(order.supplierId)) {
+          current.supplierNameById.set(
+            order.supplierId,
+            (order.supplierName || "").trim()
+          );
+        }
       }
     }
   }
 
-  return totals;
+  const result = new Map<string, OrderedPurchaseAggregate>();
+  for (const [caseProductId, acc] of totals) {
+    const supplierCount = acc.supplierIds.size;
+    if (supplierCount > 1) {
+      result.set(caseProductId, {
+        amount: acc.amount,
+        supplierId: null,
+        supplierName: formatMultiSupplierLabel(supplierCount),
+        supplierCount,
+      });
+    } else if (supplierCount === 1) {
+      const supplierId = Array.from(acc.supplierIds)[0]!;
+      result.set(caseProductId, {
+        amount: acc.amount,
+        supplierId,
+        supplierName:
+          acc.supplierNameById.get(supplierId) || acc.firstSupplierName,
+        supplierCount: 1,
+      });
+    } else {
+      result.set(caseProductId, {
+        amount: acc.amount,
+        supplierId: acc.firstSupplierId,
+        supplierName: acc.firstSupplierName,
+        supplierCount: 0,
+      });
+    }
+  }
+
+  return result;
 }
 
 async function loadPackageComponents(
@@ -471,6 +531,8 @@ export async function enrichCaseProductDisplayRows(args: {
       purchasePrice: resolved.purchasePrice,
       salesPrice: resolved.salesPrice,
       grossProfit: resolved.grossProfit,
+      purchaseSource: resolved.purchaseSource,
+      salesSource: resolved.salesSource,
     };
   });
 }

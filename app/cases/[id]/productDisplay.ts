@@ -3,6 +3,8 @@
  * PRODUCT / PACKAGE の区別と、NULL 価格の「未設定」表示を担う。
  */
 
+import type { CaseProductCardPriceSource } from "./caseProductCardPricing";
+
 export type CaseProductLineType = "PRODUCT" | "PACKAGE";
 
 export type CaseProductDisplayInput = {
@@ -38,6 +40,10 @@ export type CaseProductDisplayRow = {
   salesPrice: number | null;
   grossProfit: number | null;
   memo: string;
+  /** 仕入金額の情報源（enrich 後に設定） */
+  purchaseSource?: CaseProductCardPriceSource;
+  /** 販売金額の情報源（enrich 後に設定） */
+  salesSource?: CaseProductCardPriceSource;
 };
 
 /** DB/JSON の数値を null と 0 を区別して返す */
@@ -62,6 +68,31 @@ export function formatNullableYen(
     return unsetLabel;
   }
   return new Intl.NumberFormat("ja-JP").format(Math.round(value)) + "円";
+}
+
+/** マスタ fallback 由来の金額に「（参考）」を付ける */
+export function formatNullableYenWithReference(
+  value: number | null | undefined,
+  isReference: boolean,
+  unsetLabel = "—"
+): string {
+  const base = formatNullableYen(value, unsetLabel);
+  if (!isReference || base === unsetLabel) return base;
+  return `${base}（参考）`;
+}
+
+export function isMasterPriceSource(
+  source: CaseProductCardPriceSource | undefined
+): boolean {
+  return source === "master";
+}
+
+/** 粗利/粗利率がマスタ参考値を含むか（仕入・販売のどちらかが master） */
+export function isMasterReferenceProfit(
+  purchaseSource: CaseProductCardPriceSource | undefined,
+  salesSource: CaseProductCardPriceSource | undefined
+): boolean {
+  return isMasterPriceSource(purchaseSource) || isMasterPriceSource(salesSource);
 }
 
 export function normalizeLineType(
@@ -111,6 +142,16 @@ export function formatProfitRate(
     return "—";
   }
   return `${((grossProfit / salesPrice) * 100).toFixed(1)}%`;
+}
+
+export function formatProfitRateWithReference(
+  salesPrice: number | null,
+  grossProfit: number | null,
+  isReference: boolean
+): string {
+  const base = formatProfitRate(salesPrice, grossProfit);
+  if (!isReference || base === "—") return base;
+  return `${base}（参考）`;
 }
 
 export function toCaseProductDisplayRow(
