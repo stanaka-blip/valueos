@@ -1,13 +1,16 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
+import SearchableSelect from "@/app/components/masters/SearchableSelect";
+import {
+  buildPackageSearchOption,
+  buildProductSearchOption,
+} from "@/app/components/masters/searchableSelect";
 import {
   fetchActivePackages,
   fetchActiveProducts,
-  formatPackageLabel,
-  formatProductLabel,
   type PackageOption,
   type ProductOption,
 } from "@/app/components/case-registration/masters";
@@ -151,6 +154,33 @@ export default function NewCaseProductPage() {
     }
   }
 
+  const productOptions = useMemo(
+    () =>
+      products.map((p) =>
+        buildProductSearchOption({
+          id: p.id,
+          name: p.name,
+          model_no: p.model_no,
+          manufacturer_name: p.manufacturer_name,
+          category: p.category,
+          series_name: p.series_name,
+        })
+      ),
+    [products]
+  );
+  const packageOptions = useMemo(
+    () =>
+      packages.map((p) =>
+        buildPackageSearchOption({
+          id: p.id,
+          name: p.name,
+          package_code: p.package_code,
+        })
+      ),
+    [packages]
+  );
+
+
   return (
     <>
       <header className="border-b bg-white px-8 py-5">
@@ -202,51 +232,41 @@ export default function NewCaseProductPage() {
           </label>
 
           {lineType === "PRODUCT" ? (
-            <label className="block">
+            <div>
               <p className="mb-2 text-sm font-bold text-gray-700">商品</p>
-              <select
-                className={inputClass}
+              <SearchableSelect
+                options={productOptions}
                 value={productId}
-                onChange={(e) => {
-                  setProductId(e.target.value);
+                onChange={(id) => {
+                  setProductId(id);
                   setSubmitError(null);
                 }}
                 disabled={submitting}
-              >
-                <option value="">商品を選択</option>
-                {products.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {formatProductLabel(p)}
-                  </option>
-                ))}
-              </select>
+                placeholder="型番・商品名で検索"
+                unsetLabel="商品を検索して選択"
+              />
               {lineErrors.product_id ? (
                 <p className="mt-1 text-xs text-red-600">{lineErrors.product_id}</p>
               ) : null}
-            </label>
+            </div>
           ) : (
-            <label className="block">
+            <div>
               <p className="mb-2 text-sm font-bold text-gray-700">パッケージ</p>
-              <select
-                className={inputClass}
+              <SearchableSelect
+                options={packageOptions}
                 value={packageId}
-                onChange={(e) => {
-                  setPackageId(e.target.value);
+                onChange={(id) => {
+                  setPackageId(id);
                   setSubmitError(null);
                 }}
                 disabled={submitting}
-              >
-                <option value="">パッケージを選択</option>
-                {packages.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {formatPackageLabel(p)}
-                  </option>
-                ))}
-              </select>
+                placeholder="パッケージ名・コードで検索"
+                unsetLabel="パッケージを検索して選択"
+              />
               {lineErrors.package_id ? (
                 <p className="mt-1 text-xs text-red-600">{lineErrors.package_id}</p>
               ) : null}
-            </label>
+            </div>
           )}
 
           <label className="block">

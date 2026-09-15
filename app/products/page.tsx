@@ -290,6 +290,10 @@ export default async function ProductsPage({
                               href: withProductsReturnTo(`/products/${item.id}/edit`, returnTo),
                             },
                             {
+                              label: "複製して新規登録",
+                              href: `/products/new?copyFrom=${item.id}`,
+                            },
+                            {
                               label: "仕入価格を追加",
                               href: `/prices/new?product_id=${item.id}`,
                             },

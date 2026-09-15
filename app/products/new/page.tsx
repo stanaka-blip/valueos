@@ -10,6 +10,10 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 
+import {
+  buildProductCopyFormValues,
+  DUPLICATE_MODEL_NO_MESSAGE,
+} from "@/app/components/masters/searchableSelect";
 import { supabase } from "@/lib/supabase";
 
 type Manufacturer = {
@@ -43,6 +47,7 @@ type ProductForm = {
 
 export default function NewProductPage() {
   const router = useRouter();
+  const [copyFromId, setCopyFromId] = useState("");
 
   const [manufacturers, setManufacturers] = useState<Manufacturer[]>([]);
   const [seriesList, setSeriesList] = useState<Series[]>([]);
@@ -52,6 +57,7 @@ export default function NewProductPage() {
   const [submitting, setSubmitting] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [submitError, setSubmitError] = useState("");
+  const [copyNotice, setCopyNotice] = useState("");
 
   const [form, setForm] = useState<ProductForm>({
     manufacturer_id: "",
@@ -65,6 +71,15 @@ export default function NewProductPage() {
     is_active: true,
     default_supplier_id: "",
   });
+
+  useEffect(() => {
+    try {
+      const id = new URLSearchParams(window.location.search).get("copyFrom") || "";
+      setCopyFromId(id.trim());
+    } catch {
+      setCopyFromId("");
+    }
+  }, []);
 
   useEffect(() => {
     async function load() {
@@ -132,6 +147,37 @@ export default function NewProductPage() {
 
     load();
   }, []);
+
+
+  useEffect(() => {
+    if (!copyFromId || initialLoading || loadError) return;
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from("products")
+        .select(
+          "manufacturer_id, series_id, category, model_no, name, capacity, unit, memo, is_active, default_supplier_id"
+        )
+        .eq("id", copyFromId)
+        .maybeSingle();
+      if (cancelled) return;
+      if (error || !data) {
+        setSubmitError(
+          error
+            ? `複製元商品の取得に失敗しました：${error.message}`
+            : "複製元の商品が見つかりません。"
+        );
+        return;
+      }
+      setForm(buildProductCopyFormValues(data));
+      setCopyNotice(
+        "元商品の内容を初期表示しています。型番・商品名などを必要に応じて変更し、新規商品として保存してください（価格マスタはコピーされません）。"
+      );
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [copyFromId, initialLoading, loadError]);
 
   const filteredSeries = useMemo(
     () =>
@@ -201,32 +247,38 @@ export default function NewProductPage() {
     }
 
     if (duplicateProduct) {
-      setSubmitError("同じメーカー・同じ型番の商品がすでに登録されています。");
+      setSubmitError(DUPLICATE_MODEL_NO_MESSAGE);
       setSubmitting(false);
       return;
     }
 
-    const { error: insertError } = await supabase.from("products").insert({
-      manufacturer_id: manufacturerId,
-      series_id: form.series_id || null,
-      category: form.category.trim() || null,
-      model_no: modelNo,
-      name: productName,
-      capacity: form.capacity.trim() || null,
-      unit: form.unit.trim() || null,
-      memo: form.memo.trim() || null,
-      is_active: form.is_active,
-      default_supplier_id: form.default_supplier_id || null,
-    });
+    const { data: created, error: insertError } = await supabase
+      .from("products")
+      .insert({
+        manufacturer_id: manufacturerId,
+        series_id: form.series_id || null,
+        category: form.category.trim() || null,
+        model_no: modelNo,
+        name: productName,
+        capacity: form.capacity.trim() || null,
+        unit: form.unit.trim() || null,
+        memo: form.memo.trim() || null,
+        is_active: form.is_active,
+        default_supplier_id: form.default_supplier_id || null,
+      })
+      .select("id")
+      .single();
 
-    if (insertError) {
-      setSubmitError(`登録に失敗しました：${insertError.message}`);
+    if (insertError || !created) {
+      setSubmitError(
+        `登録に失敗しました：${insertError?.message || "不明なエラー"}`
+      );
       setSubmitting(false);
       return;
     }
 
     setSubmitting(false);
-    router.push("/products");
+    router.push(`/products/${created.id}`);
     router.refresh();
   }
 
@@ -267,8 +319,12 @@ export default function NewProductPage() {
   return (
     <>
       <PageHeader
-        title="商品登録"
-        description="メーカー・シリーズ・商品名・型番を登録します"
+        title={copyFromId ? "商品を複製して新規登録" : "商品登録"}
+        description={
+          copyFromId
+            ? "元商品の情報を初期値として、新しい商品を登録します（価格はコピーしません）"
+            : "メーカー・シリーズ・商品名・型番を登録します"
+        }
       />
 
       <main className="p-4 md:p-8">
@@ -282,6 +338,12 @@ export default function NewProductPage() {
               メーカー、商品名、型番は必須です。保証は備考に記載できます。
             </p>
           </div>
+
+          {copyNotice ? (
+            <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              {copyNotice}
+            </div>
+          ) : null}
 
           {submitError ? (
             <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">

@@ -3,6 +3,8 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import SearchableSelect from "@/app/components/masters/SearchableSelect";
+import { buildProductSearchOption } from "@/app/components/masters/searchableSelect";
 
 type Manufacturer = { id: string; name: string | null };
 type Series = { id: string; name: string | null; manufacturer_id: string };
@@ -72,6 +74,19 @@ export default function NewPackagePage() {
       ),
     [products, form.manufacturer_id]
   );
+
+  const productSelectOptions = useMemo(
+    () =>
+      filteredProducts.map((p) =>
+        buildProductSearchOption({
+          id: p.id,
+          name: p.name || "",
+          model_no: p.model_no,
+        })
+      ),
+    [filteredProducts]
+  );
+
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -265,25 +280,19 @@ export default function NewPackagePage() {
             <div className="space-y-3">
               {lines.map((line, index) => (
                 <div key={index} className="grid gap-3 md:grid-cols-[1fr_120px_80px]">
-                  <select
+                  <SearchableSelect
+                    options={productSelectOptions}
                     value={line.product_id}
-                    onChange={(e) =>
+                    onChange={(id) =>
                       setLines((rows) =>
                         rows.map((r, i) =>
-                          i === index ? { ...r, product_id: e.target.value } : r
+                          i === index ? { ...r, product_id: id } : r
                         )
                       )
                     }
-                    className="w-full rounded-lg border px-3 py-2 text-sm"
-                  >
-                    <option value="">商品を選択</option>
-                    {filteredProducts.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                        {p.model_no ? `（${p.model_no}）` : ""}
-                      </option>
-                    ))}
-                  </select>
+                    placeholder="型番・商品名で検索"
+                    unsetLabel="商品を検索して選択"
+                  />
                   <input
                     type="number"
                     min="1"
