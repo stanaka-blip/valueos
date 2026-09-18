@@ -5,6 +5,11 @@ import {
   sanitizeProductsReturnTo,
   withProductsReturnTo,
 } from "@/app/products/productListQuery";
+import ProductActiveToggleButton from "@/app/products/ProductActiveToggleButton";
+import {
+  productStatusBadgeClass,
+  productStatusLabel,
+} from "@/app/products/productActiveStatus";
 
 import MasterPricePanels from "@/app/components/prices/MasterPricePanels";
 import { supabase } from "@/lib/supabase";
@@ -114,6 +119,11 @@ export default async function ProductDetailPage({
             >
               複製して新規登録
             </Link>
+            <ProductActiveToggleButton
+              productId={id}
+              productLabel={product.name || product.model_no || "商品"}
+              isActive={product.is_active}
+            />
             <Link
               href={`/prices/new?product_id=${id}`}
               className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-bold text-gray-800"
@@ -169,15 +179,9 @@ export default async function ProductDetailPage({
             <div>
               <dt className="text-gray-500">状態</dt>
               <dd>
-                {product.is_active ? (
-                  <span className="rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-bold text-green-700">
-                    有効
-                  </span>
-                ) : (
-                  <span className="rounded-full bg-gray-200 px-2.5 py-0.5 text-xs font-bold text-gray-700">
-                    停止
-                  </span>
-                )}
+                <span className={productStatusBadgeClass(product.is_active)}>
+                  {productStatusLabel(product.is_active)}
+                </span>
               </dd>
             </div>
             {product.memo ? (

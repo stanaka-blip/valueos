@@ -13,9 +13,6 @@ import {
 import { useParams, useRouter } from "next/navigation";
 
 import { parseCaseExtras } from "@/app/admin/orders/parseCaseExtras";
-import { supabase } from "@/lib/supabase";
-import { fetchActivePurchaseUnitPrices } from "@/lib/purchasePrices";
-import { listOrderItemsByOrderId } from "@/lib/repositories/orderItems";
 import {
   fetchActiveManufacturers,
   fetchActiveProducts,
@@ -34,21 +31,29 @@ import {
   resolveProductIdentity,
 } from "@/app/orders/productIdentity";
 import {
+  isCustomOrderLine,
+  parseCustomOrderItemMemo,
+  validateCustomOrderLineName,
+} from "@/lib/orders/orderCustomLine";
+import {
   canDeleteOrderEditLine,
   canEditOrderLineUnitPrice,
   containsPackageMemoMarker,
   displaySafeOrderItemMemo,
 } from "@/lib/orders/orderPackageDisplay";
 import {
-  isCustomOrderLine,
-  parseCustomOrderItemMemo,
-  validateCustomOrderLineName,
-} from "@/lib/orders/orderCustomLine";
-import {
   buildReplacePurchaseOrderRpcPayload,
   lineAmountForOrderEdit,
   validateReplacePurchaseOrderItems,
 } from "@/lib/orders/replacePurchaseOrderLogic";
+import {
+  assertNewProductSelectionsActive,
+  collectNewOrderProductIds,
+  PRODUCT_INACTIVE_SELECT_MESSAGE,
+} from "@/lib/products/productActiveContract";
+import { fetchActivePurchaseUnitPrices } from "@/lib/purchasePrices";
+import { listOrderItemsByOrderId } from "@/lib/repositories/orderItems";
+import { supabase } from "@/lib/supabase";
 
 type OrderLineAddMode = "master" | "custom";
 
@@ -580,6 +585,41 @@ export default function EditOrderPage() {
     if (!validated.ok) {
       setSubmitError(validated.error_message);
       return;
+    }
+
+    const existingIds = new Set(
+      existingLinesRef.current
+        .map((line) => line.id || "")
+        .filter((value): value is string => Boolean(value))
+    );
+    const newProductIds = collectNewOrderProductIds({
+      existingIds,
+      incoming,
+    });
+    if (newProductIds.length > 0) {
+      const { data: productRows, error: productError } = await supabase
+        .from("products")
+        .select("id, is_active")
+        .in("id", newProductIds);
+      if (productError) {
+        setSubmitError(
+          `商品の確認に失敗しました：${productError.message}`
+        );
+        return;
+      }
+      const isActiveById = new Map(
+        ((productRows || []) as { id: string; is_active: unknown }[]).map(
+          (row) => [row.id, row.is_active] as const
+        )
+      );
+      const guard = assertNewProductSelectionsActive(
+        newProductIds,
+        isActiveById
+      );
+      if (!guard.ok) {
+        setSubmitError(guard.message || PRODUCT_INACTIVE_SELECT_MESSAGE);
+        return;
+      }
     }
 
     setSubmitting(true);

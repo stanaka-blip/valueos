@@ -26,6 +26,11 @@ import {
   toSafeCaseRegistrationDto,
 } from "@/lib/gateway/safeDto";
 import {
+  assertNewProductSelectionsActive,
+  collectProductIdsFromCaseRegistrationLines,
+  PRODUCT_INACTIVE_SELECT_MESSAGE,
+} from "@/lib/products/productActiveContract";
+import {
   getServiceRoleSupabase,
   ServerAdminConfigError,
 } from "@/lib/supabase/serverAdmin";
@@ -247,6 +252,60 @@ export async function POST(request: NextRequest) {
     }
 
     const client = getServiceRoleSupabase();
+    const productIds = collectProductIdsFromCaseRegistrationLines(
+      (payload as { lines?: unknown }).lines
+    );
+    if (productIds.length > 0) {
+      const { data: productRows, error: productError } = await client
+        .from("products")
+        .select("id, is_active")
+        .in("id", productIds);
+      if (productError) {
+        gatewayLog({
+          route: "case-registrations",
+          request_id: requestId,
+          error_code: "REGISTRATION_FAILED",
+          duration_ms: Date.now() - started,
+          ok: false,
+        });
+        return NextResponse.json(
+          {
+            ok: false,
+            status: "FAILED",
+            request_id: requestId,
+            error_code: "REGISTRATION_FAILED",
+            error_message: "登録を完了できませんでした",
+          },
+          { status: 502 }
+        );
+      }
+      const isActiveById = new Map(
+        ((productRows || []) as { id: string; is_active: unknown }[]).map(
+          (row) => [row.id, row.is_active] as const
+        )
+      );
+      const guard = assertNewProductSelectionsActive(productIds, isActiveById);
+      if (!guard.ok) {
+        gatewayLog({
+          route: "case-registrations",
+          request_id: requestId,
+          error_code: "INVALID_INPUT",
+          duration_ms: Date.now() - started,
+          ok: false,
+        });
+        return NextResponse.json(
+          {
+            ok: false,
+            status: "FAILED",
+            request_id: requestId,
+            error_code: "INVALID_INPUT",
+            error_message: PRODUCT_INACTIVE_SELECT_MESSAGE,
+          },
+          { status: 400 }
+        );
+      }
+    }
+
     const { data, error } = await client.rpc("create_case_registration", {
       payload,
     });

@@ -133,11 +133,7 @@ export type ProductCopyFormValues = {
 export function buildProductCopyFormValues(
   source: ProductCopySource
 ): ProductCopyFormValues {
-  const isActive =
-    source.is_active === true ||
-    source.is_active === "true" ||
-    source.is_active == null;
-
+  // 複製元が利用停止でも、新規商品は常に有効として作成する（後継型番用途）。
   return {
     manufacturer_id: source.manufacturer_id || "",
     series_id: source.series_id || "",
@@ -147,7 +143,7 @@ export function buildProductCopyFormValues(
     capacity: (source.capacity || "").trim(),
     unit: (source.unit || "").trim(),
     memo: (source.memo || "").trim(),
-    is_active: isActive,
+    is_active: true,
     default_supplier_id: source.default_supplier_id || "",
   };
 }

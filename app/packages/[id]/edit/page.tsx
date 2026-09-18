@@ -3,9 +3,14 @@
 import { FormEvent, use, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { supabase } from "@/lib/supabase";
 import SearchableSelect from "@/app/components/masters/SearchableSelect";
-import { buildProductSearchOption } from "@/app/components/masters/searchableSelect";
+import {
+  assertNewProductSelectionsActive,
+  buildPackageCompositionProductOption,
+  filterProductsForPackageLineSelect,
+  PRODUCT_INACTIVE_SELECT_MESSAGE,
+} from "@/lib/products/productActiveContract";
+import { supabase } from "@/lib/supabase";
 
 type Manufacturer = { id: string; name: string | null };
 type Series = { id: string; name: string | null; manufacturer_id: string };
@@ -15,6 +20,7 @@ type Product = {
   name: string | null;
   model_no: string | null;
   manufacturer_id: string | null;
+  is_active: unknown;
 };
 type Line = { id?: string; product_id: string; quantity: string };
 
@@ -29,6 +35,9 @@ export default function EditPackagePage({
   const [seriesList, setSeriesList] = useState<Series[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [initialProductIds, setInitialProductIds] = useState<Set<string>>(
+    () => new Set()
+  );
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
@@ -63,11 +72,7 @@ export default function EditPackagePage({
 
       setManufacturers((m.data as Manufacturer[]) || []);
       setSeriesList((s.data as Series[]) || []);
-      setProducts(
-        ((p.data as (Product & { is_active: boolean | string | null })[]) || []).filter(
-          (row) => row.is_active === true || row.is_active === "true"
-        )
-      );
+      setProducts((p.data as Product[]) || []);
 
       if (!pkg.data) {
         alert("パッケージを取得できませんでした");
@@ -107,14 +112,21 @@ export default function EditPackagePage({
         is_active: Boolean(row.is_active),
         default_supplier_id: currentSupplierId,
       });
-      setLines(
+      const loadedLines =
         (items.data || []).length > 0
           ? (items.data || []).map((it) => ({
               id: it.id as string,
               product_id: (it.product_id as string) || "",
               quantity: String(it.quantity ?? 1),
             }))
-          : [{ product_id: "", quantity: "1" }]
+          : [{ product_id: "", quantity: "1" }];
+      setLines(loadedLines);
+      setInitialProductIds(
+        new Set(
+          loadedLines
+            .map((line) => line.product_id)
+            .filter((productId): productId is string => Boolean(productId))
+        )
       );
       setLoading(false);
     }
@@ -125,29 +137,23 @@ export default function EditPackagePage({
     () => seriesList.filter((s) => s.manufacturer_id === form.manufacturer_id),
     [seriesList, form.manufacturer_id]
   );
-  const filteredProducts = useMemo(
-    () =>
-      products.filter(
-        (p) => !form.manufacturer_id || p.manufacturer_id === form.manufacturer_id
-      ),
-    [products, form.manufacturer_id]
-  );
-
-  const productSelectOptions = useMemo(
-    () =>
-      filteredProducts.map((p) =>
-        buildProductSearchOption({
-          id: p.id,
-          name: p.name || "",
-          model_no: p.model_no,
-        })
-      ),
-    [filteredProducts]
-  );
-
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
+    const validLines = lines.filter((l) => l.product_id && Number(l.quantity) > 0);
+    const isActiveById = new Map(
+      products.map((product) => [product.id, product.is_active] as const)
+    );
+    const guard = assertNewProductSelectionsActive(
+      validLines.map((line) => line.product_id),
+      isActiveById,
+      initialProductIds
+    );
+    if (!guard.ok) {
+      alert(guard.message || PRODUCT_INACTIVE_SELECT_MESSAGE);
+      return;
+    }
+
     setSaving(true);
     const { error } = await supabase
       .from("packages")
@@ -174,7 +180,6 @@ export default function EditPackagePage({
     }
 
     await supabase.from("package_items").delete().eq("package_id", id);
-    const validLines = lines.filter((l) => l.product_id && Number(l.quantity) > 0);
     if (validLines.length > 0) {
       const { error: itemsError } = await supabase.from("package_items").insert(
         validLines.map((l, i) => ({
@@ -314,45 +319,63 @@ export default function EditPackagePage({
               </button>
             </div>
             <div className="space-y-3">
-              {lines.map((line, index) => (
-                <div key={index} className="grid gap-3 md:grid-cols-[1fr_120px_80px]">
-                  <SearchableSelect
-                    options={productSelectOptions}
-                    value={line.product_id}
-                    onChange={(id) =>
-                      setLines((rows) =>
-                        rows.map((r, i) =>
-                          i === index ? { ...r, product_id: id } : r
-                        )
-                      )
-                    }
-                    placeholder="型番・商品名で検索"
-                    unsetLabel="商品を検索して選択"
-                  />
-                  <input
-                    type="number"
-                    min="1"
-                    value={line.quantity}
-                    onChange={(e) =>
-                      setLines((rows) =>
-                        rows.map((r, i) =>
-                          i === index ? { ...r, quantity: e.target.value } : r
-                        )
-                      )
-                    }
-                    className="w-full rounded-lg border px-3 py-2 text-sm"
-                  />
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setLines((rows) => rows.filter((_, i) => i !== index))
-                    }
-                    className="rounded-lg border px-3 py-2 text-xs"
+              {lines.map((line, index) => {
+                const lineProducts = filterProductsForPackageLineSelect(
+                  products,
+                  line.product_id,
+                  form.manufacturer_id
+                );
+                const productSelectOptions = lineProducts.map((p) =>
+                  buildPackageCompositionProductOption({
+                    id: p.id,
+                    name: p.name || "",
+                    model_no: p.model_no,
+                    is_active: p.is_active,
+                  })
+                );
+                return (
+                  <div
+                    key={index}
+                    className="grid gap-3 md:grid-cols-[1fr_120px_80px]"
                   >
-                    削除
-                  </button>
-                </div>
-              ))}
+                    <SearchableSelect
+                      options={productSelectOptions}
+                      value={line.product_id}
+                      onChange={(selectedId) =>
+                        setLines((rows) =>
+                          rows.map((r, i) =>
+                            i === index ? { ...r, product_id: selectedId } : r
+                          )
+                        )
+                      }
+                      placeholder="型番・商品名で検索"
+                      unsetLabel="商品を検索して選択"
+                    />
+                    <input
+                      type="number"
+                      min="1"
+                      value={line.quantity}
+                      onChange={(e) =>
+                        setLines((rows) =>
+                          rows.map((r, i) =>
+                            i === index ? { ...r, quantity: e.target.value } : r
+                          )
+                        )
+                      }
+                      className="w-full rounded-lg border px-3 py-2 text-sm"
+                    />
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setLines((rows) => rows.filter((_, i) => i !== index))
+                      }
+                      className="rounded-lg border px-3 py-2 text-xs"
+                    >
+                      削除
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           </div>
 

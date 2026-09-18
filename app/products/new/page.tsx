@@ -14,6 +14,7 @@ import {
   buildProductCopyFormValues,
   DUPLICATE_MODEL_NO_MESSAGE,
 } from "@/app/components/masters/searchableSelect";
+import { toProductActiveDbValue } from "@/lib/products/productActiveContract";
 import { supabase } from "@/lib/supabase";
 
 type Manufacturer = {
@@ -263,7 +264,7 @@ export default function NewProductPage() {
         capacity: form.capacity.trim() || null,
         unit: form.unit.trim() || null,
         memo: form.memo.trim() || null,
-        is_active: form.is_active,
+        is_active: toProductActiveDbValue(form.is_active),
         default_supplier_id: form.default_supplier_id || null,
       })
       .select("id")

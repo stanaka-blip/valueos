@@ -2,9 +2,14 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase";
 import SearchableSelect from "@/app/components/masters/SearchableSelect";
 import { buildProductSearchOption } from "@/app/components/masters/searchableSelect";
+import {
+  assertNewProductSelectionsActive,
+  PRODUCT_INACTIVE_SELECT_MESSAGE,
+} from "@/lib/products/productActiveContract";
+import { supabase } from "@/lib/supabase";
+import { isProductActiveFlag } from "@/app/products/productListQuery";
 
 type Manufacturer = { id: string; name: string | null };
 type Series = { id: string; name: string | null; manufacturer_id: string };
@@ -51,7 +56,7 @@ export default function NewPackagePage() {
       setSeriesList((s.data as Series[]) || []);
       setProducts(
         ((p.data as (Product & { is_active: boolean | string | null })[]) || []).filter(
-          (row) => row.is_active === true || row.is_active === "true"
+          (row) => isProductActiveFlag(row.is_active)
         )
       );
       setSuppliers(
@@ -95,6 +100,29 @@ export default function NewPackagePage() {
       return;
     }
     const validLines = lines.filter((l) => l.product_id && Number(l.quantity) > 0);
+    if (validLines.length > 0) {
+      const productIds = Array.from(
+        new Set(validLines.map((line) => line.product_id))
+      );
+      const { data: activeRows, error: activeError } = await supabase
+        .from("products")
+        .select("id, is_active")
+        .in("id", productIds);
+      if (activeError) {
+        alert("構成商品の確認に失敗しました：" + activeError.message);
+        return;
+      }
+      const isActiveById = new Map(
+        ((activeRows || []) as { id: string; is_active: unknown }[]).map(
+          (row) => [row.id, row.is_active] as const
+        )
+      );
+      const guard = assertNewProductSelectionsActive(productIds, isActiveById);
+      if (!guard.ok) {
+        alert(guard.message || PRODUCT_INACTIVE_SELECT_MESSAGE);
+        return;
+      }
+    }
     setLoading(true);
     const { data: created, error } = await supabase
       .from("packages")

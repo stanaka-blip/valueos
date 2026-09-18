@@ -13,10 +13,11 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import {
+  isProductActiveFlag,
   sanitizeProductsReturnTo,
   withProductsReturnTo,
 } from "@/app/products/productListQuery";
-
+import { toProductActiveDbValue } from "@/lib/products/productActiveContract";
 import { supabase } from "@/lib/supabase";
 
 type Manufacturer = {
@@ -142,7 +143,7 @@ export default function EditProductPage({
         capacity: (row.capacity as string) || "",
         unit: (row.unit as string) || "",
         memo: (row.memo as string) || "",
-        is_active: Boolean(row.is_active),
+        is_active: isProductActiveFlag(row.is_active),
         default_supplier_id: currentSupplierId,
       });
       const currentCategory = (row.category as string) || "";
@@ -224,7 +225,7 @@ export default function EditProductPage({
         capacity: form.capacity.trim() || null,
         unit: form.unit.trim() || null,
         memo: form.memo.trim() || null,
-        is_active: form.is_active,
+        is_active: toProductActiveDbValue(form.is_active),
         default_supplier_id: form.default_supplier_id || null,
       })
       .eq("id", id);
@@ -395,7 +396,10 @@ export default function EditProductPage({
               </select>
             </Field>
 
-            <Field label="状態">
+            <Field
+              label="状態"
+              description="チェックを外すと利用停止になります。過去の案件・発注には残りますが、新規選択候補からは除外されます。"
+            >
               <label className="flex min-h-12 items-center gap-3 rounded-lg border border-gray-300 px-4 py-3">
                 <input
                   type="checkbox"
@@ -405,7 +409,9 @@ export default function EditProductPage({
                   disabled={submitting}
                   className="h-4 w-4"
                 />
-                <span className="text-sm font-semibold text-gray-700">有効</span>
+                <span className="text-sm font-semibold text-gray-700">
+                  有効な商品として扱う
+                </span>
               </label>
             </Field>
           </div>
