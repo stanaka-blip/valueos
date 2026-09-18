@@ -5,6 +5,7 @@
 import assert from "node:assert/strict";
 
 import { buildProductCopyFormValues } from "@/app/components/masters/searchableSelect";
+import { toProductActiveDbValue } from "@/lib/products/productActiveContract";
 import { isProductActiveFlag } from "./productListQuery";
 import {
   nextProductActiveValue,
@@ -31,6 +32,13 @@ check("A/B: is_active 判定とラベル", () => {
   assert.equal(isProductActiveFlag(null), false);
   assert.equal(productStatusLabel(true), "有効");
   assert.equal(productStatusLabel("false"), "利用停止");
+});
+
+check('A/B: 書き込み値は string "true"/"false"', () => {
+  assert.equal(toProductActiveDbValue(true), "true");
+  assert.equal(toProductActiveDbValue(false), "false");
+  assert.equal(toProductActiveDbValue(nextProductActiveValue(true)), "false");
+  assert.equal(toProductActiveDbValue(nextProductActiveValue(false)), "true");
 });
 
 check("利用停止 confirm に過去データ維持の説明がある", () => {

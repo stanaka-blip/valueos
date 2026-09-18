@@ -17,7 +17,7 @@ import {
   sanitizeProductsReturnTo,
   withProductsReturnTo,
 } from "@/app/products/productListQuery";
-
+import { toProductActiveDbValue } from "@/lib/products/productActiveContract";
 import { supabase } from "@/lib/supabase";
 
 type Manufacturer = {
@@ -225,7 +225,7 @@ export default function EditProductPage({
         capacity: form.capacity.trim() || null,
         unit: form.unit.trim() || null,
         memo: form.memo.trim() || null,
-        is_active: form.is_active,
+        is_active: toProductActiveDbValue(form.is_active),
         default_supplier_id: form.default_supplier_id || null,
       })
       .eq("id", id);

@@ -1,6 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { Database, Json } from "@/lib/database.types";
+import {
+  PRODUCT_INACTIVE_SELECT_MESSAGE,
+} from "@/lib/products/productActiveContract";
+import { isProductActiveFlag } from "@/app/products/productListQuery";
 
 import {
   validateAddCaseLineBody,
@@ -156,6 +160,44 @@ export async function addCaseLineByCaseIdWithClient(
   const built = buildAppendCaseLinePayload(caseId, requestId, body);
   if (!built.ok) {
     return built;
+  }
+
+  const productId =
+    typeof built.payload.product_id === "string"
+      ? built.payload.product_id
+      : "";
+  if (productId) {
+    const { data: product, error: productError } = await client
+      .from("products")
+      .select("id, is_active")
+      .eq("id", productId)
+      .maybeSingle();
+    if (productError) {
+      return {
+        ok: false,
+        error_code: "LINE_ADD_FAILED",
+        error_message: "明細を追加できませんでした",
+        request_id: requestId,
+      };
+    }
+    if (!product) {
+      return {
+        ok: false,
+        error_code: "INVALID_INPUT",
+        error_message: "入力内容が正しくありません",
+        field_errors: { product_id: "商品が正しくありません" },
+        request_id: requestId,
+      };
+    }
+    if (!isProductActiveFlag(product.is_active)) {
+      return {
+        ok: false,
+        error_code: "INVALID_INPUT",
+        error_message: PRODUCT_INACTIVE_SELECT_MESSAGE,
+        field_errors: { product_id: PRODUCT_INACTIVE_SELECT_MESSAGE },
+        request_id: requestId,
+      };
+    }
   }
 
   const { data, error } = await client.rpc("append_case_line", {

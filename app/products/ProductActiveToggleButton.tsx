@@ -5,6 +5,8 @@ import { useState } from "react";
 
 import { supabase } from "@/lib/supabase";
 
+import { toProductActiveDbValue } from "@/lib/products/productActiveContract";
+
 import {
   PRODUCT_DEACTIVATE_CONFIRM,
   PRODUCT_REACTIVATE_CONFIRM,
@@ -52,7 +54,9 @@ export default function ProductActiveToggleButton({
     setBusy(true);
     const { error: updateError } = await supabase
       .from("products")
-      .update({ is_active: currentlyActive ? false : true })
+      .update({
+        is_active: toProductActiveDbValue(!currentlyActive),
+      })
       .eq("id", productId);
 
     if (updateError) {

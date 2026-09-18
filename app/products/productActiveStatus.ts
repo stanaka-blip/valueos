@@ -3,6 +3,8 @@
  * 物理DELETEはしない。過去案件・発注・価格は維持する。
  */
 
+import { toProductActiveDbValue } from "@/lib/products/productActiveContract";
+
 import { isProductActiveFlag } from "./productListQuery";
 
 export const PRODUCT_DEACTIVATE_CONFIRM =
@@ -10,6 +12,9 @@ export const PRODUCT_DEACTIVATE_CONFIRM =
 
 export const PRODUCT_REACTIVATE_CONFIRM =
   "この商品を利用再開します。\n今後の案件登録・パッケージ等の選択候補に再び表示されます。";
+
+/** products.is_active 書き込み値（"true" / "false"） */
+export { toProductActiveDbValue };
 
 export function productStatusLabel(isActive: unknown): "有効" | "利用停止" {
   return isProductActiveFlag(isActive) ? "有効" : "利用停止";

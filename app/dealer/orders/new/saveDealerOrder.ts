@@ -4,6 +4,10 @@ import {
   fetchActivePurchaseUnitPrices,
   resolveDealerDefaultSupplierId,
 } from "@/lib/purchasePrices";
+import {
+  assertNewProductSelectionsActive,
+  PRODUCT_INACTIVE_SELECT_MESSAGE,
+} from "@/lib/products/productActiveContract";
 import { supabase } from "@/lib/supabase";
 
 import type {
@@ -419,13 +423,29 @@ export async function saveDealerOrder(params: {
 
       const { data: products, error: productsError } = await client
         .from("products")
-        .select("id, name")
+        .select("id, name, is_active")
         .in("id", productIds);
 
       if (productsError) {
         return {
           ok: false,
           errorMessage: "商品情報の取得に失敗しました。",
+        };
+      }
+
+      const isActiveById = new Map(
+        ((products || []) as { id: string; is_active: unknown }[]).map(
+          (product) => [product.id as string, product.is_active] as const
+        )
+      );
+      const activeGuard = assertNewProductSelectionsActive(
+        productIds,
+        isActiveById
+      );
+      if (!activeGuard.ok) {
+        return {
+          ok: false,
+          errorMessage: PRODUCT_INACTIVE_SELECT_MESSAGE,
         };
       }
 
