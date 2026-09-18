@@ -12,9 +12,10 @@ import { useRouter } from "next/navigation";
 
 import {
   buildProductCopyFormValues,
-  DUPLICATE_MODEL_NO_MESSAGE,
+  DUPLICATE_MODEL_NO_WARNING,
 } from "@/app/components/masters/searchableSelect";
 import { toProductActiveDbValue } from "@/lib/products/productActiveContract";
+import { hasModelNoDuplicateHits } from "@/lib/products/modelNoDuplicate";
 import { supabase } from "@/lib/supabase";
 
 type Manufacturer = {
@@ -234,12 +235,11 @@ export default function NewProductPage() {
 
     setSubmitting(true);
 
-    const { data: duplicateProduct, error: duplicateError } = await supabase
+    const { data: duplicateProducts, error: duplicateError } = await supabase
       .from("products")
-      .select("id")
+      .select("id, name, category, model_no, is_active")
       .eq("manufacturer_id", manufacturerId)
-      .eq("model_no", modelNo)
-      .maybeSingle();
+      .eq("model_no", modelNo);
 
     if (duplicateError) {
       setSubmitError(`重複確認に失敗しました：${duplicateError.message}`);
@@ -247,10 +247,12 @@ export default function NewProductPage() {
       return;
     }
 
-    if (duplicateProduct) {
-      setSubmitError(DUPLICATE_MODEL_NO_MESSAGE);
-      setSubmitting(false);
-      return;
+    if (hasModelNoDuplicateHits(duplicateProducts)) {
+      const ok = window.confirm(DUPLICATE_MODEL_NO_WARNING);
+      if (!ok) {
+        setSubmitting(false);
+        return;
+      }
     }
 
     const { data: created, error: insertError } = await supabase

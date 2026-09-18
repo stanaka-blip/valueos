@@ -16,9 +16,16 @@ import {
   type ProductListRow,
 } from "@/app/products/productListQuery";
 import {
+  isPackageActiveFlag,
+  matchesPackageSearch,
+  type PackageListRow,
+} from "@/app/packages/packageListQuery";
+import {
+  fetchActivePackagePurchaseUnitPrices,
   fetchActivePurchaseUnitPrices,
   getTodayDateString,
 } from "@/lib/purchasePrices";
+import type { PurchasePriceBulkTargetType } from "@/lib/supplierPurchasePrices/createSupplierPurchasePricesLogic";
 import { supabase } from "@/lib/supabase";
 
 import {
@@ -34,6 +41,15 @@ type ProductRow = {
   model_no: string | null;
   name: string | null;
   category: string | null;
+  is_active: unknown;
+  manufacturer_name: string;
+};
+type PackageRow = {
+  id: string;
+  manufacturer_id: string | null;
+  name: string | null;
+  package_code: string | null;
+  system_type: string | null;
   is_active: unknown;
   manufacturer_name: string;
 };
@@ -54,9 +70,12 @@ export default function BulkBySupplierPage() {
   const router = useRouter();
   const idempotencyKeyRef = useRef(createIdempotencyKey());
 
+  const [targetType, setTargetType] =
+    useState<PurchasePriceBulkTargetType>("PRODUCT");
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [manufacturers, setManufacturers] = useState<Manufacturer[]>([]);
   const [products, setProducts] = useState<ProductRow[]>([]);
+  const [packages, setPackages] = useState<PackageRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [priceError, setPriceError] = useState("");
@@ -67,7 +86,7 @@ export default function BulkBySupplierPage() {
   const [manufacturerId, setManufacturerId] = useState("");
   const [category, setCategory] = useState("");
   const [q, setQ] = useState("");
-  const [currentByProductId, setCurrentByProductId] = useState<
+  const [currentByTargetId, setCurrentByTargetId] = useState<
     Map<string, number>
   >(new Map());
   const [drafts, setDrafts] = useState<Record<string, DraftRow>>({});
@@ -76,7 +95,7 @@ export default function BulkBySupplierPage() {
     async function load() {
       setLoading(true);
       setLoadError("");
-      const [sRes, mRes, pRes] = await Promise.all([
+      const [sRes, mRes, pRes, pkgRes] = await Promise.all([
         supabase
           .from("suppliers")
           .select("id, name, is_active")
@@ -100,13 +119,28 @@ export default function BulkBySupplierPage() {
           `
           )
           .order("model_no", { ascending: true }),
+        supabase
+          .from("packages")
+          .select(
+            `
+            id,
+            manufacturer_id,
+            name,
+            package_code,
+            system_type,
+            is_active,
+            manufacturers ( name )
+          `
+          )
+          .order("name", { ascending: true }),
       ]);
 
-      if (sRes.error || mRes.error || pRes.error) {
+      if (sRes.error || mRes.error || pRes.error || pkgRes.error) {
         setLoadError(
           sRes.error?.message ||
             mRes.error?.message ||
             pRes.error?.message ||
+            pkgRes.error?.message ||
             "マスタ取得に失敗しました"
         );
         setLoading(false);
@@ -142,6 +176,24 @@ export default function BulkBySupplierPage() {
           };
         })
       );
+      setPackages(
+        ((pkgRes.data || []) as Array<Record<string, unknown>>).map((row) => {
+          const makers = row.manufacturers as
+            | { name: string | null }
+            | { name: string | null }[]
+            | null;
+          const maker = Array.isArray(makers) ? makers[0] : makers;
+          return {
+            id: String(row.id),
+            manufacturer_id: (row.manufacturer_id as string | null) || null,
+            name: (row.name as string | null) || null,
+            package_code: (row.package_code as string | null) || null,
+            system_type: (row.system_type as string | null) || null,
+            is_active: row.is_active,
+            manufacturer_name: maker?.name?.trim() || "",
+          };
+        })
+      );
       setLoading(false);
     }
     load();
@@ -162,7 +214,7 @@ export default function BulkBySupplierPage() {
   }, [products, manufacturerId]);
 
   const visibleProducts = useMemo(() => {
-    if (!manufacturerId) return [];
+    if (targetType !== "PRODUCT" || !manufacturerId) return [];
     const listRows: ProductListRow[] = products.map((p) => ({
       id: p.id,
       name: p.name,
@@ -179,38 +231,74 @@ export default function BulkBySupplierPage() {
       .filter((row) => matchesProductSearch(row, q))
       .map((row) => products.find((p) => p.id === row.id)!)
       .filter(Boolean);
-  }, [products, manufacturerId, category, q]);
+  }, [products, manufacturerId, category, q, targetType]);
+
+  const visiblePackages = useMemo(() => {
+    if (targetType !== "PACKAGE" || !manufacturerId) return [];
+    const listRows: PackageListRow[] = packages.map((p) => ({
+      id: p.id,
+      name: p.name,
+      is_active: p.is_active,
+      manufacturer_id: p.manufacturer_id,
+      manufacturerName: p.manufacturer_name,
+      seriesName: "",
+    }));
+    return listRows
+      .filter((row) => row.manufacturer_id === manufacturerId)
+      .filter((row) => isPackageActiveFlag(row.is_active))
+      .filter((row) => matchesPackageSearch(row, q))
+      .map((row) => packages.find((p) => p.id === row.id)!)
+      .filter(Boolean);
+  }, [packages, manufacturerId, q, targetType]);
+
+  const visibleRows =
+    targetType === "PRODUCT" ? visibleProducts : visiblePackages;
 
   useEffect(() => {
     let cancelled = false;
     async function loadCurrent() {
       setPriceError("");
-      if (!supplierId || visibleProducts.length === 0) {
-        setCurrentByProductId(new Map());
+      if (!supplierId || visibleRows.length === 0) {
+        setCurrentByTargetId(new Map());
+        return;
+      }
+      if (targetType === "PACKAGE") {
+        const result = await fetchActivePackagePurchaseUnitPrices(supabase, {
+          packageIds: visibleRows.map((p) => p.id),
+          supplierId,
+          asOfDate: getTodayDateString(),
+        });
+        if (cancelled) return;
+        if (result.error) {
+          setPriceError(result.error);
+          setCurrentByTargetId(new Map());
+          return;
+        }
+        setCurrentByTargetId(result.unitPriceByPackageId);
         return;
       }
       const result = await fetchActivePurchaseUnitPrices(supabase, {
-        productIds: visibleProducts.map((p) => p.id),
+        productIds: visibleRows.map((p) => p.id),
         supplierId,
         asOfDate: getTodayDateString(),
       });
       if (cancelled) return;
       if (result.error) {
         setPriceError(result.error);
-        setCurrentByProductId(new Map());
+        setCurrentByTargetId(new Map());
         return;
       }
-      setCurrentByProductId(result.unitPriceByProductId);
+      setCurrentByTargetId(result.unitPriceByProductId);
     }
     loadCurrent();
     return () => {
       cancelled = true;
     };
-  }, [supplierId, visibleProducts]);
+  }, [supplierId, visibleRows, targetType]);
 
-  function ensureDraft(productId: string): DraftRow {
+  function ensureDraft(targetId: string): DraftRow {
     return (
-      drafts[productId] || {
+      drafts[targetId] || {
         selected: false,
         purchase_price: "",
         start_date: getTodayDateString(),
@@ -221,18 +309,26 @@ export default function BulkBySupplierPage() {
     );
   }
 
-  function patchDraft(productId: string, patch: Partial<DraftRow>) {
+  function patchDraft(targetId: string, patch: Partial<DraftRow>) {
     setDrafts((prev) => ({
       ...prev,
-      [productId]: { ...ensureDraft(productId), ...patch },
+      [targetId]: { ...ensureDraft(targetId), ...patch },
     }));
   }
 
   const selectedCount = useMemo(
-    () =>
-      visibleProducts.filter((p) => drafts[p.id]?.selected).length,
-    [visibleProducts, drafts]
+    () => visibleRows.filter((p) => drafts[p.id]?.selected).length,
+    [visibleRows, drafts]
   );
+
+  function switchTargetType(next: PurchasePriceBulkTargetType) {
+    setTargetType(next);
+    setCategory("");
+    setQ("");
+    setDrafts({});
+    setSubmitError("");
+    idempotencyKeyRef.current = createIdempotencyKey();
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -244,28 +340,38 @@ export default function BulkBySupplierPage() {
       return;
     }
 
-    const items = visibleProducts
+    const items = visibleRows
       .filter((p) => drafts[p.id]?.selected)
       .map((p) => {
         const d = drafts[p.id];
-        return {
-          product_id: p.id,
+        const base = {
           purchase_price: Number(d.purchase_price),
           start_date: d.start_date || null,
           end_date: d.end_date || null,
           memo: d.memo.trim() || null,
           is_active: d.is_active,
         };
+        return targetType === "PACKAGE"
+          ? { ...base, package_id: p.id }
+          : { ...base, product_id: p.id };
       });
 
     if (items.length === 0) {
-      setSubmitError("登録する商品にチェックを入れてください。");
+      setSubmitError(
+        targetType === "PACKAGE"
+          ? "登録するパッケージにチェックを入れてください。"
+          : "登録する商品にチェックを入れてください。"
+      );
       return;
     }
 
     setSubmitting(true);
     const result = await submitSupplierPurchasePriceBulk({
-      body: { supplier_id: supplierId, items },
+      body: {
+        supplier_id: supplierId,
+        price_target_type: targetType,
+        items,
+      },
       idempotencyKey: idempotencyKeyRef.current,
     });
     setSubmitting(false);
@@ -308,7 +414,7 @@ export default function BulkBySupplierPage() {
               仕入先ごとに一括登録
             </h1>
             <p className="text-sm text-gray-500">
-              1つの仕入先に対し、メーカー配下の複数商品へ仕入価格をまとめて追加します（途中失敗時はすべて取り消されます）
+              1つの仕入先に対し、通常商品またはパッケージの仕入価格をまとめて追加します（途中失敗時はすべて取り消されます）
             </p>
           </div>
           <Link
@@ -325,6 +431,31 @@ export default function BulkBySupplierPage() {
           onSubmit={handleSubmit}
           className="mx-auto max-w-7xl space-y-6 rounded-xl bg-white p-8 shadow-sm"
         >
+          <div className="flex gap-2 border-b border-gray-200 pb-3">
+            <button
+              type="button"
+              onClick={() => switchTargetType("PRODUCT")}
+              className={`rounded-lg px-4 py-2 text-sm font-bold ${
+                targetType === "PRODUCT"
+                  ? "bg-gray-900 text-white"
+                  : "border border-gray-300 text-gray-700"
+              }`}
+            >
+              通常商品
+            </button>
+            <button
+              type="button"
+              onClick={() => switchTargetType("PACKAGE")}
+              className={`rounded-lg px-4 py-2 text-sm font-bold ${
+                targetType === "PACKAGE"
+                  ? "bg-gray-900 text-white"
+                  : "border border-gray-300 text-gray-700"
+              }`}
+            >
+              パッケージ
+            </button>
+          </div>
+
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             <label className="block space-y-1">
               <span className="text-sm font-medium text-gray-700">仕入先 *</span>
@@ -362,33 +493,43 @@ export default function BulkBySupplierPage() {
                 ))}
               </select>
             </label>
+            {targetType === "PRODUCT" ? (
+              <label className="block space-y-1">
+                <span className="text-sm font-medium text-gray-700">
+                  カテゴリ（任意）
+                </span>
+                <select
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                  className={inputClass}
+                  disabled={!manufacturerId}
+                >
+                  <option value="">すべて</option>
+                  {categories.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <div />
+            )}
             <label className="block space-y-1">
               <span className="text-sm font-medium text-gray-700">
-                カテゴリ（任意）
-              </span>
-              <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                className={inputClass}
-                disabled={!manufacturerId}
-              >
-                <option value="">すべて</option>
-                {categories.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="block space-y-1">
-              <span className="text-sm font-medium text-gray-700">
-                商品検索（型番・商品名）
+                {targetType === "PACKAGE"
+                  ? "パッケージ検索"
+                  : "商品検索（型番・商品名）"}
               </span>
               <input
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
                 className={inputClass}
-                placeholder="型番や商品名で絞り込み"
+                placeholder={
+                  targetType === "PACKAGE"
+                    ? "パッケージ名で絞り込み"
+                    : "型番や商品名で絞り込み"
+                }
                 disabled={!manufacturerId}
               />
             </label>
@@ -402,19 +543,34 @@ export default function BulkBySupplierPage() {
 
           {!manufacturerId ? (
             <p className="text-sm text-gray-500">
-              メーカーを選択すると商品一覧が表示されます。
+              メーカーを選択すると一覧が表示されます。
             </p>
-          ) : visibleProducts.length === 0 ? (
-            <p className="text-sm text-gray-500">該当する商品がありません。</p>
+          ) : visibleRows.length === 0 ? (
+            <p className="text-sm text-gray-500">
+              {targetType === "PACKAGE"
+                ? "該当するパッケージがありません。"
+                : "該当する商品がありません。"}
+            </p>
           ) : (
             <div className="overflow-x-auto rounded-lg border border-gray-200">
               <table className="min-w-full text-sm">
                 <thead className="bg-gray-50 text-left text-gray-600">
                   <tr>
                     <th className="px-3 py-2">選択</th>
-                    <th className="px-3 py-2">型番</th>
-                    <th className="px-3 py-2">商品名</th>
-                    <th className="px-3 py-2">カテゴリ</th>
+                    {targetType === "PRODUCT" ? (
+                      <>
+                        <th className="px-3 py-2">型番</th>
+                        <th className="px-3 py-2">商品名</th>
+                        <th className="px-3 py-2">カテゴリ</th>
+                      </>
+                    ) : (
+                      <>
+                        <th className="px-3 py-2">パッケージ名</th>
+                        <th className="px-3 py-2">コード</th>
+                        <th className="px-3 py-2">システム種別</th>
+                      </>
+                    )}
+                    <th className="px-3 py-2">メーカー</th>
                     <th className="px-3 py-2">現行仕入価格</th>
                     <th className="px-3 py-2">新仕入価格 *</th>
                     <th className="px-3 py-2">開始日</th>
@@ -424,85 +580,83 @@ export default function BulkBySupplierPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {visibleProducts.map((p) => {
-                    const draft = ensureDraft(p.id);
-                    const current = currentByProductId.get(p.id);
-                    return (
-                      <tr key={p.id} className="border-t align-top">
-                        <td className="px-3 py-2 text-center">
-                          <input
-                            type="checkbox"
-                            checked={draft.selected}
-                            onChange={(e) =>
-                              patchDraft(p.id, { selected: e.target.checked })
-                            }
-                          />
-                        </td>
-                        <td className="px-3 py-2 font-semibold">
-                          {p.model_no || "—"}
-                        </td>
-                        <td className="px-3 py-2">{p.name || "—"}</td>
-                        <td className="px-3 py-2">{p.category || "—"}</td>
-                        <td className="px-3 py-2 tabular-nums">
-                          {current != null
-                            ? `¥${current.toLocaleString("ja-JP")}`
-                            : "—"}
-                        </td>
-                        <td className="px-3 py-2">
-                          <input
-                            type="number"
-                            min={1}
-                            value={draft.purchase_price}
-                            onChange={(e) =>
-                              patchDraft(p.id, {
-                                purchase_price: e.target.value,
-                                selected: true,
-                              })
-                            }
-                            className={inputClass}
-                          />
-                        </td>
-                        <td className="px-3 py-2">
-                          <input
-                            type="date"
-                            value={draft.start_date}
-                            onChange={(e) =>
-                              patchDraft(p.id, { start_date: e.target.value })
-                            }
-                            className={inputClass}
-                          />
-                        </td>
-                        <td className="px-3 py-2">
-                          <input
-                            type="date"
-                            value={draft.end_date}
-                            onChange={(e) =>
-                              patchDraft(p.id, { end_date: e.target.value })
-                            }
-                            className={inputClass}
-                          />
-                        </td>
-                        <td className="px-3 py-2">
-                          <input
-                            value={draft.memo}
-                            onChange={(e) =>
-                              patchDraft(p.id, { memo: e.target.value })
-                            }
-                            className={inputClass}
-                          />
-                        </td>
-                        <td className="px-3 py-2 text-center">
-                          <input
-                            type="checkbox"
-                            checked={draft.is_active}
-                            onChange={(e) =>
-                              patchDraft(p.id, { is_active: e.target.checked })
-                            }
-                          />
-                        </td>
-                      </tr>
-                    );
-                  })}
+                  {targetType === "PRODUCT"
+                    ? visibleProducts.map((p) => {
+                        const draft = ensureDraft(p.id);
+                        const current = currentByTargetId.get(p.id);
+                        return (
+                          <tr key={p.id} className="border-t align-top">
+                            <td className="px-3 py-2 text-center">
+                              <input
+                                type="checkbox"
+                                checked={draft.selected}
+                                onChange={(e) =>
+                                  patchDraft(p.id, {
+                                    selected: e.target.checked,
+                                  })
+                                }
+                              />
+                            </td>
+                            <td className="px-3 py-2 font-semibold">
+                              {p.model_no || "—"}
+                            </td>
+                            <td className="px-3 py-2">{p.name || "—"}</td>
+                            <td className="px-3 py-2">{p.category || "—"}</td>
+                            <td className="px-3 py-2">
+                              {p.manufacturer_name || "—"}
+                            </td>
+                            <td className="px-3 py-2 tabular-nums">
+                              {current != null
+                                ? `¥${current.toLocaleString("ja-JP")}`
+                                : "—"}
+                            </td>
+                            <PriceDraftCells
+                              draft={draft}
+                              onPatch={(patch) => patchDraft(p.id, patch)}
+                            />
+                          </tr>
+                        );
+                      })
+                    : visiblePackages.map((p) => {
+                        const draft = ensureDraft(p.id);
+                        const current = currentByTargetId.get(p.id);
+                        return (
+                          <tr key={p.id} className="border-t align-top">
+                            <td className="px-3 py-2 text-center">
+                              <input
+                                type="checkbox"
+                                checked={draft.selected}
+                                onChange={(e) =>
+                                  patchDraft(p.id, {
+                                    selected: e.target.checked,
+                                  })
+                                }
+                              />
+                            </td>
+                            <td className="px-3 py-2 font-semibold">
+                              {p.name || "—"}
+                            </td>
+                            <td className="px-3 py-2">
+                              {p.package_code || "—"}
+                            </td>
+                            <td className="px-3 py-2">
+                              {p.system_type || "—"}
+                            </td>
+                            <td className="px-3 py-2">
+                              {p.manufacturer_name || "—"}
+                            </td>
+                            <td className="px-3 py-2 tabular-nums">
+                              {current != null
+                                ? `¥${current.toLocaleString("ja-JP")}`
+                                : "—"}
+                            </td>
+                            <PriceDraftCells
+                              draft={draft}
+                              onPatch={(patch) => patchDraft(p.id, patch)}
+                            />
+                          </tr>
+                        );
+                      })}
                 </tbody>
               </table>
             </div>
@@ -514,7 +668,7 @@ export default function BulkBySupplierPage() {
 
           <div className="flex items-center justify-between gap-3">
             <p className="text-sm text-gray-500">
-              選択中 {selectedCount} 件 / 表示 {visibleProducts.length} 件
+              選択中 {selectedCount} 件 / 表示 {visibleRows.length} 件
             </p>
             <div className="flex gap-3">
               <Link
@@ -530,12 +684,71 @@ export default function BulkBySupplierPage() {
               >
                 {submitting
                   ? "登録中..."
-                  : "選択した商品の仕入価格を登録"}
+                  : targetType === "PACKAGE"
+                    ? "選択したパッケージの仕入価格を登録"
+                    : "選択した商品の仕入価格を登録"}
               </button>
             </div>
           </div>
         </form>
       </main>
+    </>
+  );
+}
+
+function PriceDraftCells({
+  draft,
+  onPatch,
+}: {
+  draft: DraftRow;
+  onPatch: (patch: Partial<DraftRow>) => void;
+}) {
+  return (
+    <>
+      <td className="px-3 py-2">
+        <input
+          type="number"
+          min={0}
+          value={draft.purchase_price}
+          onChange={(e) =>
+            onPatch({
+              purchase_price: e.target.value,
+              selected: true,
+            })
+          }
+          className={inputClass}
+        />
+      </td>
+      <td className="px-3 py-2">
+        <input
+          type="date"
+          value={draft.start_date}
+          onChange={(e) => onPatch({ start_date: e.target.value })}
+          className={inputClass}
+        />
+      </td>
+      <td className="px-3 py-2">
+        <input
+          type="date"
+          value={draft.end_date}
+          onChange={(e) => onPatch({ end_date: e.target.value })}
+          className={inputClass}
+        />
+      </td>
+      <td className="px-3 py-2">
+        <input
+          value={draft.memo}
+          onChange={(e) => onPatch({ memo: e.target.value })}
+          className={inputClass}
+        />
+      </td>
+      <td className="px-3 py-2 text-center">
+        <input
+          type="checkbox"
+          checked={draft.is_active}
+          onChange={(e) => onPatch({ is_active: e.target.checked })}
+        />
+      </td>
     </>
   );
 }

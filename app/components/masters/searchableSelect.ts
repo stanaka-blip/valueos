@@ -55,6 +55,22 @@ export function formatProductOptionLabel(product: ProductSearchSource): string {
   return model ? `${name}（${model}）` : name;
 }
 
+/**
+ * 同型番の複数商品を区別するため、1行目は
+ * メーカー ｜ カテゴリ ｜ 型番（＋商品名）を表示する。
+ */
+export function formatProductSearchPrimary(
+  product: ProductSearchSource
+): string {
+  const manufacturer = (product.manufacturer_name || "").trim();
+  const category = (product.category || "").trim();
+  const model = (product.model_no || "").trim();
+  const name = (product.name || "").trim() || "名称未設定";
+  const head = [manufacturer, category, model].filter(Boolean).join(" ｜ ");
+  if (head) return `${head} ｜ ${name}`;
+  return name;
+}
+
 export function buildProductSearchOption(
   product: ProductSearchSource
 ): SearchableSelectOption {
@@ -64,13 +80,14 @@ export function buildProductSearchOption(
   const category = (product.category || "").trim();
   const series = (product.series_name || "").trim();
 
-  const secondaryParts = [manufacturer, category, series].filter(Boolean);
+  const secondaryParts = [series].filter(Boolean);
 
   return {
     id: product.id,
     label: formatProductOptionLabel(product),
-    primaryText: model ? `${model} ｜ ${name}` : name,
-    secondaryText: secondaryParts.length > 0 ? secondaryParts.join(" ｜ ") : undefined,
+    primaryText: formatProductSearchPrimary(product),
+    secondaryText:
+      secondaryParts.length > 0 ? secondaryParts.join(" ｜ ") : undefined,
     searchText: [model, name, manufacturer, category, series]
       .filter(Boolean)
       .join(" "),
@@ -150,3 +167,7 @@ export function buildProductCopyFormValues(
 
 export const DUPLICATE_MODEL_NO_MESSAGE =
   "同じメーカー・同じ型番の商品がすでに登録されています。型番を変更してから保存してください。";
+
+/** 同一型番でも登録可能な Warning（最終的には登録可） */
+export const DUPLICATE_MODEL_NO_WARNING =
+  "同じ型番の商品が既に存在します。\nそれでも登録しますか？";

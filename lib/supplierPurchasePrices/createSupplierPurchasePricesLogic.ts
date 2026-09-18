@@ -1,9 +1,13 @@
 /**
  * 仕入先起点仕入価格一括登録の入力検証・RPC payload 構築（純関数）。
+ * PRODUCT / PACKAGE 両対応。既存価格行の UPDATE/DELETE はしない（INSERT のみ）。
  */
 
+export type PurchasePriceBulkTargetType = "PRODUCT" | "PACKAGE";
+
 export type SupplierPurchasePriceItemInput = {
-  product_id: string;
+  product_id?: string;
+  package_id?: string;
   purchase_price: number;
   start_date?: string | null;
   end_date?: string | null;
@@ -13,6 +17,8 @@ export type SupplierPurchasePriceItemInput = {
 
 export type CreateSupplierPurchasePricesBody = {
   supplier_id: string;
+  /** 省略時 PRODUCT（後方互換） */
+  price_target_type?: PurchasePriceBulkTargetType;
   items: SupplierPurchasePriceItemInput[];
 };
 
@@ -26,6 +32,11 @@ const MAX_LONG = 2000;
 
 function isUuid(value: unknown): value is string {
   return typeof value === "string" && UUID_RE.test(value);
+}
+
+function parseTargetType(value: unknown): PurchasePriceBulkTargetType {
+  if (value === "PACKAGE") return "PACKAGE";
+  return "PRODUCT";
 }
 
 export function validateCreateSupplierPurchasePricesBody(
@@ -48,6 +59,7 @@ export function validateCreateSupplierPurchasePricesBody(
 
   const input = body as Record<string, unknown>;
   const field_errors: SupplierPurchasePriceFieldErrors = {};
+  const price_target_type = parseTargetType(input.price_target_type);
 
   const supplier_id =
     typeof input.supplier_id === "string" ? input.supplier_id.trim() : "";
@@ -71,7 +83,7 @@ export function validateCreateSupplierPurchasePricesBody(
   }
 
   const items: SupplierPurchasePriceItemInput[] = [];
-  const seenProducts = new Set<string>();
+  const seenTargets = new Set<string>();
 
   input.items.forEach((row, idx) => {
     if (!row || typeof row !== "object" || Array.isArray(row)) {
@@ -81,13 +93,38 @@ export function validateCreateSupplierPurchasePricesBody(
     const r = row as Record<string, unknown>;
     const product_id =
       typeof r.product_id === "string" ? r.product_id.trim() : "";
-    if (!isUuid(product_id)) {
-      field_errors[`items.${idx}.product_id`] = "商品が不正です";
-    } else if (seenProducts.has(product_id)) {
-      field_errors[`items.${idx}.product_id`] =
-        "同じ商品が複数行に入力されています";
+    const package_id =
+      typeof r.package_id === "string" ? r.package_id.trim() : "";
+
+    let targetId = "";
+    if (price_target_type === "PACKAGE") {
+      if (!isUuid(package_id)) {
+        field_errors[`items.${idx}.package_id`] = "パッケージが不正です";
+      } else if (seenTargets.has(package_id)) {
+        field_errors[`items.${idx}.package_id`] =
+          "同じパッケージが複数行に入力されています";
+      } else {
+        seenTargets.add(package_id);
+        targetId = package_id;
+      }
+      if (product_id) {
+        field_errors[`items.${idx}.product_id`] =
+          "PACKAGE 指定時は product_id を指定できません";
+      }
     } else {
-      seenProducts.add(product_id);
+      if (!isUuid(product_id)) {
+        field_errors[`items.${idx}.product_id`] = "商品が不正です";
+      } else if (seenTargets.has(product_id)) {
+        field_errors[`items.${idx}.product_id`] =
+          "同じ商品が複数行に入力されています";
+      } else {
+        seenTargets.add(product_id);
+        targetId = product_id;
+      }
+      if (package_id) {
+        field_errors[`items.${idx}.package_id`] =
+          "PRODUCT 指定時は package_id を指定できません";
+      }
     }
 
     const n =
@@ -96,9 +133,10 @@ export function validateCreateSupplierPurchasePricesBody(
         : typeof r.purchase_price === "string" && r.purchase_price.trim() !== ""
           ? Number(r.purchase_price)
           : NaN;
-    if (!Number.isFinite(n) || n <= 0) {
+    // 明示 0 円は有効。負数・非数のみ拒否。
+    if (!Number.isFinite(n) || n < 0) {
       field_errors[`items.${idx}.purchase_price`] =
-        "仕入価格は1円以上で入力してください";
+        "仕入価格は0円以上で入力してください";
     }
 
     let start_date: string | null = null;
@@ -143,14 +181,17 @@ export function validateCreateSupplierPurchasePricesBody(
     }
 
     if (
-      isUuid(product_id) &&
+      targetId &&
       Number.isFinite(n) &&
-      n > 0 &&
+      n >= 0 &&
       !field_errors[`items.${idx}.end_date`] &&
-      !field_errors[`items.${idx}.start_date`]
+      !field_errors[`items.${idx}.start_date`] &&
+      !field_errors[`items.${idx}.product_id`] &&
+      !field_errors[`items.${idx}.package_id`]
     ) {
       items.push({
-        product_id,
+        product_id: price_target_type === "PRODUCT" ? targetId : undefined,
+        package_id: price_target_type === "PACKAGE" ? targetId : undefined,
         purchase_price: n,
         start_date,
         end_date,
@@ -171,7 +212,7 @@ export function validateCreateSupplierPurchasePricesBody(
 
   return {
     ok: true,
-    value: { supplier_id, items },
+    value: { supplier_id, price_target_type, items },
   };
 }
 
@@ -179,11 +220,16 @@ export function buildCreateSupplierPurchasePricesRpcPayload(
   requestId: string,
   body: CreateSupplierPurchasePricesBody
 ): Record<string, unknown> {
+  const price_target_type = body.price_target_type || "PRODUCT";
   return {
     request_id: requestId,
     supplier_id: body.supplier_id,
+    price_target_type,
     items: body.items.map((item) => ({
-      product_id: item.product_id,
+      product_id:
+        price_target_type === "PRODUCT" ? item.product_id || null : null,
+      package_id:
+        price_target_type === "PACKAGE" ? item.package_id || null : null,
       purchase_price: item.purchase_price,
       start_date: item.start_date || null,
       end_date: item.end_date || null,

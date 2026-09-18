@@ -20,6 +20,7 @@ type Product = {
   name: string | null;
   model_no: string | null;
   manufacturer_id: string | null;
+  category: string | null;
   is_active: unknown;
 };
 type Line = { id?: string; product_id: string; quantity: string };
@@ -60,7 +61,7 @@ export default function EditPackagePage({
       const [m, s, p, pkg, items, suppliersRes] = await Promise.all([
         supabase.from("manufacturers").select("id, name").eq("is_active", true).order("name"),
         supabase.from("product_series").select("id, name, manufacturer_id").eq("is_active", true).order("name"),
-        supabase.from("products").select("id, name, model_no, manufacturer_id, is_active").order("name"),
+        supabase.from("products").select("id, name, model_no, manufacturer_id, category, is_active").order("name"),
         supabase.from("packages").select("*").eq("id", id).maybeSingle(),
         supabase
           .from("package_items")
@@ -330,6 +331,7 @@ export default function EditPackagePage({
                     id: p.id,
                     name: p.name || "",
                     model_no: p.model_no,
+                    category: p.category,
                     is_active: p.is_active,
                   })
                 );
