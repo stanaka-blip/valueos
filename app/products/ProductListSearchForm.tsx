@@ -72,7 +72,7 @@ export default function ProductListSearchForm({
           <select className={fieldClass} name="status" defaultValue={status}>
             <option value="all">すべて</option>
             <option value="active">有効</option>
-            <option value="inactive">無効</option>
+            <option value="inactive">利用停止</option>
           </select>
         </label>
 

@@ -5,9 +5,13 @@ import {
 } from "@/lib/purchasePrices";
 import { supabase } from "@/lib/supabase";
 
-import MasterListRowActions from "@/app/components/masters/MasterListRowActions";
-
 import ProductListSearchForm from "./ProductListSearchForm";
+import ProductListRowActions from "./ProductListRowActions";
+import {
+  productListRowClassName,
+  productStatusBadgeClass,
+  productStatusLabel,
+} from "./productActiveStatus";
 import {
   buildProductListHref,
   filterProductListRows,
@@ -234,11 +238,20 @@ export default async function ProductsPage({
                   const currentPurchase =
                     purchasePrices.unitPriceByTargetId.get(item.id) ?? null;
 
+                  const productLabel = item.name || item.model_no || "商品";
+
                   return (
-                    <tr key={item.id} className="border-t hover:bg-gray-50">
-                      <td className="px-5 py-4 font-semibold">{maker}</td>
-                      <td className="px-5 py-4">{seriesName}</td>
-                      <td className="px-5 py-4">{item.category || "-"}</td>
+                    <tr
+                      key={item.id}
+                      className={productListRowClassName(item.is_active)}
+                    >
+                      <td className="px-5 py-4 font-semibold text-gray-900">
+                        {maker}
+                      </td>
+                      <td className="px-5 py-4 text-gray-900">{seriesName}</td>
+                      <td className="px-5 py-4 text-gray-900">
+                        {item.category || "-"}
+                      </td>
                       <td className="px-5 py-4">
                         <Link
                           href={withProductsReturnTo(`/products/${item.id}`, returnTo)}
@@ -255,39 +268,38 @@ export default async function ProductsPage({
                           {item.name || "-"}
                         </Link>
                       </td>
-                      <td className="px-5 py-4">
+                      <td className="px-5 py-4 text-gray-900">
                         {item.capacity
                           ? `${item.capacity}${item.unit ? item.unit : ""}`
                           : "-"}
                       </td>
-                      <td className="px-5 py-4">
+                      <td className="px-5 py-4 text-gray-900">
                         {defaultSupplier === "未設定" ? (
                           <span className="text-gray-500">未設定</span>
                         ) : (
                           defaultSupplier
                         )}
                       </td>
-                      <td className="px-5 py-4 font-semibold tabular-nums">
+                      <td className="px-5 py-4 font-semibold tabular-nums text-gray-900">
                         {formatYen(currentPurchase)}
                       </td>
                       <td className="px-5 py-4">
-                        {item.is_active ? (
-                          <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-bold text-green-700">
-                            有効
-                          </span>
-                        ) : (
-                          <span className="rounded-full bg-gray-200 px-3 py-1 text-xs font-bold text-gray-700">
-                            停止
-                          </span>
-                        )}
+                        <span className={productStatusBadgeClass(item.is_active)}>
+                          {productStatusLabel(item.is_active)}
+                        </span>
                       </td>
                       <td className="px-5 py-4 text-center">
-                        <MasterListRowActions
-                          label={item.name || item.model_no || "商品"}
+                        <ProductListRowActions
+                          productId={item.id}
+                          productLabel={productLabel}
+                          isActive={item.is_active}
                           items={[
                             {
                               label: "編集",
-                              href: withProductsReturnTo(`/products/${item.id}/edit`, returnTo),
+                              href: withProductsReturnTo(
+                                `/products/${item.id}/edit`,
+                                returnTo
+                              ),
                             },
                             {
                               label: "複製して新規登録",

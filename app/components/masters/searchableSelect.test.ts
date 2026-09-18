@@ -97,7 +97,7 @@ check("A: 商品複製フィールド（価格・idは含めない）", () => {
   assert.equal(DUPLICATE_MODEL_NO_MESSAGE.includes("型番を変更"), true);
 });
 
-check("0円相当: is_active 文字列 true も有効", () => {
+check("0円相当: 利用停止元から複製しても新規は有効", () => {
   const copied = buildProductCopyFormValues({
     manufacturer_id: "m1",
     series_id: null,
@@ -107,7 +107,7 @@ check("0円相当: is_active 文字列 true も有効", () => {
     capacity: null,
     unit: null,
     memo: null,
-    is_active: "true",
+    is_active: "false",
     default_supplier_id: null,
   });
   assert.equal(copied.is_active, true);
