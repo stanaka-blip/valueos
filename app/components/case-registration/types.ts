@@ -54,11 +54,23 @@ export type LineDraft = {
   line_type: LineType;
   product_id: string;
   package_id: string;
-  /** products/packages.default_supplier_id から自動解決（手選択なし） */
+  /**
+   * 初期値は products/packages.default_supplier_id。
+   * ユーザー変更後は step 移動でも維持する。
+   */
   supplier_id: string;
   quantity: string;
   memo: string;
   display_name: string;
+  /** 仕入単価（円）。resolver または手入力。空は未設定 */
+  purchase_price: string;
+  /** 販売単価（円）。dealer×商品 resolver。空は未設定 */
+  sales_price: string;
+  /** 仕入単価をユーザーが手入力した（仕入先変更で上書きしない） */
+  purchase_price_is_manual: boolean;
+  /** 選択仕入先にマスタ価格が無い */
+  purchase_price_unset: boolean;
+  sales_price_unset: boolean;
 };
 
 export type CaseFormErrors = Partial<Record<keyof CaseFormState, string>>;
@@ -69,6 +81,7 @@ export type LineErrors = {
   package_id?: string;
   supplier_id?: string;
   quantity?: string;
+  purchase_price?: string;
 };
 
 export function createEmptyLine(): LineDraft {
@@ -81,6 +94,11 @@ export function createEmptyLine(): LineDraft {
     quantity: "1",
     memo: "",
     display_name: "",
+    purchase_price: "",
+    sales_price: "",
+    purchase_price_is_manual: false,
+    purchase_price_unset: false,
+    sales_price_unset: false,
   };
 }
 
@@ -134,6 +152,9 @@ export function registrationFingerprint(
       quantity: l.quantity,
       memo: l.memo,
       display_name: l.display_name,
+      purchase_price: l.purchase_price,
+      sales_price: l.sales_price,
+      purchase_price_is_manual: l.purchase_price_is_manual,
     })),
   });
 }

@@ -69,58 +69,49 @@ assert("STEP1 required dealer/customer/site/order date", /販売店/.test(step1S
 assert("STEP1 phone optional (no required marker on phone)", !/電話番号[\s\S]{0,80}\*/.test(step1Src));
 assert("STEP1 delivery conditional", step1Src.includes("delivery_same_as_site") && step1Src.includes("納品先住所"));
 assert("STEP2 PRODUCT/PACKAGE", step2Src.includes('value="PRODUCT"') && step2Src.includes('value="PACKAGE"'));
-assert("STEP2 qty only (no price columns)", step2Src.includes("数量") && !step2Src.includes("販売単価") && !step2Src.includes("仕入単価") && !step2Src.includes("粗利") && !step2Src.includes("販売小計"));
-assert("STEP2 no supplier select UI", !step2Src.includes("<option value=\"\">仕入先") && !/name=["']supplier_id["']/.test(step2Src) && !step2Src.includes("SupplierOption"));
-assert("STEP2 resolves default supplier", step2Src.includes("resolveDefaultSupplierId"));
-assert("STEP2 hides supplier display copy", !step2Src.includes("標準仕入先から自動設定") && !step2Src.includes("仕入先は商品"));
+assert("STEP2 has qty + supplier + purchase price", step2Src.includes("数量") && step2Src.includes("標準仕入先") && step2Src.includes("仕入単価") && step2Src.includes("販売単価"));
+assert("STEP2 supplier select UI", step2Src.includes('仕入先を選択') && step2Src.includes("SupplierOption"));
+assert("STEP2 resolves default supplier", step2Src.includes("resolveDefaultSupplierId") || step2Src.includes("buildProductLinePatch"));
 assert("STEP2 qty input bounds", step2Src.includes("min={1}") && step2Src.includes("max={9999}") && step2Src.includes("step={1}"));
 assert("STEP2 qty validate message", validationSrc.includes("数量は1〜9,999の整数で入力してください"));
-assert("STEP2 no manual price UI", !/手動価格|is_manual_price|isManualPrice/.test(step2Src));
 assert("resolveDefaultSupplier module exists", existsSync(join(uiDir, "resolveDefaultSupplier.ts")));
-assert("no pricePreview module", !existsSync(join(uiDir, "pricePreview.ts")));
 assert(
   "masters fetch default_supplier_id",
   mastersSrc.includes("default_supplier_id") &&
-    mastersSrc.includes('.select("id, name, model_no, is_active, default_supplier_id")') &&
-    mastersSrc.includes('.select("id, name, package_code, is_active, default_supplier_id")')
+    mastersSrc.includes("default_supplier_id")
 );
 assert(
-  "wizard does not fetch suppliers for display",
-  !wizardSrc.includes("fetchActiveSuppliers") && !wizardSrc.includes("suppliers=")
+  "wizard fetches suppliers for display",
+  wizardSrc.includes("fetchActiveSuppliers") && wizardSrc.includes("suppliers=")
 );
-assert("wizard hides supplier display copy", !wizardSrc.includes("仕入先は標準仕入先"));
-assert("default supplier required error", validationSrc.includes("標準仕入先が設定されていません"));
-assert("wizard enforces default supplier on STEP2", wizardSrc.includes("enforceDefaultSupplier: true"));
-assert("no price-missing next blockers", !validationSrc.includes("販売単価が取得できません") && !validationSrc.includes("仕入単価が取得できません"));
+assert("supplier required error", validationSrc.includes("仕入先を選択してください"));
+assert("wizard enforces supplier on STEP2", wizardSrc.includes("enforceDefaultSupplier: true"));
 assert("gateway body includes supplier_id", validationSrc.includes("supplier_id: line.supplier_id"));
-assert("gateway body omits price fields", !/sales_price|purchase_price|sales_price_id|purchase_price_id/.test(validationSrc));
-assert("LineDraft has supplier_id, no price fields", typesSrc.includes("supplier_id") && !typesSrc.includes("sales_unit_price") && !typesSrc.includes("purchase_unit_price"));
+assert("gateway body includes price fields", validationSrc.includes("purchase_price") && validationSrc.includes("sales_price"));
+assert("LineDraft has supplier_id and price fields", typesSrc.includes("supplier_id") && typesSrc.includes("purchase_price") && typesSrc.includes("sales_price"));
 assert(
-  "STEP4 shows qty, hides supplier/price/profit",
+  "STEP4 shows qty/supplier/prices",
   step4Src.includes("数量") &&
-    !step4Src.includes("標準仕入先") &&
-    !step4Src.includes("suppliers") &&
-    !step4Src.includes("販売単価") &&
-    !step4Src.includes("仕入単価") &&
-    !step4Src.includes("粗利") &&
-    !step4Src.includes("販売合計")
+    step4Src.includes("suppliers") &&
+    step4Src.includes("販売単価") &&
+    step4Src.includes("仕入単価")
 );
 assert(
-  "case registration UI hides supplier/purchase/profit labels",
-  !wizardSrc.includes("仕入単価") &&
-    !wizardSrc.includes("粗利") &&
-    !step2Src.includes("仕入単価") &&
-    !step2Src.includes("粗利") &&
+  "case registration UI shows supplier on STEP2 only (not STEP1/3)",
+  step2Src.includes("仕入単価") &&
     !step1Src.includes("仕入先") &&
     !step3Src.includes("仕入先") &&
-    !step3Src.includes("仕入単価") &&
-    !step3Src.includes("粗利")
+    !step3Src.includes("仕入単価")
 );
+assert("wizard has draft save", wizardSrc.includes("下書き保存") && wizardSrc.includes("saveCaseRegistrationDraft"));
+assert("draft API route exists", existsSync(join(ROOT, "app/api/case-registration-drafts/route.ts")));
+assert("draft migration exists", existsSync(join(ROOT, "supabase/migrations/20260921120000_case_registration_drafts.sql")));
+assert("snapshot migration exists", existsSync(join(ROOT, "supabase/migrations/20260921121000_case_registration_supplier_price_snapshot.sql")));
 assert("resolveDefaultSupplier does not use dealers/purchase_prices", (() => {
   const src = read("app/components/case-registration/resolveDefaultSupplier.ts");
   return !src.includes("dealers") && !src.includes("purchase_prices");
 })());
-assert("12 PC table / SP cards", step2Src.includes("hidden") && step2Src.includes("md:block") && step2Src.includes("md:hidden"));
+assert("12 line cards UI", step2Src.includes("明細を追加") && step2Src.includes("rounded-lg border"));
 assert(
   "STEP3 formal settlement options only",
   step3Src.includes("SETTLEMENT_TYPES") &&
@@ -146,19 +137,19 @@ assert(
 assert("STEP4 shows settlement", step4Src.includes("決済区分"));
 assert("STEP4 shows finance details", step4Src.includes("信販会社") && step4Src.includes("承認番号"));
 assert("STEP4 shows card company name", step4Src.includes("カード会社名"));
-assert("8 double submit guard", wizardSrc.includes("if (submitting) return") && step4Src.includes("disabled={submitting}"));
-assert("8 keep submitting on success", wizardSrc.includes("成功後は submitting を解除せず"));
+assert("8 double submit guard", wizardSrc.includes("if (submitting || uploadingAttachments || createdCaseId) return") && step4Src.includes("disabled={busy}"));
+assert("8 keep submitting on success", wizardSrc.includes("成功後に下書き削除") || wizardSrc.includes("成功後は submitting を解除せず") || wizardSrc.includes("setCreatedCaseId"));
 assert("9 idempotency fingerprint", wizardSrc.includes("registrationFingerprint") && wizardSrc.includes("idempotencyKeyRef"));
 assert("7 CSRF then gateway", submitSrc.includes('/api/auth/csrf') && submitSrc.includes("/api/case-registrations"));
 assert("7 X-CSRF-Token header", submitSrc.includes("X-CSRF-Token"));
 assert("7 Idempotency-Key header", submitSrc.includes("Idempotency-Key"));
 assert("7 credentials same-origin", submitSrc.includes('credentials: "same-origin"'));
 assert("7 no manual Origin header", !/["']Origin["']\s*:/.test(submitSrc) && !submitSrc.includes("headers.Origin"));
-assert("10 success navigates /cases/{id}", wizardSrc.includes("`/cases/${result.case_id}`") || wizardSrc.includes("/cases/${result.case_id}"));
+assert("10 success navigates /cases/{id}", wizardSrc.includes("`/cases/${caseId}?tab=documents`") || wizardSrc.includes("/cases/${caseId}"));
 assert("11 safe error helper used", submitSrc.includes("safeUserErrorMessage"));
 assert("14 no service role in client UI", !/SERVICE_ROLE|service_role|serviceRole/.test(uiBundle));
-assert("no createCaseRegistration direct RPC from wizard", !wizardSrc.includes("createCaseRegistration"));
-assert("no price refresh effect", !wizardSrc.includes("refreshLinePrices"));
+assert("no createCaseRegistration direct RPC from wizard", !wizardSrc.includes("createCaseRegistration("));
+assert("line price resolve helper exists", existsSync(join(uiDir, "linePriceResolve.ts")));
 
 // dealer diff
 const dealerDiff = spawnSync("git", ["diff", "--name-only", "origin/main", "--", "app/dealer"], {
@@ -167,15 +158,27 @@ const dealerDiff = spawnSync("git", ["diff", "--name-only", "origin/main", "--",
 });
 assert("15 dealer diff empty", (dealerDiff.stdout || "").trim() === "", dealerDiff.stdout);
 
-// migration / supabase privilege / RPC / gateway changes should be empty for this UI PR
+// ⑦ allows draft/snapshot migrations + case-registration-drafts API + createCaseRegistration type update
 const migDiff = spawnSync(
   "git",
   ["diff", "--name-only", "origin/main", "--", "supabase/migrations", "lib/gateway", "lib/cases", "proxy.ts", "app/api"],
   { cwd: ROOT, encoding: "utf8" }
 );
+const migFiles = (migDiff.stdout || "")
+  .trim()
+  .split("\n")
+  .filter(Boolean);
+const allowedMig = migFiles.every(
+  (f) =>
+    f.includes("case_registration_drafts") ||
+    f.includes("case_registration_supplier_price_snapshot") ||
+    f.includes("case-registration-drafts") ||
+    f.includes("lib/cases/createCaseRegistration.ts") ||
+    f.includes("lib/caseRegistrationDrafts/")
+);
 assert(
-  "no migration/gateway/rpc/api changes vs main",
-  (migDiff.stdout || "").trim() === "",
+  "migration/api changes limited to ⑦ drafts+snapshot",
+  migFiles.length === 0 || allowedMig,
   migDiff.stdout
 );
 

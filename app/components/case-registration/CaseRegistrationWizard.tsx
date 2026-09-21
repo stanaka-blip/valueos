@@ -1,19 +1,28 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+
+import { supabase } from "@/lib/supabase";
+import { isProductActiveFlag } from "@/app/products/productListQuery";
 import {
   fetchActiveContractors,
   fetchActiveDealers,
   fetchActivePackages,
   fetchActiveProducts,
+  fetchActiveSuppliers,
   type ContractorOption,
   type DealerOption,
   type PackageOption,
   type ProductOption,
+  type SupplierOption,
 } from "./masters";
 import Step1CaseForm from "./Step1CaseForm";
-import Step2LinesForm from "./Step2LinesForm";
+import Step2LinesForm, {
+  buildPackageLinePatch,
+  buildProductLinePatch,
+  buildSupplierChangePatch,
+} from "./Step2LinesForm";
 import Step3SettlementForm from "./Step3SettlementForm";
 import Step4ConfirmForm from "./Step4ConfirmForm";
 import StepChrome from "./StepChrome";
@@ -22,6 +31,14 @@ import {
   uploadPendingDrafts,
 } from "@/lib/caseAttachments/clientUpload";
 import { createIdempotencyKey, submitCaseRegistration } from "./submitCaseRegistration";
+import {
+  deleteCaseRegistrationDraft,
+  fetchCaseRegistrationDraft,
+  fetchCaseRegistrationDrafts,
+  saveCaseRegistrationDraft,
+  type DraftListItem,
+} from "./submitCaseRegistrationDraft";
+import { resolveLinePrices } from "./linePriceResolve";
 import {
   createEmptyLine,
   createInitialCaseForm,
@@ -45,6 +62,7 @@ import {
 
 export default function CaseRegistrationWizard() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [step, setStep] = useState<CaseRegistrationStepId>(1);
   const [caseForm, setCaseForm] = useState<CaseFormState>(createInitialCaseForm);
   const [lines, setLines] = useState<LineDraft[]>([createEmptyLine()]);
@@ -56,6 +74,7 @@ export default function CaseRegistrationWizard() {
   const [contractors, setContractors] = useState<ContractorOption[]>([]);
   const [products, setProducts] = useState<ProductOption[]>([]);
   const [packages, setPackages] = useState<PackageOption[]>([]);
+  const [suppliers, setSuppliers] = useState<SupplierOption[]>([]);
   const [masterError, setMasterError] = useState<string | null>(null);
 
   const [step1Errors, setStep1Errors] = useState<CaseFormErrors>({});
@@ -70,8 +89,22 @@ export default function CaseRegistrationWizard() {
   const [uploadingAttachments, setUploadingAttachments] = useState(false);
   const [createdCaseId, setCreatedCaseId] = useState<string | null>(null);
 
+  const [draftId, setDraftId] = useState<string | null>(null);
+  const [draftList, setDraftList] = useState<DraftListItem[]>([]);
+  const [draftNotice, setDraftNotice] = useState<string | null>(null);
+  const [draftError, setDraftError] = useState<string | null>(null);
+  const [savingDraft, setSavingDraft] = useState(false);
+  const [priceLoadingIds, setPriceLoadingIds] = useState<Set<string>>(
+    () => new Set()
+  );
+  const [inactiveProductIds, setInactiveProductIds] = useState<Set<string>>(
+    () => new Set()
+  );
+
   const idempotencyKeyRef = useRef<string | null>(null);
   const fingerprintForKeyRef = useRef<string>("");
+  const linesRef = useRef(lines);
+  linesRef.current = lines;
 
   function goToCaseDocuments(caseId: string) {
     router.replace(`/cases/${caseId}?tab=documents`);
@@ -106,21 +139,28 @@ export default function CaseRegistrationWizard() {
     }
   }
 
+  const refreshDraftList = useCallback(async () => {
+    const listed = await fetchCaseRegistrationDrafts();
+    if (listed.ok) setDraftList(listed.drafts);
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const [d, c, p, pkg] = await Promise.all([
+      const [d, c, p, pkg, s] = await Promise.all([
         fetchActiveDealers(),
         fetchActiveContractors(),
         fetchActiveProducts(),
         fetchActivePackages(),
+        fetchActiveSuppliers(),
       ]);
       if (cancelled) return;
       if (
         d.errorMessage ||
         c.errorMessage ||
         p.errorMessage ||
-        pkg.errorMessage
+        pkg.errorMessage ||
+        s.errorMessage
       ) {
         setMasterError("マスタの取得に失敗しました");
       }
@@ -128,11 +168,83 @@ export default function CaseRegistrationWizard() {
       setContractors(c.data);
       setProducts(p.data);
       setPackages(pkg.data);
+      setSuppliers(s.data);
+      await refreshDraftList();
     })();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [refreshDraftList]);
+
+  useEffect(() => {
+    const resumeId = searchParams.get("draft");
+    if (!resumeId) return;
+    let cancelled = false;
+    (async () => {
+      const loaded = await fetchCaseRegistrationDraft(resumeId);
+      if (cancelled || !loaded.ok || !loaded.payload) return;
+      setDraftId(loaded.draftId || resumeId);
+      setStep(loaded.payload.step);
+      setCaseForm(loaded.payload.caseForm);
+      setLines(loaded.payload.lines);
+      setSettlement(loaded.payload.settlement);
+      setDraftNotice("下書きを再開しました");
+
+      // inactive 商品を表示維持するため、候補に無い id を追加取得
+      const missingIds = loaded.payload.lines
+        .filter((l) => l.line_type === "PRODUCT" && l.product_id)
+        .map((l) => l.product_id)
+        .filter(Boolean);
+      if (missingIds.length) {
+        const { data } = await supabase
+          .from("products")
+          .select(
+            `
+            id, name, model_no, is_active, default_supplier_id, category,
+            manufacturers ( name ),
+            series:series_id ( name )
+          `
+          )
+          .in("id", missingIds);
+        const inactive = new Set<string>();
+        const extras: ProductOption[] = [];
+        for (const row of data || []) {
+          const id = String(row.id);
+          if (!isProductActiveFlag(row.is_active)) inactive.add(id);
+          const makers = row.manufacturers as
+            | { name: string | null }
+            | { name: string | null }[]
+            | null;
+          const maker = Array.isArray(makers) ? makers[0] : makers;
+          const series = row.series as
+            | { name: string | null }
+            | { name: string | null }[]
+            | null;
+          const seriesRow = Array.isArray(series) ? series[0] : series;
+          extras.push({
+            id,
+            name: (row.name as string | null) || "名称未設定",
+            model_no: (row.model_no as string | null) || null,
+            default_supplier_id:
+              (row.default_supplier_id as string | null) || null,
+            manufacturer_name: maker?.name || null,
+            category: (row.category as string | null) || null,
+            series_name: seriesRow?.name || null,
+          });
+        }
+        setInactiveProductIds(inactive);
+        if (extras.length) {
+          setProducts((prev) => {
+            const ids = new Set(prev.map((p) => p.id));
+            return [...prev, ...extras.filter((e) => !ids.has(e.id))];
+          });
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [searchParams]);
 
   function ensureIdempotencyKey(): string {
     const fp = registrationFingerprint(caseForm, lines, settlement);
@@ -151,6 +263,71 @@ export default function CaseRegistrationWizard() {
     setLines((prev) =>
       prev.map((line) => (line.local_id === localId ? { ...line, ...patch } : line))
     );
+  }
+
+  async function refreshPricesForLine(
+    localId: string,
+    line: LineDraft,
+    options?: { keepManualPurchase?: boolean }
+  ) {
+    setPriceLoadingIds((prev) => new Set(prev).add(localId));
+    try {
+      const prices = await resolveLinePrices({
+        client: supabase,
+        lineType: line.line_type,
+        productId: line.product_id,
+        packageId: line.package_id,
+        supplierId: line.supplier_id,
+        dealerId: caseForm.dealer_id,
+        asOfDate: caseForm.order_received_date,
+        keepManualPurchase: options?.keepManualPurchase === true,
+        currentPurchasePrice: line.purchase_price,
+      });
+      setLines((prev) =>
+        prev.map((l) => (l.local_id === localId ? { ...l, ...prices } : l))
+      );
+    } finally {
+      setPriceLoadingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(localId);
+        return next;
+      });
+    }
+  }
+
+  function handleProductSelected(localId: string, productId: string) {
+    const patch = buildProductLinePatch(productId, products, packages);
+    handleChangeLine(localId, patch);
+    const nextLine: LineDraft = {
+      ...(linesRef.current.find((l) => l.local_id === localId) || createEmptyLine()),
+      ...patch,
+      local_id: localId,
+      line_type: "PRODUCT",
+    };
+    void refreshPricesForLine(localId, nextLine, { keepManualPurchase: false });
+  }
+
+  function handlePackageSelected(localId: string, packageId: string) {
+    const patch = buildPackageLinePatch(packageId, products, packages);
+    handleChangeLine(localId, patch);
+    const nextLine: LineDraft = {
+      ...(linesRef.current.find((l) => l.local_id === localId) || createEmptyLine()),
+      ...patch,
+      local_id: localId,
+      line_type: "PACKAGE",
+    };
+    void refreshPricesForLine(localId, nextLine, { keepManualPurchase: false });
+  }
+
+  function handleSupplierSelected(localId: string, supplierId: string) {
+    const current =
+      linesRef.current.find((l) => l.local_id === localId) || createEmptyLine();
+    const patch = buildSupplierChangePatch(supplierId, current);
+    handleChangeLine(localId, patch);
+    const nextLine: LineDraft = { ...current, ...patch, supplier_id: supplierId };
+    void refreshPricesForLine(localId, nextLine, {
+      keepManualPurchase: current.purchase_price_is_manual,
+    });
   }
 
   function goStep2() {
@@ -175,6 +352,52 @@ export default function CaseRegistrationWizard() {
     setStep(4);
   }
 
+  function buildDraftPayload() {
+    return {
+      version: 1 as const,
+      step,
+      caseForm,
+      lines,
+      settlement,
+    };
+  }
+
+  async function handleSaveDraft() {
+    if (savingDraft || submitting || createdCaseId) return;
+    setSavingDraft(true);
+    setDraftError(null);
+    setDraftNotice(null);
+    try {
+      const result = await saveCaseRegistrationDraft({
+        draftId,
+        payload: buildDraftPayload(),
+      });
+      if (!result.ok || !result.draftId) {
+        setDraftError(result.error_message || "下書きを保存できませんでした");
+        return;
+      }
+      setDraftId(result.draftId);
+      setDraftNotice("下書きを保存しました");
+      await refreshDraftList();
+    } finally {
+      setSavingDraft(false);
+    }
+  }
+
+  async function handleDeleteDraft(id: string) {
+    if (!window.confirm("この下書きを削除しますか？")) return;
+    const result = await deleteCaseRegistrationDraft(id);
+    if (!result.ok) {
+      setDraftError(result.error_message || "削除に失敗しました");
+      return;
+    }
+    if (draftId === id) {
+      setDraftId(null);
+      setDraftNotice("下書きを削除しました（入力内容は画面に残っています）");
+    }
+    await refreshDraftList();
+  }
+
   async function handleSubmit() {
     if (submitting || uploadingAttachments || createdCaseId) return;
     const e1 = validateStep1(caseForm);
@@ -188,6 +411,20 @@ export default function CaseRegistrationWizard() {
     ) {
       setSubmitError("入力内容を確認してください");
       return;
+    }
+
+    // inactive 商品を含む下書きは確定不可
+    for (const line of lines) {
+      if (
+        line.line_type === "PRODUCT" &&
+        line.product_id &&
+        inactiveProductIds.has(line.product_id)
+      ) {
+        setSubmitError(
+          "利用停止中の商品が含まれています。差し替えてから登録してください。"
+        );
+        return;
+      }
     }
 
     setSubmitting(true);
@@ -206,7 +443,11 @@ export default function CaseRegistrationWizard() {
         setSubmitting(false);
         return;
       }
-      // 案件登録成功後は submitting を解除せず二重送信を防ぐ
+      // 正式登録成功後に下書き削除（失敗しても案件は残す）
+      if (draftId) {
+        await deleteCaseRegistrationDraft(draftId);
+        setDraftId(null);
+      }
       setCreatedCaseId(result.case_id);
       await runAttachmentUploads(result.case_id, attachmentDrafts);
     } catch {
@@ -227,12 +468,82 @@ export default function CaseRegistrationWizard() {
     await runAttachmentUploads(createdCaseId, reset);
   }
 
+  const productsForSelect = products.map((p) =>
+    inactiveProductIds.has(p.id)
+      ? {
+          ...p,
+          name: `${p.name}（利用停止）`,
+        }
+      : p
+  );
+
   return (
     <div className="mx-auto max-w-5xl px-4 py-6">
       <h1 className="mb-2 text-xl font-bold text-gray-900">案件登録</h1>
       <p className="mb-4 text-sm text-gray-600">
-        社内向け4ステップ登録です。商品／パッケージと数量を指定して登録します。保存はサーバー経由のみ行います。
+        社内向け4ステップ登録です。商品選択時に標準仕入先と仕入単価を表示し、必要なら変更できます。途中内容は下書き保存できます。
       </p>
+
+      <section className="mb-6 rounded-lg border border-gray-200 bg-white p-4">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-bold text-gray-900">下書き</h2>
+          <button
+            type="button"
+            onClick={() => void handleSaveDraft()}
+            disabled={savingDraft || submitting || Boolean(createdCaseId)}
+            className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm disabled:opacity-50"
+          >
+            {savingDraft ? "保存中…" : "下書き保存"}
+          </button>
+        </div>
+        {draftNotice ? (
+          <p className="mb-2 text-sm text-emerald-700">{draftNotice}</p>
+        ) : null}
+        {draftError ? (
+          <p className="mb-2 text-sm text-red-600">{draftError}</p>
+        ) : null}
+        {draftList.length === 0 ? (
+          <p className="text-sm text-gray-500">保存済みの下書きはありません。</p>
+        ) : (
+          <ul className="space-y-2 text-sm">
+            {draftList.map((d) => (
+              <li
+                key={d.id}
+                className="flex flex-wrap items-center justify-between gap-2 rounded border border-gray-100 px-3 py-2"
+              >
+                <div>
+                  <div className="font-medium text-gray-900">
+                    {d.customer_name_preview || "（顧客名未入力）"}
+                  </div>
+                  <div className="text-xs text-gray-500">
+                    STEP{d.current_step}まで · 更新{" "}
+                    {d.updated_at
+                      ? new Date(d.updated_at).toLocaleString("ja-JP")
+                      : "—"}
+                    {draftId === d.id ? " · 編集中" : ""}
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <a
+                    className="rounded border border-gray-300 px-2 py-1 text-xs"
+                    href={`/cases/new?draft=${d.id}`}
+                  >
+                    再開
+                  </a>
+                  <button
+                    type="button"
+                    className="rounded border border-red-200 px-2 py-1 text-xs text-red-700"
+                    onClick={() => void handleDeleteDraft(d.id)}
+                  >
+                    削除
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
       <StepChrome step={step} />
       {masterError ? (
         <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
@@ -254,14 +565,21 @@ export default function CaseRegistrationWizard() {
       {step === 2 ? (
         <Step2LinesForm
           lines={lines}
-          products={products}
+          products={productsForSelect}
           packages={packages}
+          suppliers={suppliers}
           formError={step2FormError}
           lineErrors={step2LineErrors}
+          priceLoadingIds={priceLoadingIds}
           onChangeLine={handleChangeLine}
+          onProductSelected={handleProductSelected}
+          onPackageSelected={handlePackageSelected}
+          onSupplierSelected={handleSupplierSelected}
           onAddLine={() => setLines((prev) => [...prev, createEmptyLine()])}
           onRemoveLine={(id) =>
-            setLines((prev) => (prev.length <= 1 ? prev : prev.filter((l) => l.local_id !== id)))
+            setLines((prev) =>
+              prev.length <= 1 ? prev : prev.filter((l) => l.local_id !== id)
+            )
           }
           onBack={() => setStep(1)}
           onNext={goStep3}
@@ -287,6 +605,7 @@ export default function CaseRegistrationWizard() {
             settlement_type: settlement.settlement_type,
           }}
           dealers={dealers}
+          suppliers={suppliers}
           products={products}
           packages={packages}
           attachmentDrafts={attachmentDrafts}
@@ -301,6 +620,8 @@ export default function CaseRegistrationWizard() {
           onContinueToCase={() => {
             if (createdCaseId) goToCaseDocuments(createdCaseId);
           }}
+          onSaveDraft={() => void handleSaveDraft()}
+          savingDraft={savingDraft}
         />
       ) : null}
     </div>

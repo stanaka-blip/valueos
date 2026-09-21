@@ -1,60 +1,25 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 /**
- * 案件登録 RPC クライアント（UI未接続。PR3 で /cases/new から利用予定）。
+ * 案件登録 RPC クライアント。
  *
- * ## payload JSON Schema（相当）
- *
- * ```json
- * {
- *   "request_id": "uuid",                 // 必須。冪等キー
- *   "case": {
- *     "dealer_id": "uuid",                // 必須
- *     "customer_name": "string",          // 必須
- *     "site_address": "string",           // 必須
- *     "order_received_date": "YYYY-MM-DD",// 必須。価格基準日
- *     "case_no": "string|null",
- *     "customer_phone": "string|null",
- *     "order_type": "string|null",
- *     "desired_delivery_date": "YYYY-MM-DD|null",
- *     "delivery_address": "string|null",
- *     "construction_desired_date": "YYYY-MM-DD|null",
- *     "construction_detail": "string|null",
- *     "assigned_user": "string|null",
- *     "memo": "string|null"
- *   },
- *   "settlement": {
- *     "settlement_type": "string"         // 必須
- *   },
- *   "lines": [
- *     {
- *       "line_type": "PRODUCT"|"PACKAGE",
- *       "product_id": "uuid|null",        // PRODUCT時必須
- *       "package_id": "uuid|null",        // PACKAGE時必須
- *       "supplier_id": "uuid|null",       // 任意（後方互換）。登録時は保存しない
- *       "quantity": number,               // 1..9999 整数
- *       "memo": "string|null",
- *       "display_name": "string|null"
- *     }
- *   ]
- * }
- * ```
- *
- * 仕入先・販売/仕入価格・価格ID・粗利は登録時に保存しない（NULL）。
- * 旧payloadの supplier_id は無視して成功する（後方互換）。
- * is_manual_price はクライアント入力として採用しない。
- * service role key は渡さない（publishable/anon クライアントのみ）。
+ * lines[].supplier_id / purchase_price / sales_price（単価）/ is_manual_price を渡し、
+ * RPC が case_products に snapshot 保存する（未指定は NULL 可。0円可）。
  */
 
 export type CaseRegistrationLineInput = {
   line_type: "PRODUCT" | "PACKAGE";
   product_id?: string | null;
   package_id?: string | null;
-  /** 後方互換用。RPCは登録時に保存しない */
   supplier_id?: string | null;
   quantity: number;
   memo?: string | null;
   display_name?: string | null;
+  /** 仕入単価。RPC 側で数量乗算して snapshot */
+  purchase_price?: number | null;
+  /** 販売単価。RPC 側で数量乗算して snapshot */
+  sales_price?: number | null;
+  is_manual_price?: boolean;
 };
 
 export type CaseRegistrationPayload = {
@@ -76,6 +41,9 @@ export type CaseRegistrationPayload = {
   };
   settlement: {
     settlement_type: string;
+    finance_company?: string | null;
+    approval_number?: string | null;
+    card_brand?: string | null;
   };
   lines: CaseRegistrationLineInput[];
 };
