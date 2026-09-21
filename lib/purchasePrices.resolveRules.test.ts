@@ -9,6 +9,7 @@ import {
   matchesActivePurchaseWindow,
   parsePurchaseUnitPrice,
   pickActivePurchaseUnitForTarget,
+  sumPackageComponentPurchaseUnitPrices,
   type ListPurchasePriceCandidate,
 } from "./purchasePrices";
 
@@ -166,6 +167,54 @@ check("pick: explicit 0 yen is valid", () => {
 check("pick: missing record => null", () => {
   const unit = pickActivePurchaseUnitForTarget([], PID, SUP, AS_OF);
   assert.equal(unit, null);
+});
+
+check("PACKAGE fallback sum: A×2 + B×1 = 40000", () => {
+  const map = new Map<string, number>([
+    ["A", 10000],
+    ["B", 20000],
+  ]);
+  assert.equal(
+    sumPackageComponentPurchaseUnitPrices(
+      [
+        { productId: "A", unitComponentQty: 2 },
+        { productId: "B", unitComponentQty: 1 },
+      ],
+      map
+    ),
+    40000
+  );
+});
+
+check("PACKAGE fallback: 0 yen component is valid", () => {
+  const map = new Map<string, number>([
+    ["A", 0],
+    ["B", 20000],
+  ]);
+  assert.equal(
+    sumPackageComponentPurchaseUnitPrices(
+      [
+        { productId: "A", unitComponentQty: 2 },
+        { productId: "B", unitComponentQty: 1 },
+      ],
+      map
+    ),
+    20000
+  );
+});
+
+check("PACKAGE fallback: missing component => null (no partial)", () => {
+  const map = new Map<string, number>([["A", 10000]]);
+  assert.equal(
+    sumPackageComponentPurchaseUnitPrices(
+      [
+        { productId: "A", unitComponentQty: 2 },
+        { productId: "B", unitComponentQty: 1 },
+      ],
+      map
+    ),
+    null
+  );
 });
 
 if (failed) {

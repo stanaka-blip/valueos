@@ -15,6 +15,9 @@ import {
 export const PRODUCT_INACTIVE_SELECT_MESSAGE =
   "この商品は利用停止中のため選択できません。";
 
+export const PACKAGE_INACTIVE_SELECT_MESSAGE =
+  "このパッケージは利用停止中のため登録できません。";
+
 /** products.is_active への書き込み値（string 契約） */
 export function toProductActiveDbValue(
   isActive: boolean
@@ -112,6 +115,59 @@ export function collectProductIdsFromCaseRegistrationLines(
     if (productId) ids.push(productId);
   }
   return ids;
+}
+
+/** 案件登録 lines から PACKAGE の package_id を抽出 */
+export function collectPackageIdsFromCaseRegistrationLines(
+  lines: unknown
+): string[] {
+  if (!Array.isArray(lines)) return [];
+  const ids: string[] = [];
+  for (const row of lines) {
+    if (!row || typeof row !== "object") continue;
+    const line = row as Record<string, unknown>;
+    const type =
+      typeof line.line_type === "string"
+        ? line.line_type.trim().toUpperCase()
+        : "";
+    if (type !== "PACKAGE") continue;
+    const packageId =
+      typeof line.package_id === "string" ? line.package_id.trim() : "";
+    if (packageId) ids.push(packageId);
+  }
+  return ids;
+}
+
+/**
+ * 新規選択の package_id が active か検証。
+ * allowedInactiveIds に含まれる既存紐付けは再保存を許可（案件登録 formal では空）。
+ */
+export function assertNewPackageSelectionsActive(
+  selectedPackageIds: readonly string[],
+  isActiveById: ReadonlyMap<string, unknown>,
+  allowedInactiveIds: ReadonlySet<string> = new Set()
+): { ok: true } | { ok: false; message: string; packageId: string } {
+  for (const rawId of selectedPackageIds) {
+    const id = (rawId || "").trim();
+    if (!id) continue;
+    if (allowedInactiveIds.has(id)) continue;
+    const flag = isActiveById.get(id);
+    if (flag === undefined) {
+      return {
+        ok: false,
+        message: PACKAGE_INACTIVE_SELECT_MESSAGE,
+        packageId: id,
+      };
+    }
+    if (!isProductActiveFlag(flag)) {
+      return {
+        ok: false,
+        message: PACKAGE_INACTIVE_SELECT_MESSAGE,
+        packageId: id,
+      };
+    }
+  }
+  return { ok: true };
 }
 
 /**

@@ -103,7 +103,7 @@ async function main() {
     "default supplier enforced for case registration",
     !validateStep2([noSupplierLine], { enforceDefaultSupplier: true }).ok &&
       validateStep2([noSupplierLine], { enforceDefaultSupplier: true }).lineErrors["l-nosup"]
-        ?.supplier_id === "標準仕入先が設定されていません"
+        ?.supplier_id === "仕入先を選択してください"
   );
   assert(
     "default supplier set passes enforce",
@@ -218,11 +218,11 @@ async function main() {
       bodyMaebarai.lines[1].supplier_id === "sup-package-1"
   );
   assert(
-    "gateway body omits prices",
-    !("sales_price" in bodyMaebarai.lines[0]) &&
-      !("purchase_price" in bodyMaebarai.lines[0]) &&
-      !("sales_price_id" in bodyMaebarai.lines[0]) &&
-      !("purchase_price_id" in bodyMaebarai.lines[0])
+    "gateway body includes prices (nullable)",
+    "sales_price" in bodyMaebarai.lines[0] &&
+      "purchase_price" in bodyMaebarai.lines[0] &&
+      bodyMaebarai.lines[0].purchase_price === null &&
+      bodyMaebarai.lines[0].sales_price === null
   );
   assert(
     "前金 settlement nulls details",
@@ -296,10 +296,10 @@ async function main() {
   assert("9 fingerprint stable", registrationFingerprint(ok1, [productLine], settleUri) === fp1);
   assert("9 fingerprint includes settlement detail", fp1 !== fp3 && fp3.includes("オリコ"));
   assert(
-    "9 fingerprint includes supplier_id, omits prices",
+    "9 fingerprint includes supplier_id and prices",
     fp1.includes("supplier_id") &&
       fp1.includes("sup-product-1") &&
-      !fp1.includes("sales_unit_price")
+      fp1.includes("purchase_price")
   );
   const fpSupplier = registrationFingerprint(
     ok1,

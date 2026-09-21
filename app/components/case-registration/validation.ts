@@ -2,6 +2,7 @@ import {
   buildCaseRegistrationConstructionDetail,
   buildCaseRegistrationMemo,
 } from "./caseRegistrationExtras";
+import { parseOptionalNonNegativePrice } from "./linePriceResolve";
 import type {
   CaseFormErrors,
   CaseFormState,
@@ -54,7 +55,11 @@ export function validateStep2(
       e.package_id = "パッケージを選択してください";
     }
     if (enforceDefaultSupplier && !line.supplier_id) {
-      e.supplier_id = "標準仕入先が設定されていません";
+      e.supplier_id = "仕入先を選択してください";
+    }
+    const purchaseParsed = parseOptionalNonNegativePrice(line.purchase_price);
+    if (!purchaseParsed.ok) {
+      e.purchase_price = "仕入単価は0円以上で入力してください";
     }
     const qtyRaw = String(line.quantity ?? "").trim();
     const qty = /^\d+$/.test(qtyRaw) ? Number(qtyRaw) : NaN;
@@ -167,15 +172,22 @@ export function buildGatewayBody(
       }),
     },
     settlement: buildSettlementPayload(settlement),
-    lines: lines.map((line) => ({
-      line_type: line.line_type,
-      product_id: line.line_type === "PRODUCT" ? line.product_id : null,
-      package_id: line.line_type === "PACKAGE" ? line.package_id : null,
-      supplier_id: line.supplier_id || null,
-      quantity: Number(line.quantity),
-      memo: line.memo.trim() || null,
-      display_name: line.display_name.trim() || null,
-    })),
+    lines: lines.map((line) => {
+      const purchase = parseOptionalNonNegativePrice(line.purchase_price);
+      const sales = parseOptionalNonNegativePrice(line.sales_price);
+      return {
+        line_type: line.line_type,
+        product_id: line.line_type === "PRODUCT" ? line.product_id : null,
+        package_id: line.line_type === "PACKAGE" ? line.package_id : null,
+        supplier_id: line.supplier_id || null,
+        quantity: Number(line.quantity),
+        memo: line.memo.trim() || null,
+        display_name: line.display_name.trim() || null,
+        purchase_price: purchase.ok ? purchase.value : null,
+        sales_price: sales.ok ? sales.value : null,
+        is_manual_price: line.purchase_price_is_manual === true,
+      };
+    }),
   };
 }
 

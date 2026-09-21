@@ -6,6 +6,7 @@ import type {
   DealerOption,
   PackageOption,
   ProductOption,
+  SupplierOption,
 } from "./masters";
 import { formatPackageLabel, formatProductLabel } from "./masters";
 import type {
@@ -21,6 +22,7 @@ type Props = {
   lines: LineDraft[];
   settlement: SettlementFormState & { settlement_type: SettlementType };
   dealers: DealerOption[];
+  suppliers: SupplierOption[];
   products: ProductOption[];
   packages: PackageOption[];
   attachmentDrafts: PendingAttachmentDraft[];
@@ -33,6 +35,8 @@ type Props = {
   onRetryFailedUploads?: () => void;
   onContinueToCase?: () => void;
   createdCaseId?: string | null;
+  onSaveDraft?: () => void;
+  savingDraft?: boolean;
 };
 
 export default function Step4ConfirmForm({
@@ -40,6 +44,7 @@ export default function Step4ConfirmForm({
   lines,
   settlement,
   dealers,
+  suppliers,
   products,
   packages,
   attachmentDrafts,
@@ -52,6 +57,8 @@ export default function Step4ConfirmForm({
   onRetryFailedUploads,
   onContinueToCase,
   createdCaseId,
+  onSaveDraft,
+  savingDraft,
 }: Props) {
   const dealerName = dealers.find((d) => d.id === caseForm.dealer_id)?.name || "—";
   const hasFailedUploads = attachmentDrafts.some((d) => d.status === "error");
@@ -185,13 +192,30 @@ export default function Step4ConfirmForm({
                 <div className="font-medium text-gray-900">
                   [{line.line_type}] {name}
                 </div>
-                <div className="mt-1 text-gray-600">数量: {line.quantity}</div>
+                <div className="mt-1 text-gray-600">
+                  数量: {line.quantity}
+                  {" · "}
+                  仕入先:{" "}
+                  {suppliers.find((s) => s.id === line.supplier_id)?.name ||
+                    "—"}
+                </div>
+                <div className="mt-1 text-gray-600">
+                  仕入単価:{" "}
+                  {line.purchase_price
+                    ? `${Number(line.purchase_price).toLocaleString("ja-JP")}円`
+                    : "未設定"}
+                  {" · "}
+                  販売単価:{" "}
+                  {line.sales_price
+                    ? `${Number(line.sales_price).toLocaleString("ja-JP")}円`
+                    : "未設定"}
+                </div>
               </li>
             );
           })}
         </ul>
         <p className="mt-3 text-xs text-gray-500">
-          単価の決定は発注工程で行います。
+          登録時に仕入先・単価を案件明細へスナップショット保存します（未設定はNULL）。
         </p>
       </section>
 
@@ -212,6 +236,16 @@ export default function Step4ConfirmForm({
           戻る
         </button>
         <div className="flex flex-wrap gap-2">
+          {onSaveDraft ? (
+            <button
+              type="button"
+              onClick={onSaveDraft}
+              disabled={busy || Boolean(createdCaseId) || savingDraft}
+              className="rounded-lg border border-gray-300 bg-white px-5 py-2.5 text-sm disabled:opacity-50"
+            >
+              {savingDraft ? "下書き保存中…" : "下書き保存"}
+            </button>
+          ) : null}
           {hasFailedUploads && onRetryFailedUploads ? (
             <button
               type="button"
