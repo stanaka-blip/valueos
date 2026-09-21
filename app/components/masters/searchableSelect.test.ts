@@ -9,6 +9,7 @@ import {
   buildProductCopyFormValues,
   buildProductSearchOption,
   DUPLICATE_MODEL_NO_MESSAGE,
+  DUPLICATE_MODEL_NO_WARNING,
   filterSearchableOptions,
   matchesSearchableQuery,
 } from "./searchableSelect";
@@ -53,10 +54,38 @@ check("D: メーカー名検索", () => {
 
 check("候補表示に型番・メーカーが含まれる", () => {
   assert.match(sample.primaryText, /CS-390N11/);
-  assert.match(sample.secondaryText || "", /長州産業/);
-  assert.match(sample.secondaryText || "", /蓄電池/);
+  assert.match(sample.primaryText, /長州産業/);
+  assert.match(sample.primaryText, /蓄電池/);
+  assert.match(sample.primaryText, /スマートPVマルチ/);
+  assert.match(sample.secondaryText || "", /Smart PV/);
   assert.match(sample.label, /スマートPVマルチ/);
   assert.match(sample.label, /CS-390N11/);
+});
+
+check("D: 同型番2件をメーカー・カテゴリで区別できる", () => {
+  const a = buildProductSearchOption({
+    id: "a",
+    name: "蓄電池本体",
+    model_no: "CB-P98M05A",
+    manufacturer_name: "長州産業",
+    category: "蓄電池",
+  });
+  const b = buildProductSearchOption({
+    id: "b",
+    name: "セット商品",
+    model_no: "CB-P98M05A",
+    manufacturer_name: "長州産業",
+    category: "セット商品",
+  });
+  assert.match(a.primaryText, /蓄電池/);
+  assert.match(b.primaryText, /セット商品/);
+  assert.notEqual(a.primaryText, b.primaryText);
+});
+
+check("Warning文言は登録継続を促す", () => {
+  assert.match(DUPLICATE_MODEL_NO_WARNING, /既に存在/);
+  assert.match(DUPLICATE_MODEL_NO_WARNING, /それでも登録/);
+  assert.equal(DUPLICATE_MODEL_NO_MESSAGE.includes("型番を変更"), true);
 });
 
 check("filter は limit を守る", () => {

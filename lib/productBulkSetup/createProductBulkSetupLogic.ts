@@ -109,7 +109,6 @@ export function validateCreateProductBulkSetupBody(
   }
 
   const products: ProductBulkProductInput[] = [];
-  const seenModels = new Set<string>();
 
   input.products.forEach((row, idx) => {
     if (!row || typeof row !== "object" || Array.isArray(row)) {
@@ -133,15 +132,8 @@ export function validateCreateProductBulkSetupBody(
     } else if (model_no.length > MAX_SHORT) {
       field_errors[`products.${idx}.model_no`] =
         `行${idx + 1}: 型番が長すぎます`;
-    } else {
-      const key = model_no.toLocaleLowerCase();
-      if (seenModels.has(key)) {
-        field_errors[`products.${idx}.model_no`] =
-          `行${idx + 1}: 同じ型番が複数行に入力されています`;
-      } else {
-        seenModels.add(key);
-      }
     }
+    // 同一型番の複数行・既存商品との重複は許可（Warning は UI。RPC も許可）。
 
     const name = typeof p.name === "string" ? p.name.trim() : "";
     if (!name) {

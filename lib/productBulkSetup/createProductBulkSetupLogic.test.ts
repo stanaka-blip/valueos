@@ -47,12 +47,8 @@ function ok(name: string) {
       { model_no: "dup", name: "B" },
     ],
   });
-  assert.equal(r.ok, false);
-  if (!r.ok) {
-    assert.match(r.error_message, /型番/);
-    assert.ok(r.field_errors?.["products.1.model_no"]);
-  }
-  ok("duplicate model_no rejected");
+  assert.equal(r.ok, true);
+  ok("duplicate model_no allowed in same batch");
 }
 
 {

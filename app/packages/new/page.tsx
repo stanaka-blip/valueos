@@ -19,6 +19,7 @@ type Product = {
   name: string | null;
   model_no: string | null;
   manufacturer_id: string | null;
+  category?: string | null;
 };
 type Line = { product_id: string; quantity: string };
 
@@ -49,7 +50,7 @@ export default function NewPackagePage() {
       const [m, s, p, suppliersRes] = await Promise.all([
         supabase.from("manufacturers").select("id, name").eq("is_active", true).order("name"),
         supabase.from("product_series").select("id, name, manufacturer_id").eq("is_active", true).order("name"),
-        supabase.from("products").select("id, name, model_no, manufacturer_id, is_active").order("name"),
+        supabase.from("products").select("id, name, model_no, manufacturer_id, category, is_active").order("name"),
         supabase.from("suppliers").select("id, name, is_active").order("name"),
       ]);
       setManufacturers((m.data as Manufacturer[]) || []);
@@ -87,6 +88,7 @@ export default function NewPackagePage() {
           id: p.id,
           name: p.name || "",
           model_no: p.model_no,
+          category: p.category || null,
         })
       ),
     [filteredProducts]
