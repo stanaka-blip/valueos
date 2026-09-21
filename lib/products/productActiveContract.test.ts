@@ -8,11 +8,14 @@ import { buildProductCopyFormValues } from "@/app/components/masters/searchableS
 import { isProductActiveFlag } from "@/app/products/productListQuery";
 
 import {
+  assertNewPackageSelectionsActive,
   assertNewProductSelectionsActive,
   buildPackageCompositionProductOption,
   collectNewOrderProductIds,
+  collectPackageIdsFromCaseRegistrationLines,
   collectProductIdsFromCaseRegistrationLines,
   filterProductsForPackageLineSelect,
+  PACKAGE_INACTIVE_SELECT_MESSAGE,
   PRODUCT_INACTIVE_SELECT_MESSAGE,
   toProductActiveDbValue,
 } from "./productActiveContract";
@@ -110,6 +113,31 @@ check("F: inactive商品を案件新規明細へ → rejectメッセージ", () 
   if (!guard.ok) {
     assert.equal(guard.message, PRODUCT_INACTIVE_SELECT_MESSAGE);
   }
+});
+
+check("J: inactive PACKAGE 正式登録 → reject", () => {
+  const ids = collectPackageIdsFromCaseRegistrationLines([
+    { line_type: "PRODUCT", product_id: "p1" },
+    { line_type: "PACKAGE", package_id: "inactive-pkg" },
+  ]);
+  assert.deepEqual(ids, ["inactive-pkg"]);
+  const guard = assertNewPackageSelectionsActive(
+    ids,
+    new Map([["inactive-pkg", "false"]])
+  );
+  assert.equal(guard.ok, false);
+  if (!guard.ok) {
+    assert.equal(guard.message, PACKAGE_INACTIVE_SELECT_MESSAGE);
+    assert.equal(guard.packageId, "inactive-pkg");
+  }
+});
+
+check("J2: active PACKAGE は通過", () => {
+  const guard = assertNewPackageSelectionsActive(
+    ["pkg-ok"],
+    new Map([["pkg-ok", true]])
+  );
+  assert.equal(guard.ok, true);
 });
 
 check("G: 既存案件のinactiveは編集保持（allow set）", () => {

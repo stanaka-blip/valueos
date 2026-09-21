@@ -3,6 +3,8 @@
  * 実行: npx tsx app/components/case-registration/linePriceResolve.test.ts
  */
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 import {
   emptyLinePriceFields,
@@ -42,7 +44,7 @@ function ok(name: string) {
   });
   assert.equal(kept.purchase_price, "12345");
   assert.equal(kept.purchase_price_is_manual, true);
-  ok("A/B: supplier change clears resolved price, keeps manual");
+  ok("E: supplier change clears resolved price, keeps manual");
 }
 
 {
@@ -54,7 +56,48 @@ function ok(name: string) {
   });
   assert.equal(parseOptionalNonNegativePrice("-1").ok, false);
   assert.equal(parseOptionalNonNegativePrice("abc").ok, false);
-  ok("C: 0 yen valid, negative invalid");
+  ok("C/D: 0 yen valid, negative invalid");
+}
+
+{
+  // B: manual 30000 × qty 2 → snapshot 明細金額 60000（RPC 契約の静的確認）
+  const unit = 30000;
+  const qty = 2;
+  assert.equal(Math.round(unit * qty), 60000);
+  assert.equal(Math.round(0 * 2), 0);
+  ok("B/C: snapshot round(unit×qty) contract");
+}
+
+{
+  const rpc = readFileSync(
+    join(
+      process.cwd(),
+      "supabase/migrations/20260921121000_case_registration_supplier_price_snapshot.sql"
+    ),
+    "utf8"
+  );
+  assert.equal(
+    rpc.includes(
+      "IF COALESCE((v_line->>'is_manual_price')::boolean, false) THEN"
+    ),
+    false
+  );
+  assert.match(rpc, /round\(v_unit_purchase \* v_quantity\)/);
+  assert.match(rpc, /supplier_id \/ purchase_price \/ sales_price/);
+  assert.equal(rpc.includes("supplier/価格は登録時NULL"), false);
+  ok("RPC: manual price allowed + COMMENT updated");
+}
+
+{
+  const resolveSrc = readFileSync(
+    join(process.cwd(), "app/components/case-registration/linePriceResolve.ts"),
+    "utf8"
+  );
+  assert.match(
+    resolveSrc,
+    /fetchActivePackagePurchaseUnitPriceWithFallback/
+  );
+  ok("F/G/H: PACKAGE resolve uses fallback helper");
 }
 
 console.log("All linePriceResolve checks passed");

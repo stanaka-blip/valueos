@@ -4,7 +4,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  * 案件登録 RPC クライアント。
  *
  * lines[].supplier_id / purchase_price / sales_price（単価）/ is_manual_price を渡し、
- * RPC が case_products に snapshot 保存する（未指定は NULL 可。0円可）。
+ * RPC が case_products に snapshot 保存する（未指定は NULL 可。0円可。
+ * is_manual_price は手入力メタで reject しない）。
  */
 
 export type CaseRegistrationLineInput = {

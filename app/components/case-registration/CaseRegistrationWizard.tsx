@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 
 import { supabase } from "@/lib/supabase";
 import { isProductActiveFlag } from "@/app/products/productListQuery";
+import { isPackageActiveFlag } from "@/app/packages/packageListQuery";
 import {
   fetchActiveContractors,
   fetchActiveDealers,
@@ -100,6 +101,9 @@ export default function CaseRegistrationWizard() {
   const [inactiveProductIds, setInactiveProductIds] = useState<Set<string>>(
     () => new Set()
   );
+  const [inactivePackageIds, setInactivePackageIds] = useState<Set<string>>(
+    () => new Set()
+  );
 
   const idempotencyKeyRef = useRef<string | null>(null);
   const fingerprintForKeyRef = useRef<string>("");
@@ -190,12 +194,12 @@ export default function CaseRegistrationWizard() {
       setSettlement(loaded.payload.settlement);
       setDraftNotice("下書きを再開しました");
 
-      // inactive 商品を表示維持するため、候補に無い id を追加取得
-      const missingIds = loaded.payload.lines
+      // inactive 商品/パッケージを表示維持するため、候補に無い id を追加取得
+      const missingProductIds = loaded.payload.lines
         .filter((l) => l.line_type === "PRODUCT" && l.product_id)
         .map((l) => l.product_id)
         .filter(Boolean);
-      if (missingIds.length) {
+      if (missingProductIds.length) {
         const { data } = await supabase
           .from("products")
           .select(
@@ -205,7 +209,7 @@ export default function CaseRegistrationWizard() {
             series:series_id ( name )
           `
           )
-          .in("id", missingIds);
+          .in("id", missingProductIds);
         const inactive = new Set<string>();
         const extras: ProductOption[] = [];
         for (const row of data || []) {
@@ -240,6 +244,37 @@ export default function CaseRegistrationWizard() {
           });
         }
       }
+
+      const missingPackageIds = loaded.payload.lines
+        .filter((l) => l.line_type === "PACKAGE" && l.package_id)
+        .map((l) => l.package_id)
+        .filter(Boolean);
+      if (missingPackageIds.length) {
+        const { data } = await supabase
+          .from("packages")
+          .select("id, name, package_code, is_active, default_supplier_id")
+          .in("id", missingPackageIds);
+        const inactive = new Set<string>();
+        const extras: PackageOption[] = [];
+        for (const row of data || []) {
+          const id = String(row.id);
+          if (!isPackageActiveFlag(row.is_active)) inactive.add(id);
+          extras.push({
+            id,
+            name: (row.name as string | null) || "名称未設定",
+            package_code: (row.package_code as string | null) || null,
+            default_supplier_id:
+              (row.default_supplier_id as string | null) || null,
+          });
+        }
+        setInactivePackageIds(inactive);
+        if (extras.length) {
+          setPackages((prev) => {
+            const ids = new Set(prev.map((p) => p.id));
+            return [...prev, ...extras.filter((e) => !ids.has(e.id))];
+          });
+        }
+      }
     })();
     return () => {
       cancelled = true;
@@ -256,7 +291,22 @@ export default function CaseRegistrationWizard() {
   }
 
   function handleCaseFormChange(next: CaseFormState) {
+    const prevDealerId = caseForm.dealer_id;
     setCaseForm(next);
+    // 販売単価は販売店×商品のため、販売店変更時に再 resolve（仕入手入力は維持）
+    if (next.dealer_id && next.dealer_id !== prevDealerId) {
+      for (const line of linesRef.current) {
+        if (
+          (line.line_type === "PRODUCT" && line.product_id) ||
+          (line.line_type === "PACKAGE" && line.package_id)
+        ) {
+          void refreshPricesForLine(line.local_id, line, {
+            keepManualPurchase: line.purchase_price_is_manual,
+            dealerId: next.dealer_id,
+          });
+        }
+      }
+    }
   }
 
   function handleChangeLine(localId: string, patch: Partial<LineDraft>) {
@@ -268,7 +318,7 @@ export default function CaseRegistrationWizard() {
   async function refreshPricesForLine(
     localId: string,
     line: LineDraft,
-    options?: { keepManualPurchase?: boolean }
+    options?: { keepManualPurchase?: boolean; dealerId?: string }
   ) {
     setPriceLoadingIds((prev) => new Set(prev).add(localId));
     try {
@@ -278,7 +328,7 @@ export default function CaseRegistrationWizard() {
         productId: line.product_id,
         packageId: line.package_id,
         supplierId: line.supplier_id,
-        dealerId: caseForm.dealer_id,
+        dealerId: options?.dealerId ?? caseForm.dealer_id,
         asOfDate: caseForm.order_received_date,
         keepManualPurchase: options?.keepManualPurchase === true,
         currentPurchasePrice: line.purchase_price,
@@ -413,7 +463,7 @@ export default function CaseRegistrationWizard() {
       return;
     }
 
-    // inactive 商品を含む下書きは確定不可
+    // inactive 商品/パッケージを含む下書きは確定不可
     for (const line of lines) {
       if (
         line.line_type === "PRODUCT" &&
@@ -422,6 +472,16 @@ export default function CaseRegistrationWizard() {
       ) {
         setSubmitError(
           "利用停止中の商品が含まれています。差し替えてから登録してください。"
+        );
+        return;
+      }
+      if (
+        line.line_type === "PACKAGE" &&
+        line.package_id &&
+        inactivePackageIds.has(line.package_id)
+      ) {
+        setSubmitError(
+          "利用停止中のパッケージが含まれています。差し替えてから登録してください。"
         );
         return;
       }
@@ -470,6 +530,15 @@ export default function CaseRegistrationWizard() {
 
   const productsForSelect = products.map((p) =>
     inactiveProductIds.has(p.id)
+      ? {
+          ...p,
+          name: `${p.name}（利用停止）`,
+        }
+      : p
+  );
+
+  const packagesForSelect = packages.map((p) =>
+    inactivePackageIds.has(p.id)
       ? {
           ...p,
           name: `${p.name}（利用停止）`,
@@ -566,7 +635,7 @@ export default function CaseRegistrationWizard() {
         <Step2LinesForm
           lines={lines}
           products={productsForSelect}
-          packages={packages}
+          packages={packagesForSelect}
           suppliers={suppliers}
           formError={step2FormError}
           lineErrors={step2LineErrors}
@@ -606,8 +675,8 @@ export default function CaseRegistrationWizard() {
           }}
           dealers={dealers}
           suppliers={suppliers}
-          products={products}
-          packages={packages}
+          products={productsForSelect}
+          packages={packagesForSelect}
           attachmentDrafts={attachmentDrafts}
           onAttachmentDraftsChange={setAttachmentDrafts}
           submitting={submitting}

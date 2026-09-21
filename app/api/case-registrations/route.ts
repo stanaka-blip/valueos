@@ -26,8 +26,11 @@ import {
   toSafeCaseRegistrationDto,
 } from "@/lib/gateway/safeDto";
 import {
+  assertNewPackageSelectionsActive,
   assertNewProductSelectionsActive,
+  collectPackageIdsFromCaseRegistrationLines,
   collectProductIdsFromCaseRegistrationLines,
+  PACKAGE_INACTIVE_SELECT_MESSAGE,
   PRODUCT_INACTIVE_SELECT_MESSAGE,
 } from "@/lib/products/productActiveContract";
 import {
@@ -300,6 +303,60 @@ export async function POST(request: NextRequest) {
             request_id: requestId,
             error_code: "INVALID_INPUT",
             error_message: PRODUCT_INACTIVE_SELECT_MESSAGE,
+          },
+          { status: 400 }
+        );
+      }
+    }
+
+    const packageIds = collectPackageIdsFromCaseRegistrationLines(
+      (payload as { lines?: unknown }).lines
+    );
+    if (packageIds.length > 0) {
+      const { data: packageRows, error: packageError } = await client
+        .from("packages")
+        .select("id, is_active")
+        .in("id", packageIds);
+      if (packageError) {
+        gatewayLog({
+          route: "case-registrations",
+          request_id: requestId,
+          error_code: "REGISTRATION_FAILED",
+          duration_ms: Date.now() - started,
+          ok: false,
+        });
+        return NextResponse.json(
+          {
+            ok: false,
+            status: "FAILED",
+            request_id: requestId,
+            error_code: "REGISTRATION_FAILED",
+            error_message: "登録を完了できませんでした",
+          },
+          { status: 502 }
+        );
+      }
+      const isActiveById = new Map(
+        ((packageRows || []) as { id: string; is_active: unknown }[]).map(
+          (row) => [row.id, row.is_active] as const
+        )
+      );
+      const guard = assertNewPackageSelectionsActive(packageIds, isActiveById);
+      if (!guard.ok) {
+        gatewayLog({
+          route: "case-registrations",
+          request_id: requestId,
+          error_code: "INVALID_INPUT",
+          duration_ms: Date.now() - started,
+          ok: false,
+        });
+        return NextResponse.json(
+          {
+            ok: false,
+            status: "FAILED",
+            request_id: requestId,
+            error_code: "INVALID_INPUT",
+            error_message: PACKAGE_INACTIVE_SELECT_MESSAGE,
           },
           { status: 400 }
         );

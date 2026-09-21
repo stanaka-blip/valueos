@@ -6,6 +6,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import {
+  fetchActivePackagePurchaseUnitPriceWithFallback,
   fetchActivePurchasePrice,
   parsePurchaseUnitPrice,
 } from "@/lib/purchasePrices";
@@ -62,6 +63,41 @@ export function patchOnSupplierChange(params: {
   };
 }
 
+async function resolvePurchaseUnitPrice(params: {
+  client: SupabaseClient;
+  lineType: LineType;
+  productId: string;
+  packageId: string;
+  supplierId: string;
+  asOfDate: string;
+}): Promise<{ found: boolean; unitPrice: number }> {
+  const { client, lineType, productId, packageId, supplierId, asOfDate } =
+    params;
+  if (!supplierId) return { found: false, unitPrice: 0 };
+
+  if (lineType === "PACKAGE") {
+    if (!packageId) return { found: false, unitPrice: 0 };
+    const purchase = await fetchActivePackagePurchaseUnitPriceWithFallback(
+      client,
+      {
+        packageId,
+        supplierId,
+        asOfDate: asOfDate || undefined,
+      }
+    );
+    return { found: purchase.found, unitPrice: purchase.unitPrice };
+  }
+
+  if (!productId) return { found: false, unitPrice: 0 };
+  const purchase = await fetchActivePurchasePrice(client, {
+    targetType: "PRODUCT",
+    productId,
+    supplierId,
+    asOfDate: asOfDate || undefined,
+  });
+  return { found: purchase.found, unitPrice: purchase.unitPrice };
+}
+
 export async function resolveLinePrices(params: {
   client: SupabaseClient;
   lineType: LineType;
@@ -94,12 +130,13 @@ export async function resolveLinePrices(params: {
     purchase_price = currentPurchasePrice;
     purchase_price_unset = false;
   } else if (supplierId) {
-    const purchase = await fetchActivePurchasePrice(client, {
-      targetType: lineType,
-      productId: lineType === "PRODUCT" ? productId : null,
-      packageId: lineType === "PACKAGE" ? packageId : null,
+    const purchase = await resolvePurchaseUnitPrice({
+      client,
+      lineType,
+      productId,
+      packageId,
       supplierId,
-      asOfDate: asOfDate || undefined,
+      asOfDate,
     });
     if (purchase.found) {
       purchase_price = formatYenInput(purchase.unitPrice);

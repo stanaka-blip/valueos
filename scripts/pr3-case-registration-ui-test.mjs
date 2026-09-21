@@ -107,6 +107,27 @@ assert("wizard has draft save", wizardSrc.includes("下書き保存") && wizardS
 assert("draft API route exists", existsSync(join(ROOT, "app/api/case-registration-drafts/route.ts")));
 assert("draft migration exists", existsSync(join(ROOT, "supabase/migrations/20260921120000_case_registration_drafts.sql")));
 assert("snapshot migration exists", existsSync(join(ROOT, "supabase/migrations/20260921121000_case_registration_supplier_price_snapshot.sql")));
+assert("snapshot RPC allows line manual price", (() => {
+  const sql = read("supabase/migrations/20260921121000_case_registration_supplier_price_snapshot.sql");
+  return (
+    !sql.includes("IF COALESCE((v_line->>'is_manual_price')::boolean, false) THEN") &&
+    sql.includes("round(v_unit_purchase * v_quantity)") &&
+    !sql.includes("supplier/価格は登録時NULL")
+  );
+})());
+assert("PACKAGE purchase fallback helper exists", (() => {
+  const src = read("lib/purchasePrices.ts");
+  return src.includes("fetchActivePackagePurchaseUnitPriceWithFallback");
+})());
+assert("wizard resumes inactive packages", wizardSrc.includes("inactivePackageIds") && wizardSrc.includes("packages"));
+assert("gateway rejects inactive packages", (() => {
+  const src = read("app/api/case-registrations/route.ts");
+  return (
+    src.includes("assertNewPackageSelectionsActive") &&
+    src.includes("PACKAGE_INACTIVE_SELECT_MESSAGE")
+  );
+})());
+assert("dealer change refreshes sales prices", wizardSrc.includes("dealer_id !== prevDealerId") || wizardSrc.includes("next.dealer_id !== prevDealerId"));
 assert("resolveDefaultSupplier does not use dealers/purchase_prices", (() => {
   const src = read("app/components/case-registration/resolveDefaultSupplier.ts");
   return !src.includes("dealers") && !src.includes("purchase_prices");
@@ -173,6 +194,7 @@ const allowedMig = migFiles.every(
     f.includes("case_registration_drafts") ||
     f.includes("case_registration_supplier_price_snapshot") ||
     f.includes("case-registration-drafts") ||
+    f.includes("case-registrations") ||
     f.includes("lib/cases/createCaseRegistration.ts") ||
     f.includes("lib/caseRegistrationDrafts/")
 );

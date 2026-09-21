@@ -1,6 +1,7 @@
 -- 現場改善 ⑦: 案件登録時に supplier_id / purchase_price / sales_price を snapshot 保存
 -- - 20260801160000 create_case_registration を CREATE OR REPLACE
 -- - payload.lines[].supplier_id / purchase_price / sales_price（単価）/ is_manual_price を採用
+-- - is_manual_price はメタ情報（reject しない）。自動・手入力とも snapshot 可
 -- - 金額スナップショットは round(単価 * 数量)。未指定は NULL（0円は有効）
 -- - 決済仕様・冪等・XOR・SECURITY INVOKER・EXECUTE=service_role は維持
 -- - destructive / backfill なし。Production 適用は別途判断
@@ -292,9 +293,8 @@ BEGIN
       IF v_line IS NULL OR jsonb_typeof(v_line) <> 'object' THEN
         RAISE EXCEPTION 'APP:INVALID_INPUT:明細が正しくありません';
       END IF;
-      IF COALESCE((v_line->>'is_manual_price')::boolean, false) THEN
-        RAISE EXCEPTION 'APP:INVALID_INPUT:手動価格は利用できません';
-      END IF;
+      -- is_manual_price はメタ情報（手入力フラグ）。reject しない。
+      -- 価格は下記 numeric 検証（>=0）と snapshot round(unit*qty) で扱う。
 
       v_line_type := upper(NULLIF(btrim(COALESCE(v_line->>'line_type', '')), ''));
       IF v_line_type IS NULL OR v_line_type NOT IN ('PRODUCT', 'PACKAGE') THEN
@@ -684,7 +684,7 @@ END;
 $$;
 
 COMMENT ON FUNCTION public.create_case_registration(jsonb) IS
-  '案件登録RPC。決済は前金/売掛/3社間決済/カード。明細はPRODUCT/PACKAGE+数量。supplier/価格は登録時NULL。EXECUTEはservice_roleのみ。';
+  '案件登録RPC。決済は前金/売掛/3社間決済/カード。明細はPRODUCT/PACKAGE+数量。lines[].supplier_id / purchase_price / sales_price（単価）を snapshot 保存（明細金額=round(単価×数量)、未指定のみNULL、0円可、is_manual_priceはメタ）。EXECUTEはservice_roleのみ。';
 
 REVOKE ALL ON FUNCTION public.create_case_registration(jsonb) FROM PUBLIC;
 

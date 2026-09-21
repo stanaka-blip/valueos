@@ -228,6 +228,108 @@ export async function fetchActivePurchasePrice(
   return { found: false, priceId: null, unitPrice: 0, error: null };
 }
 
+/**
+ * PACKAGE 構成品の仕入単価合計（同一仕入先の Map のみ渡す前提）。
+ * PR #144 applySupplierMasterUnitPrices / caseProductCardPricing と同じ契約:
+ * - 1品でも欠ければ null（部分合計禁止）
+ * - 0円は有効
+ * - 構成数量 × 単価を合算し Math.round
+ */
+export function sumPackageComponentPurchaseUnitPrices(
+  components: Array<{ productId: string; unitComponentQty: number }>,
+  unitPriceByProductId: Map<string, number>
+): number | null {
+  if (components.length === 0) return null;
+  let sum = 0;
+  for (const component of components) {
+    if (!component.productId || !(component.unitComponentQty > 0)) {
+      return null;
+    }
+    const unit = unitPriceByProductId.get(component.productId);
+    if (unit == null) return null;
+    sum += unit * component.unitComponentQty;
+  }
+  return Math.round(sum);
+}
+
+/**
+ * PACKAGE 仕入単価: PACKAGE マスタ優先 → 同一 supplier の構成 PRODUCT 合計 fallback。
+ * 既存 fetchActivePurchasePrice / fetchActivePurchaseUnitPrices を再利用。
+ */
+export async function fetchActivePackagePurchaseUnitPriceWithFallback(
+  client: SupabaseClient,
+  params: {
+    packageId: string;
+    supplierId: string;
+    asOfDate?: string;
+  }
+): Promise<ActivePurchasePriceLookupResult> {
+  const { packageId, supplierId } = params;
+  if (!packageId || !supplierId) {
+    return { found: false, priceId: null, unitPrice: 0, error: null };
+  }
+
+  const packagePrice = await fetchActivePurchasePrice(client, {
+    targetType: "PACKAGE",
+    packageId,
+    supplierId,
+    asOfDate: params.asOfDate,
+  });
+  if (packagePrice.error) return packagePrice;
+  if (packagePrice.found) return packagePrice;
+
+  const { data: itemRows, error: itemsError } = await client
+    .from("package_items")
+    .select("product_id, quantity, is_hidden")
+    .eq("package_id", packageId);
+
+  if (itemsError) {
+    return {
+      found: false,
+      priceId: null,
+      unitPrice: 0,
+      error: itemsError.message,
+    };
+  }
+
+  const components: Array<{ productId: string; unitComponentQty: number }> = [];
+  for (const row of itemRows || []) {
+    if (row.is_hidden === true) continue;
+    const productId = (row.product_id as string | null) || "";
+    const qty = Number(row.quantity);
+    if (!productId || !Number.isFinite(qty) || qty <= 0) continue;
+    components.push({ productId, unitComponentQty: qty });
+  }
+
+  if (components.length === 0) {
+    return { found: false, priceId: null, unitPrice: 0, error: null };
+  }
+
+  const productIds = components.map((c) => c.productId);
+  const batch = await fetchActivePurchaseUnitPrices(client, {
+    productIds,
+    supplierId,
+    asOfDate: params.asOfDate,
+  });
+  if (batch.error) {
+    return {
+      found: false,
+      priceId: null,
+      unitPrice: 0,
+      error: batch.error,
+    };
+  }
+
+  const unit = sumPackageComponentPurchaseUnitPrices(
+    components,
+    batch.unitPriceByProductId
+  );
+  if (unit == null) {
+    return { found: false, priceId: null, unitPrice: 0, error: null };
+  }
+  return { found: true, priceId: null, unitPrice: unit, error: null };
+}
+
 /** 単一商品の有効仕入単価を取得（既存互換・PRODUCT） */
 export async function fetchActivePurchaseUnitPrice(
   client: SupabaseClient,

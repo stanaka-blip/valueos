@@ -1,7 +1,5 @@
 "use client";
 
-import { useMemo } from "react";
-
 import SearchableSelect from "@/app/components/masters/SearchableSelect";
 import {
   buildPackageSearchOption,
@@ -82,17 +80,21 @@ export default function Step2LinesForm({
         })
       );
   }
-  const packageOptions = useMemo(
-    () =>
-      packages.map((p) =>
+
+  function packageOptionsForLine(line: LineDraft) {
+    return packages
+      .filter((p) => {
+        if (p.id === line.package_id) return true;
+        return !String(p.name || "").includes("（利用停止）");
+      })
+      .map((p) =>
         buildPackageSearchOption({
           id: p.id,
           name: p.name,
           package_code: p.package_code,
         })
-      ),
-    [packages]
-  );
+      );
+  }
 
   function applyLineType(localId: string, lineType: LineType) {
     onChangeLine(localId, {
@@ -275,7 +277,7 @@ export default function Step2LinesForm({
                       />
                     ) : (
                       <SearchableSelect
-                        options={packageOptions}
+                        options={packageOptionsForLine(line)}
                         value={line.package_id}
                         onChange={(id) => onPackageSelected(line.local_id, id)}
                         placeholder="パッケージ名・コードで検索"
