@@ -3,11 +3,17 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import SearchableSelect from "@/app/components/masters/SearchableSelect";
-import { buildProductSearchOption } from "@/app/components/masters/searchableSelect";
 import {
   assertNewProductSelectionsActive,
+  buildPackageCompositionProductOption,
+  filterProductsForPackageLineSelect,
   PRODUCT_INACTIVE_SELECT_MESSAGE,
 } from "@/lib/products/productActiveContract";
+import {
+  buildPackageCopyFormValues,
+  buildPackageCopyLines,
+  PACKAGE_COPY_NOTICE,
+} from "@/lib/packages/packageCopy";
 import { supabase } from "@/lib/supabase";
 import { isProductActiveFlag } from "@/app/products/productListQuery";
 
@@ -19,7 +25,8 @@ type Product = {
   name: string | null;
   model_no: string | null;
   manufacturer_id: string | null;
-  category?: string | null;
+  category: string | null;
+  is_active: unknown;
 };
 type Line = { product_id: string; quantity: string };
 
@@ -30,6 +37,13 @@ export default function NewPackagePage() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(false);
+  const [mastersLoaded, setMastersLoaded] = useState(false);
+  const [copyFromId, setCopyFromId] = useState("");
+  const [copyNotice, setCopyNotice] = useState("");
+  const [copyError, setCopyError] = useState("");
+  const [copyAllowedInactiveIds, setCopyAllowedInactiveIds] = useState<
+    Set<string>
+  >(() => new Set());
   const [form, setForm] = useState({
     manufacturer_id: "",
     series_id: "",
@@ -46,54 +60,129 @@ export default function NewPackagePage() {
   const [lines, setLines] = useState<Line[]>([{ product_id: "", quantity: "1" }]);
 
   useEffect(() => {
+    const id =
+      new URLSearchParams(window.location.search).get("copyFrom") || "";
+    setCopyFromId(id.trim());
+  }, []);
+
+  useEffect(() => {
     async function load() {
       const [m, s, p, suppliersRes] = await Promise.all([
-        supabase.from("manufacturers").select("id, name").eq("is_active", true).order("name"),
-        supabase.from("product_series").select("id, name, manufacturer_id").eq("is_active", true).order("name"),
-        supabase.from("products").select("id, name, model_no, manufacturer_id, category, is_active").order("name"),
+        supabase
+          .from("manufacturers")
+          .select("id, name")
+          .eq("is_active", true)
+          .order("name"),
+        supabase
+          .from("product_series")
+          .select("id, name, manufacturer_id")
+          .eq("is_active", true)
+          .order("name"),
+        supabase
+          .from("products")
+          .select("id, name, model_no, manufacturer_id, category, is_active")
+          .order("name"),
         supabase.from("suppliers").select("id, name, is_active").order("name"),
       ]);
       setManufacturers((m.data as Manufacturer[]) || []);
       setSeriesList((s.data as Series[]) || []);
       setProducts(
-        ((p.data as (Product & { is_active: boolean | string | null })[]) || []).filter(
-          (row) => isProductActiveFlag(row.is_active)
+        ((p.data as Product[]) || []).filter((row) =>
+          isProductActiveFlag(row.is_active)
         )
       );
       setSuppliers(
-        ((suppliersRes.data || []) as { id: string; name: string | null; is_active: unknown }[])
-          .filter((row) => row.is_active === true || row.is_active === "true" || row.is_active == null)
+        (
+          (suppliersRes.data || []) as {
+            id: string;
+            name: string | null;
+            is_active: unknown;
+          }[]
+        )
+          .filter(
+            (row) =>
+              row.is_active === true ||
+              row.is_active === "true" ||
+              row.is_active == null
+          )
           .map((row) => ({ id: row.id, name: row.name }))
       );
+      setMastersLoaded(true);
     }
     load();
   }, []);
+
+  useEffect(() => {
+    if (!copyFromId || !mastersLoaded) return;
+    let cancelled = false;
+    (async () => {
+      setCopyError("");
+      const [
+        { data: pkg, error: pkgError },
+        { data: items, error: itemsError },
+      ] = await Promise.all([
+        supabase
+          .from("packages")
+          .select(
+            "manufacturer_id, series_id, name, package_code, capacity, capacity_unit, system_type, warranty_years, memo, default_supplier_id, is_active"
+          )
+          .eq("id", copyFromId)
+          .maybeSingle(),
+        supabase
+          .from("package_items")
+          .select("product_id, quantity")
+          .eq("package_id", copyFromId)
+          .order("sort_order", { ascending: true }),
+      ]);
+      if (cancelled) return;
+      if (pkgError || itemsError || !pkg) {
+        setCopyError(
+          pkgError?.message ||
+            itemsError?.message ||
+            "複製元のパッケージが見つかりません。"
+        );
+        return;
+      }
+      const nextForm = buildPackageCopyFormValues(pkg);
+      const nextLines = buildPackageCopyLines(
+        (items || []) as {
+          product_id: string | null;
+          quantity: number | string | null;
+        }[]
+      );
+      const productIds = nextLines.map((l) => l.product_id).filter(Boolean);
+      const allowed = new Set(productIds);
+
+      if (productIds.length > 0) {
+        const { data: extraProducts } = await supabase
+          .from("products")
+          .select("id, name, model_no, manufacturer_id, category, is_active")
+          .in("id", productIds);
+        if (cancelled) return;
+        const extras = (extraProducts || []) as Product[];
+        setProducts((current) => {
+          const byId = new Map(current.map((p) => [p.id, p]));
+          for (const row of extras) {
+            byId.set(row.id, row);
+          }
+          return Array.from(byId.values());
+        });
+      }
+
+      setForm(nextForm);
+      setLines(nextLines);
+      setCopyAllowedInactiveIds(allowed);
+      setCopyNotice(PACKAGE_COPY_NOTICE);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [copyFromId, mastersLoaded]);
 
   const filteredSeries = useMemo(
     () => seriesList.filter((s) => s.manufacturer_id === form.manufacturer_id),
     [seriesList, form.manufacturer_id]
   );
-  const filteredProducts = useMemo(
-    () =>
-      products.filter(
-        (p) => !form.manufacturer_id || p.manufacturer_id === form.manufacturer_id
-      ),
-    [products, form.manufacturer_id]
-  );
-
-  const productSelectOptions = useMemo(
-    () =>
-      filteredProducts.map((p) =>
-        buildProductSearchOption({
-          id: p.id,
-          name: p.name || "",
-          model_no: p.model_no,
-          category: p.category || null,
-        })
-      ),
-    [filteredProducts]
-  );
-
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -101,7 +190,9 @@ export default function NewPackagePage() {
       alert("メーカーとパッケージ名は必須です");
       return;
     }
-    const validLines = lines.filter((l) => l.product_id && Number(l.quantity) > 0);
+    const validLines = lines.filter(
+      (l) => l.product_id && Number(l.quantity) > 0
+    );
     if (validLines.length > 0) {
       const productIds = Array.from(
         new Set(validLines.map((line) => line.product_id))
@@ -119,7 +210,11 @@ export default function NewPackagePage() {
           (row) => [row.id, row.is_active] as const
         )
       );
-      const guard = assertNewProductSelectionsActive(productIds, isActiveById);
+      const guard = assertNewProductSelectionsActive(
+        productIds,
+        isActiveById,
+        copyAllowedInactiveIds
+      );
       if (!guard.ok) {
         alert(guard.message || PRODUCT_INACTIVE_SELECT_MESSAGE);
         return;
@@ -136,7 +231,9 @@ export default function NewPackagePage() {
         capacity: form.capacity ? Number(form.capacity) : null,
         capacity_unit: form.capacity_unit || null,
         system_type: form.system_type.trim() || null,
-        warranty_years: form.warranty_years ? Number(form.warranty_years) : null,
+        warranty_years: form.warranty_years
+          ? Number(form.warranty_years)
+          : null,
         memo: form.memo.trim() || null,
         is_active: form.is_active,
         pricing_method: "fixed",
@@ -169,21 +266,37 @@ export default function NewPackagePage() {
     }
 
     setLoading(false);
-    router.push("/packages");
+    router.push(`/packages/${created.id}`);
     router.refresh();
   }
 
   return (
     <>
       <header className="border-b bg-white px-8 py-5">
-        <h1 className="text-2xl font-bold text-gray-900">パッケージ商品登録</h1>
-        <p className="text-sm text-gray-500">構成商品付きのパッケージを登録します</p>
+        <h1 className="text-2xl font-bold text-gray-900">
+          {copyFromId ? "パッケージを複製して新規登録" : "パッケージ商品登録"}
+        </h1>
+        <p className="text-sm text-gray-500">
+          {copyFromId
+            ? "元パッケージの内容を初期表示しています。確認・編集して新規登録してください。"
+            : "構成商品付きのパッケージを登録します"}
+        </p>
       </header>
       <main className="p-8">
         <form
           onSubmit={handleSubmit}
           className="mx-auto max-w-5xl space-y-6 rounded-xl bg-white p-8 shadow-sm"
         >
+          {copyNotice ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              {copyNotice}
+            </div>
+          ) : null}
+          {copyError ? (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+              {copyError}
+            </div>
+          ) : null}
           <div className="grid gap-5 md:grid-cols-2">
             <Field label="メーカー *">
               <select
@@ -209,7 +322,9 @@ export default function NewPackagePage() {
             <Field label="シリーズ">
               <select
                 value={form.series_id}
-                onChange={(e) => setForm((f) => ({ ...f, series_id: e.target.value }))}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, series_id: e.target.value }))
+                }
                 disabled={!form.manufacturer_id}
                 className="w-full rounded-lg border px-4 py-3 text-sm disabled:bg-gray-100"
               >
@@ -224,7 +339,9 @@ export default function NewPackagePage() {
             <Field label="パッケージ名 *">
               <input
                 value={form.name}
-                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, name: e.target.value }))
+                }
                 required
                 className="w-full rounded-lg border px-4 py-3 text-sm"
               />
@@ -243,7 +360,9 @@ export default function NewPackagePage() {
                 type="number"
                 step="0.1"
                 value={form.capacity}
-                onChange={(e) => setForm((f) => ({ ...f, capacity: e.target.value }))}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, capacity: e.target.value }))
+                }
                 className="w-full rounded-lg border px-4 py-3 text-sm"
               />
             </Field>
@@ -280,7 +399,10 @@ export default function NewPackagePage() {
               <select
                 value={form.default_supplier_id}
                 onChange={(e) =>
-                  setForm((f) => ({ ...f, default_supplier_id: e.target.value }))
+                  setForm((f) => ({
+                    ...f,
+                    default_supplier_id: e.target.value,
+                  }))
                 }
                 className="w-full rounded-lg border px-4 py-3 text-sm"
               >
@@ -300,7 +422,10 @@ export default function NewPackagePage() {
               <button
                 type="button"
                 onClick={() =>
-                  setLines((rows) => [...rows, { product_id: "", quantity: "1" }])
+                  setLines((rows) => [
+                    ...rows,
+                    { product_id: "", quantity: "1" },
+                  ])
                 }
                 className="rounded-lg border px-3 py-1.5 text-xs font-bold"
               >
@@ -308,46 +433,68 @@ export default function NewPackagePage() {
               </button>
             </div>
             <div className="space-y-3">
-              {lines.map((line, index) => (
-                <div key={index} className="grid gap-3 md:grid-cols-[1fr_120px_80px]">
-                  <SearchableSelect
-                    options={productSelectOptions}
-                    value={line.product_id}
-                    onChange={(id) =>
-                      setLines((rows) =>
-                        rows.map((r, i) =>
-                          i === index ? { ...r, product_id: id } : r
-                        )
-                      )
-                    }
-                    placeholder="型番・商品名で検索"
-                    unsetLabel="商品を検索して選択"
-                  />
-                  <input
-                    type="number"
-                    min="1"
-                    value={line.quantity}
-                    onChange={(e) =>
-                      setLines((rows) =>
-                        rows.map((r, i) =>
-                          i === index ? { ...r, quantity: e.target.value } : r
-                        )
-                      )
-                    }
-                    className="w-full rounded-lg border px-3 py-2 text-sm"
-                    placeholder="数量"
-                  />
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setLines((rows) => rows.filter((_, i) => i !== index))
-                    }
-                    className="rounded-lg border px-3 py-2 text-xs"
+              {lines.map((line, index) => {
+                const lineProducts = filterProductsForPackageLineSelect(
+                  products,
+                  line.product_id,
+                  form.manufacturer_id
+                );
+                const productSelectOptions = lineProducts.map((p) =>
+                  buildPackageCompositionProductOption({
+                    id: p.id,
+                    name: p.name || "",
+                    model_no: p.model_no,
+                    category: p.category || null,
+                    manufacturer_id: p.manufacturer_id,
+                    is_active: p.is_active,
+                  })
+                );
+                return (
+                  <div
+                    key={index}
+                    className="grid gap-3 md:grid-cols-[1fr_120px_80px]"
                   >
-                    削除
-                  </button>
-                </div>
-              ))}
+                    <SearchableSelect
+                      options={productSelectOptions}
+                      value={line.product_id}
+                      onChange={(id) =>
+                        setLines((rows) =>
+                          rows.map((r, i) =>
+                            i === index ? { ...r, product_id: id } : r
+                          )
+                        )
+                      }
+                      placeholder="型番・商品名で検索"
+                      unsetLabel="商品を検索して選択"
+                    />
+                    <input
+                      type="number"
+                      min="1"
+                      value={line.quantity}
+                      onChange={(e) =>
+                        setLines((rows) =>
+                          rows.map((r, i) =>
+                            i === index
+                              ? { ...r, quantity: e.target.value }
+                              : r
+                          )
+                        )
+                      }
+                      className="w-full rounded-lg border px-3 py-2 text-sm"
+                      placeholder="数量"
+                    />
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setLines((rows) => rows.filter((_, i) => i !== index))
+                      }
+                      className="rounded-lg border px-3 py-2 text-xs"
+                    >
+                      削除
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
@@ -355,7 +502,9 @@ export default function NewPackagePage() {
             <input
               type="checkbox"
               checked={form.is_active}
-              onChange={(e) => setForm((f) => ({ ...f, is_active: e.target.checked }))}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, is_active: e.target.checked }))
+              }
             />
             有効
           </label>

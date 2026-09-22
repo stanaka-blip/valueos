@@ -9,6 +9,7 @@ import {
   useState,
 } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import {
   PRICE_TARGET_OPTIONS,
@@ -184,10 +185,20 @@ export default function EditPurchasePricePage({
   return (
     <>
       <header className="border-b bg-white px-8 py-5">
-        <h1 className="text-2xl font-bold text-gray-900">仕入価格編集</h1>
-        <p className="text-sm text-gray-500">
-          価格改定・価格対象切替・内容更新ができます
-        </p>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">仕入価格編集</h1>
+            <p className="text-sm text-gray-500">
+              価格改定・価格対象切替・内容更新ができます
+            </p>
+          </div>
+          <Link
+            href={`/prices/new?copyFrom=${id}`}
+            className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-bold text-gray-800"
+          >
+            複製して新規登録
+          </Link>
+        </div>
       </header>
       <main className="p-8">
         <form

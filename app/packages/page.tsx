@@ -264,6 +264,10 @@ export default async function PackagesPage({
                               href: `/packages/${item.id}/edit`,
                             },
                             {
+                              label: "複製して新規登録",
+                              href: `/packages/new?copyFrom=${item.id}`,
+                            },
+                            {
                               label: "仕入価格を追加",
                               href: `/prices/new?package_id=${item.id}`,
                             },

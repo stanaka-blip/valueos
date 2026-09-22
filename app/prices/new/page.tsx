@@ -17,6 +17,10 @@ import {
   parsePriceNewPrefill,
 } from "@/lib/prices/parsePriceNewPrefill";
 import {
+  buildPurchasePriceCopyFormValues,
+  PURCHASE_PRICE_COPY_NOTICE,
+} from "@/lib/prices/priceCopy";
+import {
   PRICE_TARGET_OPTIONS,
   type PriceTargetType,
 } from "@/lib/prices/targetType";
@@ -91,9 +95,10 @@ export default function NewPricePage() {
 function NewPricePageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const copyFromId = (searchParams.get("copyFrom") || "").trim();
   const prefill = parsePriceNewPrefill({
-    product_id: searchParams.get("product_id"),
-    package_id: searchParams.get("package_id"),
+    product_id: copyFromId ? null : searchParams.get("product_id"),
+    package_id: copyFromId ? null : searchParams.get("package_id"),
   });
 
   const [products, setProducts] = useState<Product[]>([]);
@@ -106,6 +111,7 @@ function NewPricePageInner() {
   const [loadError, setLoadError] = useState("");
   const [submitError, setSubmitError] = useState("");
   const [prefillMissing, setPrefillMissing] = useState(false);
+  const [copyNotice, setCopyNotice] = useState("");
 
   const [form, setForm] = useState<PriceForm>({
     price_target_type: prefill.fromQuery ? prefill.price_target_type : "PRODUCT",
@@ -194,6 +200,61 @@ function NewPricePageInner() {
       let nextProducts = (productData || []) as unknown as Product[];
       let nextPackages = (packageData || []) as unknown as PackageRow[];
 
+      if (copyFromId) {
+        const { data: source, error: sourceError } = await supabase
+          .from("purchase_prices")
+          .select(
+            "price_target_type, product_id, package_id, supplier_id, purchase_price, start_date, end_date, memo, is_active"
+          )
+          .eq("id", copyFromId)
+          .maybeSingle();
+        if (sourceError || !source) {
+          setLoadError(
+            sourceError
+              ? `複製元仕入価格の取得に失敗しました：${sourceError.message}`
+              : "複製元の仕入価格が見つかりません。"
+          );
+          setInitialLoading(false);
+          return;
+        }
+        const copied = buildPurchasePriceCopyFormValues(source);
+        if (copied.price_target_type === "PRODUCT" && copied.product_id) {
+          if (!nextProducts.some((p) => p.id === copied.product_id)) {
+            const { data: one } = await supabase
+              .from("products")
+              .select(productSelect)
+              .eq("id", copied.product_id)
+              .maybeSingle();
+            if (one) {
+              nextProducts = [one as unknown as Product, ...nextProducts];
+            } else {
+              setPrefillMissing(true);
+            }
+          }
+        }
+        if (copied.price_target_type === "PACKAGE" && copied.package_id) {
+          if (!nextPackages.some((p) => p.id === copied.package_id)) {
+            const { data: one } = await supabase
+              .from("packages")
+              .select(packageSelect)
+              .eq("id", copied.package_id)
+              .maybeSingle();
+            if (one) {
+              nextPackages = [one as unknown as PackageRow, ...nextPackages];
+            } else {
+              setPrefillMissing(true);
+            }
+          }
+        }
+        setProducts(nextProducts);
+        setPackages(nextPackages);
+        setSuppliers((supplierData || []) as Supplier[]);
+        setForm(copied);
+        setCopyNotice(PURCHASE_PRICE_COPY_NOTICE);
+        setInitialLoading(false);
+        return;
+      }
+
       if (prefill.fromQuery && prefill.price_target_type === "PRODUCT") {
         if (!nextProducts.some((p) => p.id === prefill.product_id)) {
           const { data: one } = await supabase
@@ -239,7 +300,13 @@ function NewPricePageInner() {
     }
 
     fetchData();
-  }, [prefill.fromQuery, prefill.package_id, prefill.price_target_type, prefill.product_id]);
+  }, [
+    copyFromId,
+    prefill.fromQuery,
+    prefill.package_id,
+    prefill.price_target_type,
+    prefill.product_id,
+  ]);
 
   function handleChange(
     event: ChangeEvent<
@@ -428,8 +495,12 @@ function NewPricePageInner() {
   return (
     <>
       <PageHeader
-        title="価格登録"
-        description="商品またはパッケージ商品の仕入先別価格を登録します"
+        title={copyFromId ? "仕入価格を複製して新規登録" : "価格登録"}
+        description={
+          copyFromId
+            ? "元の仕入価格を初期表示しています。確認・編集して新規登録してください。"
+            : "商品またはパッケージ商品の仕入先別価格を登録します"
+        }
       />
 
       <main className="p-4 md:p-8">
@@ -448,6 +519,12 @@ function NewPricePageInner() {
             summary={prefillSummary}
             missing={prefill.fromQuery && prefillMissing}
           />
+
+          {copyNotice ? (
+            <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              {copyNotice}
+            </div>
+          ) : null}
 
           {submitError ? (
             <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">

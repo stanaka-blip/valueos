@@ -148,6 +148,12 @@ export default async function PackageDetailPage({
               編集
             </Link>
             <Link
+              href={`/packages/new?copyFrom=${id}`}
+              className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-bold text-gray-800"
+            >
+              複製して新規登録
+            </Link>
+            <Link
               href={`/prices/new?package_id=${id}`}
               className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-bold text-gray-800"
             >
