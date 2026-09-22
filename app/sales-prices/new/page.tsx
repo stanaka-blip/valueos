@@ -1,8 +1,12 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
+import SearchableSelect from "@/app/components/masters/SearchableSelect";
+import {
+  buildPackageSearchOption,
+} from "@/app/components/masters/searchableSelect";
 import PriceTargetPrefillBanner from "@/app/components/prices/PriceTargetPrefillBanner";
 import {
   buildPackagePriceSummary,
@@ -13,6 +17,8 @@ import {
   PRICE_TARGET_OPTIONS,
   type PriceTargetType,
 } from "@/lib/prices/targetType";
+import { buildPackageCompositionProductOption } from "@/lib/products/productActiveContract";
+import { isProductActiveFlag } from "@/app/products/productListQuery";
 import { supabase } from "@/lib/supabase";
 
 type Dealer = {
@@ -30,6 +36,8 @@ type Product = {
   name: string | null;
   model_no: string | null;
   category: string | null;
+  unit?: string | null;
+  is_active?: unknown;
   manufacturers: ManufacturerRelation;
 };
 
@@ -40,13 +48,14 @@ type PackageRow = {
   capacity: number | string | null;
   capacity_unit: string | null;
   system_type: string | null;
+  is_active?: unknown;
   manufacturers: ManufacturerRelation;
 };
 
 function manufacturerName(relation: ManufacturerRelation): string {
-  if (!relation) return "-";
-  if (Array.isArray(relation)) return relation[0]?.name || "-";
-  return relation.name || "-";
+  if (!relation) return "";
+  if (Array.isArray(relation)) return relation[0]?.name || "";
+  return relation.name || "";
 }
 
 export default function NewSalesPricePage() {
@@ -110,6 +119,8 @@ function NewSalesPricePageInner() {
             name,
             model_no,
             category,
+            unit,
+            is_active,
             manufacturers (
               name
             )
@@ -121,6 +132,7 @@ function NewSalesPricePageInner() {
             capacity,
             capacity_unit,
             system_type,
+            is_active,
             manufacturers (
               name
             )
@@ -287,6 +299,47 @@ function NewSalesPricePageInner() {
   const isProduct = form.price_target_type === "PRODUCT";
   const selectedProduct = products.find((p) => p.id === form.product_id);
   const selectedPackage = packages.find((p) => p.id === form.package_id);
+
+  const productSelectOptions = useMemo(
+    () =>
+      products.map((product) =>
+        buildPackageCompositionProductOption({
+          id: product.id,
+          name: product.name || "",
+          model_no: product.model_no,
+          category: product.category,
+          manufacturer_name: manufacturerName(product.manufacturers) || null,
+          is_active:
+            product.is_active === undefined ? true : product.is_active,
+        })
+      ),
+    [products]
+  );
+
+  const packageSelectOptions = useMemo(
+    () =>
+      packages.map((pkg) => {
+        const base = buildPackageSearchOption({
+          id: pkg.id,
+          name: pkg.name || "",
+          package_code: pkg.package_code,
+        });
+        if (
+          pkg.is_active === undefined ||
+          isProductActiveFlag(pkg.is_active)
+        ) {
+          return base;
+        }
+        return {
+          ...base,
+          label: `${base.label}（利用停止）`,
+          primaryText: `${base.primaryText}（利用停止）`,
+          searchText: `${base.searchText} 利用停止`,
+        };
+      }),
+    [packages]
+  );
+
   const prefillSummary =
     prefill.fromQuery && !prefillMissing
       ? isProduct && selectedProduct
@@ -364,45 +417,47 @@ function NewSalesPricePageInner() {
             </Field>
 
             {isProduct ? (
-              <Field label="商品">
-                <select
-                  name="product_id"
+              <Field
+                label="商品"
+                description="型番・商品名・メーカー・カテゴリで検索できます"
+              >
+                <SearchableSelect
+                  options={productSelectOptions}
                   value={form.product_id}
-                  onChange={handleChange}
-                  required
-                  className="w-full rounded-lg border px-4 py-3 text-sm"
-                >
-                  <option value="">商品を選択</option>
-                  {products.map((product) => (
-                    <option key={product.id} value={product.id}>
-                      {manufacturerName(product.manufacturers)} /{" "}
-                      {product.category || "-"} / {product.model_no || "-"} /{" "}
-                      {product.name || "-"}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(selectedId) =>
+                    setForm((current) => ({
+                      ...current,
+                      product_id: selectedId,
+                    }))
+                  }
+                  placeholder="型番・商品名・メーカーで検索"
+                  unsetLabel="商品を検索して選択"
+                  disabled={loading}
+                />
+                {selectedProduct?.unit ? (
+                  <p className="mt-1 text-xs text-gray-500">
+                    単位: {selectedProduct.unit}
+                  </p>
+                ) : null}
               </Field>
             ) : (
-              <Field label="パッケージ商品">
-                <select
-                  name="package_id"
+              <Field
+                label="パッケージ商品"
+                description="パッケージコード・名称で検索できます"
+              >
+                <SearchableSelect
+                  options={packageSelectOptions}
                   value={form.package_id}
-                  onChange={handleChange}
-                  required
-                  className="w-full rounded-lg border px-4 py-3 text-sm"
-                >
-                  <option value="">パッケージ商品を選択</option>
-                  {packages.map((pkg) => (
-                    <option key={pkg.id} value={pkg.id}>
-                      {manufacturerName(pkg.manufacturers)} /{" "}
-                      {pkg.system_type || "-"} /{" "}
-                      {pkg.capacity != null
-                        ? `${pkg.capacity}${pkg.capacity_unit || ""}`
-                        : "-"}{" "}
-                      / {pkg.package_code || "-"} / {pkg.name || "-"}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(selectedId) =>
+                    setForm((current) => ({
+                      ...current,
+                      package_id: selectedId,
+                    }))
+                  }
+                  placeholder="コード・名称で検索"
+                  unsetLabel="パッケージを検索して選択"
+                  disabled={loading}
+                />
               </Field>
             )}
 
@@ -476,15 +531,20 @@ function NewSalesPricePageInner() {
 
 function Field({
   label,
+  description,
   children,
 }: {
   label: string;
+  description?: string;
   children: React.ReactNode;
 }) {
   return (
-    <label className="block">
+    <div className="block">
       <p className="mb-2 text-sm font-bold text-gray-700">{label}</p>
+      {description ? (
+        <p className="mb-2 text-xs text-gray-500">{description}</p>
+      ) : null}
       {children}
-    </label>
+    </div>
   );
 }

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
+import { getProductUnitSelectOptions } from "@/lib/products/productUnits";
 import { supabase } from "@/lib/supabase";
 
 import {
@@ -385,14 +386,22 @@ export default function ProductSetupPage() {
                           />
                         </td>
                         <td className="px-2 py-2">
-                          <input
+                          <select
                             className={inputClass}
                             value={row.unit}
                             onChange={(e) =>
                               updateRow(row.key, { unit: e.target.value })
                             }
-                            placeholder="枚 / 台"
-                          />
+                          >
+                            <option value="">単位</option>
+                            {getProductUnitSelectOptions(row.unit).map(
+                              (unit) => (
+                                <option key={unit} value={unit}>
+                                  {unit}
+                                </option>
+                              )
+                            )}
+                          </select>
                         </td>
                         <td className="px-2 py-2">
                           <input
