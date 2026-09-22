@@ -18,6 +18,7 @@ import {
   withProductsReturnTo,
 } from "@/app/products/productListQuery";
 import { toProductActiveDbValue } from "@/lib/products/productActiveContract";
+import { getProductUnitSelectOptions } from "@/lib/products/productUnits";
 import { supabase } from "@/lib/supabase";
 
 type Manufacturer = {
@@ -361,7 +362,10 @@ export default function EditProductPage({
               />
             </Field>
 
-            <Field label="単位">
+            <Field
+              label="単位"
+              description="カテゴリに関係なく選択できます（例: PVでも枚 / kW）"
+            >
               <select
                 name="unit"
                 value={form.unit}
@@ -370,12 +374,11 @@ export default function EditProductPage({
                 className={inputClassName}
               >
                 <option value="">単位を選択</option>
-                <option value="台">台</option>
-                <option value="枚">枚</option>
-                <option value="個">個</option>
-                <option value="式">式</option>
-                <option value="kW">kW</option>
-                <option value="kWh">kWh</option>
+                {getProductUnitSelectOptions(form.unit).map((unit) => (
+                  <option key={unit} value={unit}>
+                    {unit}
+                  </option>
+                ))}
               </select>
             </Field>
 

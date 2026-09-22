@@ -6,27 +6,50 @@ import {
   ReactNode,
   use,
   useEffect,
+  useMemo,
   useState,
 } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase";
+
+import SearchableSelect from "@/app/components/masters/SearchableSelect";
+import { buildPackageSearchOption } from "@/app/components/masters/searchableSelect";
+import { isProductActiveFlag } from "@/app/products/productListQuery";
 import {
   PRICE_TARGET_OPTIONS,
   type PriceTargetType,
 } from "@/lib/prices/targetType";
+import { buildPackageCompositionProductOption } from "@/lib/products/productActiveContract";
+import { supabase } from "@/lib/supabase";
 
 type Dealer = { id: string; name: string | null };
+
+type ManufacturerRelation =
+  | { name: string | null }
+  | { name: string | null }[]
+  | null;
+
 type Product = {
   id: string;
   name: string | null;
   model_no: string | null;
   category: string | null;
+  unit: string | null;
+  is_active: unknown;
+  manufacturers: ManufacturerRelation;
 };
+
 type PackageRow = {
   id: string;
   name: string | null;
   package_code: string | null;
+  is_active: unknown;
 };
+
+function manufacturerName(relation: ManufacturerRelation): string {
+  if (!relation) return "";
+  if (Array.isArray(relation)) return relation[0]?.name || "";
+  return relation.name || "";
+}
 
 export default function EditSalesPricePage({
   params,
@@ -55,15 +78,26 @@ export default function EditSalesPricePage({
 
   useEffect(() => {
     async function load() {
+      const productSelect = `
+        id,
+        name,
+        model_no,
+        category,
+        unit,
+        is_active,
+        manufacturers ( name )
+      `;
+
       const [dRes, pRes, pkgRes, row] = await Promise.all([
         supabase.from("dealers").select("id, name").order("name"),
         supabase
           .from("products")
-          .select("id, name, model_no, category")
+          .select(productSelect)
+          .eq("is_active", true)
           .order("name"),
         supabase
           .from("packages")
-          .select("id, name, package_code")
+          .select("id, name, package_code, is_active")
           .eq("is_active", true)
           .order("name"),
         supabase.from("sales_prices").select("*").eq("id", id).maybeSingle(),
@@ -79,15 +113,49 @@ export default function EditSalesPricePage({
         setLoading(false);
         return;
       }
-      setDealers((dRes.data || []) as Dealer[]);
-      setProducts((pRes.data || []) as Product[]);
-      setPackages((pkgRes.data || []) as PackageRow[]);
+
+      let nextProducts = (pRes.data || []) as unknown as Product[];
+      let nextPackages = (pkgRes.data || []) as unknown as PackageRow[];
       const d = row.data;
+      const currentProductId = (d.product_id as string) || "";
+      const currentPackageId = (d.package_id as string) || "";
+
+      // PR #147: 既存選択が inactive でも表示維持
+      if (
+        currentProductId &&
+        !nextProducts.some((p) => p.id === currentProductId)
+      ) {
+        const { data: one } = await supabase
+          .from("products")
+          .select(productSelect)
+          .eq("id", currentProductId)
+          .maybeSingle();
+        if (one) {
+          nextProducts = [one as unknown as Product, ...nextProducts];
+        }
+      }
+      if (
+        currentPackageId &&
+        !nextPackages.some((p) => p.id === currentPackageId)
+      ) {
+        const { data: one } = await supabase
+          .from("packages")
+          .select("id, name, package_code, is_active")
+          .eq("id", currentPackageId)
+          .maybeSingle();
+        if (one) {
+          nextPackages = [one as unknown as PackageRow, ...nextPackages];
+        }
+      }
+
+      setDealers((dRes.data || []) as Dealer[]);
+      setProducts(nextProducts);
+      setPackages(nextPackages);
       setForm({
         dealer_id: (d.dealer_id as string) || "",
         price_target_type: (d.price_target_type as PriceTargetType) || "PRODUCT",
-        product_id: (d.product_id as string) || "",
-        package_id: (d.package_id as string) || "",
+        product_id: currentProductId,
+        package_id: currentPackageId,
         sales_price: d.sales_price != null ? String(d.sales_price) : "",
         start_date: (d.start_date as string) || "",
         end_date: (d.end_date as string) || "",
@@ -166,6 +234,43 @@ export default function EditSalesPricePage({
     router.refresh();
   }
 
+  const isProduct = form.price_target_type === "PRODUCT";
+  const selectedProduct = products.find((p) => p.id === form.product_id);
+
+  const productSelectOptions = useMemo(
+    () =>
+      products.map((product) =>
+        buildPackageCompositionProductOption({
+          id: product.id,
+          name: product.name || "",
+          model_no: product.model_no,
+          category: product.category,
+          manufacturer_name: manufacturerName(product.manufacturers) || null,
+          is_active: product.is_active,
+        })
+      ),
+    [products]
+  );
+
+  const packageSelectOptions = useMemo(
+    () =>
+      packages.map((pkg) => {
+        const base = buildPackageSearchOption({
+          id: pkg.id,
+          name: pkg.name || "",
+          package_code: pkg.package_code,
+        });
+        if (isProductActiveFlag(pkg.is_active)) return base;
+        return {
+          ...base,
+          label: `${base.label}（利用停止）`,
+          primaryText: `${base.primaryText}（利用停止）`,
+          searchText: `${base.searchText} 利用停止`,
+        };
+      }),
+    [packages]
+  );
+
   if (loading) {
     return (
       <main className="p-8">
@@ -173,8 +278,6 @@ export default function EditSalesPricePage({
       </main>
     );
   }
-
-  const isProduct = form.price_target_type === "PRODUCT";
 
   return (
     <>
@@ -225,36 +328,43 @@ export default function EditSalesPricePage({
               </select>
             </Field>
             {isProduct ? (
-              <Field label="商品" required>
-                <select
-                  name="product_id"
+              <Field
+                label="商品"
+                required
+                description="型番・商品名・メーカー・カテゴリで検索できます"
+              >
+                <SearchableSelect
+                  options={productSelectOptions}
                   value={form.product_id}
-                  onChange={handleChange}
-                  className={inputClassName}
-                >
-                  <option value="">商品を選択</option>
-                  {products.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.category || "-"} / {p.model_no || "-"} / {p.name || "-"}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(selectedId) =>
+                    setForm((f) => ({ ...f, product_id: selectedId }))
+                  }
+                  placeholder="型番・商品名・メーカーで検索"
+                  unsetLabel="商品を検索して選択"
+                  disabled={saving}
+                />
+                {selectedProduct?.unit ? (
+                  <p className="mt-1 text-xs text-gray-500">
+                    単位: {selectedProduct.unit}
+                  </p>
+                ) : null}
               </Field>
             ) : (
-              <Field label="パッケージ商品" required>
-                <select
-                  name="package_id"
+              <Field
+                label="パッケージ商品"
+                required
+                description="パッケージコード・名称で検索できます"
+              >
+                <SearchableSelect
+                  options={packageSelectOptions}
                   value={form.package_id}
-                  onChange={handleChange}
-                  className={inputClassName}
-                >
-                  <option value="">パッケージ商品を選択</option>
-                  {packages.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.package_code || "-"} / {p.name || "-"}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(selectedId) =>
+                    setForm((f) => ({ ...f, package_id: selectedId }))
+                  }
+                  placeholder="コード・名称で検索"
+                  unsetLabel="パッケージを検索して選択"
+                  disabled={saving}
+                />
               </Field>
             )}
             <Field label="販売価格" required>
@@ -312,10 +422,12 @@ const inputClassName =
 function Field({
   label,
   required,
+  description,
   children,
 }: {
   label: string;
   required?: boolean;
+  description?: string;
   children: ReactNode;
 }) {
   return (
@@ -324,6 +436,9 @@ function Field({
         {label}
         {required ? <span className="ml-1 text-red-600">*</span> : null}
       </p>
+      {description ? (
+        <p className="mt-1 text-xs text-gray-500">{description}</p>
+      ) : null}
       <div className="mt-2">{children}</div>
     </div>
   );
