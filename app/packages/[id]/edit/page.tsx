@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, use, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import SearchableSelect from "@/app/components/masters/SearchableSelect";
@@ -210,7 +211,15 @@ export default function EditPackagePage({
   return (
     <>
       <header className="border-b bg-white px-8 py-5">
-        <h1 className="text-2xl font-bold text-gray-900">パッケージ商品編集</h1>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <h1 className="text-2xl font-bold text-gray-900">パッケージ商品編集</h1>
+          <Link
+            href={`/packages/new?copyFrom=${id}`}
+            className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-bold text-gray-800"
+          >
+            複製して新規登録
+          </Link>
+        </div>
       </header>
       <main className="p-8">
         <form

@@ -29,6 +29,12 @@ export default function PriceActions({ id }: { id: string }) {
       >
         編集
       </Link>
+      <Link
+        href={`/prices/new?copyFrom=${id}`}
+        className="rounded-lg border border-gray-300 px-3 py-2 text-xs font-bold text-gray-800 hover:bg-gray-50"
+      >
+        複製して新規登録
+      </Link>
       <button
         type="button"
         onClick={onDelete}
