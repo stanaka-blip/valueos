@@ -313,6 +313,30 @@ test("売掛: 納品済だが納品日NULLは請求不可", () => {
   assert.ok(r.warnings.includes("納品日が登録されていません"));
 });
 
+test("売掛: 実納品日あり・status未更新でも請求可（納品タブと同契約）", () => {
+  const r = evaluate({
+    settlementType: "売掛",
+    orders: [
+      { id: "o1", status: "発注済", deliveredDate: "2026-07-10" },
+    ],
+  });
+  assert.equal(r.canInvoice, true);
+  assert.equal(r.billingClosingDate, "2026-07-31");
+  assert.equal(r.paymentDueDate, "2026-08-31");
+});
+
+test("売掛: キャンセル発注は完納判定から除外", () => {
+  const r = evaluate({
+    settlementType: "売掛",
+    orders: [
+      { id: "o1", status: "発注済", deliveredDate: "2026-07-10" },
+      { id: "o2", status: "キャンセル", deliveredDate: null },
+    ],
+  });
+  assert.equal(r.canInvoice, true);
+  assert.equal(r.paymentDueDate, "2026-08-31");
+});
+
 // ---------------------------------------------------------------------------
 // 【カード】
 // ---------------------------------------------------------------------------

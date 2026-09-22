@@ -1,4 +1,10 @@
 import { isActiveOrderStatus } from "@/lib/status/activeRecords";
+import {
+  areAllOrdersDeliveredForInvoice,
+  getOrderDeliveredDate,
+  hasDeliveredMissingDate,
+  isOrderDelivered,
+} from "@/lib/orders/deliveryStatus";
 import { endOfMonth, endOfNextMonth } from "@/lib/workflow/dates";
 import { isPaymentConfirmedFromBilling } from "@/lib/workflow/paymentConfirmation";
 import type {
@@ -13,42 +19,35 @@ export function activeOrders(
   return orders.filter((o) => isActiveOrderStatus(o.status));
 }
 
-function hasDeliveredDate(order: WorkflowOrderInput): boolean {
-  return Boolean((order.deliveredDate || "").trim());
-}
-
-/** 案件内の全発注が status=納品済 か（日付の有無は見ない） */
+/**
+ * 案件内の全有効発注が「納品済扱い」か（日付の有無は見ない）。
+ * 納品タブの isOrderDelivered と同契約（実納品日のみでも可）。
+ */
 export function areAllOrderStatusesDelivered(
   orders: readonly WorkflowOrderInput[]
 ): boolean {
   const list = activeOrders(orders);
   if (list.length === 0) return false;
-  return list.every((o) => (o.status || "").trim() === "納品済");
+  return list.every((o) => isOrderDelivered(o));
 }
 
 /**
  * 案件内の全発注が請求トリガー条件を満たすか。
- * - status = 納品済
- * - delivered_date が存在
+ * - 納品タブと同じ isOrderDelivered（status=納品済 OR delivered_date）
+ * - かつ delivered_date が存在（支払期限計算のため）
  * 発注0件は未達。
  */
 export function areAllOrdersDelivered(
   orders: readonly WorkflowOrderInput[]
 ): boolean {
-  const list = activeOrders(orders);
-  if (list.length === 0) return false;
-  return list.every(
-    (o) => (o.status || "").trim() === "納品済" && hasDeliveredDate(o)
-  );
+  return areAllOrdersDeliveredForInvoice(orders);
 }
 
-/** status=納品済 なのに delivered_date が無い発注があるか */
+/** 納品済扱いなのに delivered_date が無い発注があるか */
 export function hasDeliveredStatusMissingDate(
   orders: readonly WorkflowOrderInput[]
 ): boolean {
-  return activeOrders(orders).some(
-    (o) => (o.status || "").trim() === "納品済" && !hasDeliveredDate(o)
-  );
+  return hasDeliveredMissingDate(orders);
 }
 
 /** 全発注が納品済のときの請求トリガー日 = 納品日の最大 */
@@ -57,7 +56,7 @@ export function allOrdersDeliveredTriggerDate(
 ): string | null {
   if (!areAllOrdersDelivered(orders)) return null;
   const dates = activeOrders(orders)
-    .map((o) => (o.deliveredDate || "").trim())
+    .map((o) => getOrderDeliveredDate(o))
     .filter(Boolean)
     .sort();
   return dates.length > 0 ? dates[dates.length - 1] : null;
