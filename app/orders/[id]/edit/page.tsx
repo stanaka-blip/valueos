@@ -26,6 +26,7 @@ import {
   resolveDeliveredDate,
 } from "@/app/orders/orderConstants";
 import { formatYen, isUuid, toNumber } from "@/app/orders/orderUtils";
+import { parseOrderQuantity } from "@/app/cases/[id]/buildOrderLines";
 import {
   displayIdentityValue,
   resolveProductIdentity,
@@ -547,8 +548,10 @@ export default function EditOrderPage() {
         setSubmitError("追加した明細はメーカー・製品/型番を選択してください。");
         return;
       }
-      if (toNumber(line.quantity) <= 0) {
-        setSubmitError("数量は1以上で入力してください。");
+      if (parseOrderQuantity(line.quantity) == null) {
+        setSubmitError(
+          "数量は0より大きい数値で入力してください（小数可）。"
+        );
         return;
       }
       if (toNumber(line.unit_price) < 0) {
@@ -985,8 +988,8 @@ export default function EditOrderPage() {
                         <td className="px-3 py-3">
                           <input
                             type="number"
-                            min="1"
-                            step="1"
+                            min="0.001"
+                            step="any"
                             value={line.quantity}
                             onChange={(e) =>
                               handleLineChange(

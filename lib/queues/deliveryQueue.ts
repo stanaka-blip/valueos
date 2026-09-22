@@ -2,15 +2,16 @@
  * 納品管理キュー（/queues/deliveries）の純関数。
  * DB I/O なし。表示対象判定・並び・件数ラベル。
  *
- * 納品済み判定は案件詳細 CaseDetailView.getDeliveryStatus と同趣旨:
- * delivered_date あり、または status === "納品済"。
- * （Workflow の areAllOrdersDelivered は請求用に日付必須だが、ここでは変更しない）
+ * 納品済み判定は lib/orders/deliveryStatus.isOrderDelivered と同一契約。
  */
 
 import {
   isActiveCaseStatus,
   isActiveOrderStatus,
 } from "@/lib/status/activeRecords";
+import {
+  isOrderDelivered as isOrderDeliveredShared,
+} from "@/lib/orders/deliveryStatus";
 
 export type DeliveryQueueOrderInput = {
   id: string;
@@ -43,16 +44,13 @@ export type DeliveryQueueRow = {
   confirmHref: string;
 };
 
-/** CaseDetailView.getDeliveryStatus の「納品済」条件と同趣旨 */
+/** @deprecated import from @/lib/orders/deliveryStatus — 互換 re-export */
 export function isOrderDelivered(order: {
   status?: string | null;
   delivered_date?: string | null;
   deliveredDate?: string | null;
 }): boolean {
-  const status = (order.status || "").trim();
-  if (status === "納品済") return true;
-  const date = (order.delivered_date ?? order.deliveredDate ?? "").trim();
-  return Boolean(date);
+  return isOrderDeliveredShared(order);
 }
 
 export function activeOrdersForDelivery<T extends { status?: string | null }>(

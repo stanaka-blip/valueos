@@ -55,7 +55,7 @@ export function evaluateWorkflow(ctx: WorkflowContext): WorkflowResult {
     paymentDueDate = dates.paymentDueDate;
     if (!canInvoice) {
       if (hasDeliveredStatusMissingDate(ctx.orders)) {
-        // status=納品済 だが delivered_date 欠損 → 請求不可
+        // 納品済扱いだが delivered_date 欠損 → 請求不可（支払期限計算不可）
         warnings.push("納品日が登録されていません");
       } else if (!areAllOrderStatusesDelivered(ctx.orders)) {
         warnings.push(

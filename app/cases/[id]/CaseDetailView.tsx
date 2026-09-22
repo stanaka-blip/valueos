@@ -6,6 +6,7 @@ import { ReactNode, useMemo, useState } from "react";
 import StatusSelect from "../StatusSelect";
 import TaskStatusSelect from "../../tasks/TaskStatusSelect";
 import type { WorkflowResult } from "@/lib/workflow";
+import { isOrderDelivered } from "@/lib/orders/deliveryStatus";
 
 import type { ThreePartyMoneyView } from "@/lib/threeParty/loadThreePartyMoneyAdmin";
 import {
@@ -596,7 +597,12 @@ function getDeliveryStatus(order: OrderRow): DeliveryStatusLabel {
   if (order.status === "キャンセル" || order.status === "取消") {
     return "対象外";
   }
-  if (order.deliveredDate || order.status === "納品済") {
+  if (
+    isOrderDelivered({
+      status: order.status,
+      deliveredDate: order.deliveredDate,
+    })
+  ) {
     return "納品済";
   }
   const today = getTodayString();

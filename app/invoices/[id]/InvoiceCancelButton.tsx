@@ -3,12 +3,17 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { resolveCaseStatusAfterInvoiceCancel } from "@/lib/cases/caseStatusGuards";
 import { assertInvoiceCancelAllowed } from "@/lib/invoices/invoiceEditGuards";
-import { isActivePaymentStatus } from "@/lib/status/activeRecords";
+import {
+  isActiveInvoiceStatus,
+  isActivePaymentStatus,
+} from "@/lib/status/activeRecords";
 import { supabase } from "@/lib/supabase";
 
 type SettlementRow = { status: string | null };
 type PaymentRow = { status: string | null };
+type InvoiceStatusRow = { id: string; status: string | null };
 
 function formatRpcError(message: string) {
   const match = message.match(/^APP:[A-Z_]+:([\s\S]+)$/);
@@ -18,6 +23,7 @@ function formatRpcError(message: string) {
 /**
  * 請求取消（物理DELETEなし。status='取消'）。
  * クライアント直接 UPDATE 禁止。cancel_invoice RPC のみ。
+ * 有効請求が0件になった場合、案件ステータス「請求済」を「納品済」へ戻す。
  */
 export default function InvoiceCancelButton({
   invoiceId,
@@ -69,7 +75,7 @@ export default function InvoiceCancelButton({
       }
 
       const hasActivePayments = ((payments || []) as PaymentRow[]).some((p) =>
-        isActivePaymentStatus(p.status),
+        isActivePaymentStatus(p.status)
       );
 
       const guardError = assertInvoiceCancelAllowed({
@@ -89,6 +95,39 @@ export default function InvoiceCancelButton({
       if (rpcError) {
         setError(`請求の取消に失敗しました：${formatRpcError(rpcError.message)}`);
         return;
+      }
+
+      if (caseId) {
+        const { data: caseRow } = await supabase
+          .from("cases")
+          .select("status")
+          .eq("id", caseId)
+          .maybeSingle();
+
+        const { data: siblingInvoices } = await supabase
+          .from("invoices")
+          .select("id, status")
+          .eq("case_id", caseId);
+
+        const remainingActiveCount = (
+          (siblingInvoices || []) as InvoiceStatusRow[]
+        ).filter((inv) => isActiveInvoiceStatus(inv.status)).length;
+
+        const nextStatus = resolveCaseStatusAfterInvoiceCancel({
+          currentCaseStatus: (caseRow as { status?: string } | null)?.status,
+          remainingActiveInvoiceCount: remainingActiveCount,
+        });
+        if (nextStatus) {
+          const { error: caseError } = await supabase
+            .from("cases")
+            .update({ status: nextStatus })
+            .eq("id", caseId);
+          if (caseError) {
+            window.alert(
+              `請求は取消されましたが、案件ステータスの更新に失敗しました。\n${caseError.message}`
+            );
+          }
+        }
       }
 
       router.refresh();
