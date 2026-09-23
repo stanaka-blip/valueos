@@ -248,102 +248,73 @@ export async function deleteManufacturerMaster(
 
 /**
  * パッケージ物理削除（未使用時のみ）。
- * package_items は構成専用行のため本体削除前に明示削除
- * （既存 FK に ON DELETE CASCADE が無い契約）。
- * 案件・価格・請求などの業務参照がある場合は IN_USE。
+ * DB RPC `delete_unused_package` で FOR UPDATE → 参照確認 →
+ * package_items / packages 削除を同一トランザクションで実行する。
+ * 途中失敗時は package_items も ROLLBACK（partial failure 禁止）。
  * 新規 CASCADE 追加はしない。価格履歴・案件履歴は削除しない。
  */
+export function parseDeleteUnusedPackageRpcResult(
+  data: unknown
+): MasterDeleteResult {
+  const raw = (data || {}) as {
+    ok?: unknown;
+    error_code?: unknown;
+    error_message?: unknown;
+  };
+  if (raw.ok === true) return { ok: true };
+
+  const code = typeof raw.error_code === "string" ? raw.error_code : "";
+  const message =
+    typeof raw.error_message === "string" && raw.error_message.trim()
+      ? raw.error_message
+      : "削除に失敗しました";
+
+  if (code === "NOT_FOUND" || code === "IN_USE" || code === "DELETE_FAILED") {
+    return {
+      ok: false,
+      error_code: code,
+      error_message: message,
+    };
+  }
+  return {
+    ok: false,
+    error_code: "DELETE_FAILED",
+    error_message: message,
+  };
+}
+
 export async function deletePackageMaster(
   id: string,
   client?: SupabaseClient
 ): Promise<MasterDeleteResult> {
   try {
     const db = await adminDb(client);
-    const { data: row, error } = await db
-      .from("packages")
-      .select("id")
-      .eq("id", id)
-      .maybeSingle();
-    if (error) throw error;
-    if (!row) {
-      return {
-        ok: false,
-        error_code: "NOT_FOUND",
-        error_message: "パッケージが見つかりません",
-      };
-    }
-
-    if ((await countEq(db, "case_products", "package_id", id)) > 0) {
-      return {
-        ok: false,
-        error_code: "IN_USE",
-        error_message:
-          "このパッケージは既存データで使用されているため削除できません。利用停止してください。",
-      };
-    }
-    if ((await countEq(db, "case_packages", "package_id", id)) > 0) {
-      return {
-        ok: false,
-        error_code: "IN_USE",
-        error_message:
-          "このパッケージは既存データで使用されているため削除できません。利用停止してください。",
-      };
-    }
-    if ((await countEq(db, "purchase_prices", "package_id", id)) > 0) {
-      return {
-        ok: false,
-        error_code: "IN_USE",
-        error_message:
-          "このパッケージは既存データで使用されているため削除できません。利用停止してください。",
-      };
-    }
-    if ((await countEq(db, "sales_prices", "package_id", id)) > 0) {
-      return {
-        ok: false,
-        error_code: "IN_USE",
-        error_message:
-          "このパッケージは既存データで使用されているため削除できません。利用停止してください。",
-      };
-    }
-    // invoice_line_items.source_package_id は FK 無しのスナップショット参照。
-    // Migration 未適用時は skip。
-    if (
-      (await countEqOptionalTable(
-        db,
-        "invoice_line_items",
-        "source_package_id",
-        id
-      )) > 0
-    ) {
-      return {
-        ok: false,
-        error_code: "IN_USE",
-        error_message:
-          "このパッケージは既存データで使用されているため削除できません。利用停止してください。",
-      };
-    }
-
-    const { error: itemsError } = await db
-      .from("package_items")
-      .delete()
-      .eq("package_id", id);
-    if (itemsError) {
+    const { data, error } = await db.rpc("delete_unused_package", {
+      p_package_id: id,
+    });
+    if (error) {
+      const message = String(error.message || "").toLowerCase();
+      const code = String(error.code || "");
+      // Migration 未適用時は明確に案内（途中削除は発生しない）
+      if (
+        code === "PGRST202" ||
+        message.includes("could not find the function") ||
+        message.includes("delete_unused_package")
+      ) {
+        return {
+          ok: false,
+          error_code: "CONFIG_ERROR",
+          error_message:
+            "パッケージ削除RPCが未適用です。管理者に migration 適用を依頼してください。",
+        };
+      }
       return {
         ok: false,
         error_code: "DELETE_FAILED",
-        error_message: itemsError.message || "削除に失敗しました",
+        error_message: error.message || "削除に失敗しました",
       };
     }
-
-    const { error: delError } = await db.from("packages").delete().eq("id", id);
-    if (delError) {
-      return {
-        ok: false,
-        error_code: "DELETE_FAILED",
-        error_message: delError.message || "削除に失敗しました",
-      };
-    }
-    return { ok: true };
+    return parseDeleteUnusedPackageRpcResult(data);
   } catch (e) {
     if (isConfigError(e)) {
       return {
