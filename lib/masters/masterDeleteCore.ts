@@ -77,7 +77,7 @@ function inUse(label: string): MasterDeleteResult {
   return {
     ok: false,
     error_code: "IN_USE",
-    error_message: `${label}で使用されているため削除できません`,
+    error_message: `このマスタは既存データ（${label}）で使用されているため削除できません。利用停止してください。`,
   };
 }
 

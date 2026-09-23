@@ -92,6 +92,7 @@ async function main() {
     if (!result.ok) {
       assert.equal(result.error_code, "IN_USE");
       assert.match(result.error_message, /案件/);
+      assert.match(result.error_message, /利用停止/);
     }
     assert.equal(client.deleted.length, 0);
     console.log("OK dealer in use by cases");

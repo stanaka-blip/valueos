@@ -151,6 +151,15 @@ export default async function DealersPage() {
                             label: "編集",
                             href: `/dealers/${dealer.id}/edit`,
                           },
+                          {
+                            label: "削除",
+                            delete: {
+                              kind: "dealer",
+                              id: dealer.id,
+                              name: dealer.name || "",
+                              listHref: "/dealers",
+                            },
+                          },
                         ]}
                       />
                     </td>

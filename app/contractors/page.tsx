@@ -125,6 +125,15 @@ export default async function ContractorsPage() {
                               label: "編集",
                               href: `/contractors/${row.id}/edit`,
                             },
+                            {
+                              label: "削除",
+                              delete: {
+                                kind: "contractor",
+                                id: row.id,
+                                name: row.name || "",
+                                listHref: "/contractors",
+                              },
+                            },
                           ]}
                         />
                       </td>

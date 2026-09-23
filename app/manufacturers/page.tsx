@@ -84,6 +84,15 @@ export default async function ManufacturersPage() {
                             label: "編集",
                             href: `/manufacturers/${item.id}/edit`,
                           },
+                          {
+                            label: "削除",
+                            delete: {
+                              kind: "manufacturer",
+                              id: item.id,
+                              name: item.name || "",
+                              listHref: "/manufacturers",
+                            },
+                          },
                         ]}
                       />
                     </td>
