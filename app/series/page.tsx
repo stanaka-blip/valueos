@@ -1,4 +1,5 @@
 import Link from "next/link";
+import MasterListRowActions from "@/app/components/masters/MasterListRowActions";
 import { supabase } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
@@ -85,12 +86,15 @@ export default async function SeriesPage() {
                         )}
                       </td>
                       <td className="px-5 py-4 text-center">
-                        <Link
-                          href={`/series/${item.id}/edit`}
-                          className="rounded-lg bg-gray-900 px-3 py-2 text-xs font-bold text-white"
-                        >
-                          編集
-                        </Link>
+                        <MasterListRowActions
+                          label={item.name || "シリーズ"}
+                          items={[
+                            {
+                              label: "編集",
+                              href: `/series/${item.id}/edit`,
+                            },
+                          ]}
+                        />
                       </td>
                     </tr>
                   );

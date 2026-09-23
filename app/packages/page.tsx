@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabase";
 
 import MasterListRowActions from "@/app/components/masters/MasterListRowActions";
 
+import PackageActiveToggleButton from "./PackageActiveToggleButton";
 import PackageListSearchForm from "./PackageListSearchForm";
 import {
   filterPackageListRows,
@@ -14,6 +15,7 @@ import {
   sortPackageListRows,
   type PackageListRow,
 } from "./packageListQuery";
+import { packageStatusBadgeClass, packageStatusLabel } from "./packageActiveStatus";
 
 export const dynamic = "force-dynamic";
 
@@ -245,15 +247,9 @@ export default async function PackagesPage({
                         {formatYen(currentPurchase)}
                       </td>
                       <td className="px-5 py-4">
-                        {item.is_active ? (
-                          <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-bold text-green-700">
-                            有効
-                          </span>
-                        ) : (
-                          <span className="rounded-full bg-gray-200 px-3 py-1 text-xs font-bold text-gray-700">
-                            停止
-                          </span>
-                        )}
+                        <span className={packageStatusBadgeClass(item.is_active)}>
+                          {packageStatusLabel(item.is_active)}
+                        </span>
                       </td>
                       <td className="px-5 py-4 text-center">
                         <MasterListRowActions
@@ -274,6 +270,26 @@ export default async function PackagesPage({
                             {
                               label: "販売価格を追加",
                               href: `/sales-prices/new?package_id=${item.id}`,
+                            },
+                            { separator: true },
+                            {
+                              node: (
+                                <PackageActiveToggleButton
+                                  packageId={item.id}
+                                  packageLabel={item.name || "パッケージ"}
+                                  isActive={item.is_active}
+                                  variant="menuitem"
+                                />
+                              ),
+                            },
+                            {
+                              label: "削除",
+                              delete: {
+                                kind: "package",
+                                id: item.id,
+                                name: item.name || "",
+                                listHref: "/packages",
+                              },
                             },
                           ]}
                         />

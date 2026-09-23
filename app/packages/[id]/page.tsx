@@ -1,8 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import MasterDeleteButton from "@/app/components/masters/MasterDeleteButton";
 import MasterPricePanels from "@/app/components/prices/MasterPricePanels";
 import { supabase } from "@/lib/supabase";
+
+import PackageActiveToggleButton from "../PackageActiveToggleButton";
+import { packageStatusBadgeClass, packageStatusLabel } from "../packageActiveStatus";
 
 export const dynamic = "force-dynamic";
 
@@ -165,6 +169,17 @@ export default async function PackageDetailPage({
             >
               販売価格を追加
             </Link>
+            <PackageActiveToggleButton
+              packageId={id}
+              packageLabel={pkg.name || "パッケージ"}
+              isActive={pkg.is_active}
+            />
+            <MasterDeleteButton
+              kind="package"
+              id={id}
+              name={pkg.name || ""}
+              listHref="/packages"
+            />
           </div>
         </div>
       </header>
@@ -200,15 +215,9 @@ export default async function PackageDetailPage({
             <div>
               <dt className="text-gray-500">状態</dt>
               <dd>
-                {pkg.is_active ? (
-                  <span className="rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-bold text-green-700">
-                    有効
-                  </span>
-                ) : (
-                  <span className="rounded-full bg-gray-200 px-2.5 py-0.5 text-xs font-bold text-gray-700">
-                    停止
-                  </span>
-                )}
+                <span className={packageStatusBadgeClass(pkg.is_active)}>
+                  {packageStatusLabel(pkg.is_active)}
+                </span>
               </dd>
             </div>
             {pkg.system_type ? (

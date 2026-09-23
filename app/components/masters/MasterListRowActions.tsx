@@ -1,7 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useId, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+} from "react";
 import { useRouter } from "next/navigation";
 
 import {
@@ -22,6 +28,18 @@ export type MasterListRowActionItem =
         name: string;
         listHref: string;
       };
+    }
+  | {
+      label: string;
+      onClick: () => void | Promise<void>;
+      /** 危険操作（削除など）。赤系表示 */
+      danger?: boolean;
+    }
+  | {
+      separator: true;
+    }
+  | {
+      node: ReactNode;
     };
 
 type Props = {
@@ -40,10 +58,22 @@ async function fetchCsrf(): Promise<string | null> {
   return res.ok && data.csrfToken ? data.csrfToken : null;
 }
 
+function deleteConfirmMessage(kind: MasterKind, display: string): string {
+  const irreversible =
+    kind === "dealer"
+      ? "この販売店を完全に削除します。\nこの操作は元に戻せません。"
+      : kind === "contractor"
+        ? "この施工店を完全に削除します。\nこの操作は元に戻せません。"
+        : kind === "package"
+          ? "このパッケージ商品を完全に削除します。\nこの操作は元に戻せません。"
+          : "このメーカーを完全に削除します。\nこの操作は元に戻せません。";
+  return `${irreversible}\n\n対象: 「${display}」\n\n参照中の場合は削除できず、利用停止を案内します。`;
+}
+
 /**
  * マスタ一覧の操作列用 ⋯ メニュー。
  * 詳細導線は行内リンク側に置き、ここでは編集・削除など副次操作。
- * 削除は管理者のみ表示（/api/auth/me）。
+ * マスタ物理削除は管理者のみ表示（/api/auth/me）。
  */
 export default function MasterListRowActions({ items, label }: Props) {
   const router = useRouter();
@@ -107,7 +137,25 @@ export default function MasterListRowActions({ items, label }: Props) {
     return true;
   });
 
-  if (visibleItems.length === 0) return null;
+  // 先頭・末尾・連続の separator を落とす
+  const menuItems: MasterListRowActionItem[] = [];
+  for (const item of visibleItems) {
+    if ("separator" in item && item.separator) {
+      if (menuItems.length === 0) continue;
+      const last = menuItems[menuItems.length - 1];
+      if (last && "separator" in last && last.separator) continue;
+      menuItems.push(item);
+      continue;
+    }
+    menuItems.push(item);
+  }
+  while (menuItems.length > 0) {
+    const last = menuItems[menuItems.length - 1];
+    if (!(last && "separator" in last && last.separator)) break;
+    menuItems.pop();
+  }
+
+  if (menuItems.length === 0) return null;
 
   async function runDelete(opts: {
     kind: MasterKind;
@@ -117,17 +165,7 @@ export default function MasterListRowActions({ items, label }: Props) {
   }) {
     const kindLabel = MASTER_KIND_LABELS[opts.kind];
     const display = opts.name.trim() || kindLabel;
-    const irreversible =
-      opts.kind === "dealer"
-        ? "この販売店を完全に削除します。\nこの操作は元に戻せません。"
-        : opts.kind === "contractor"
-          ? "この施工店を完全に削除します。\nこの操作は元に戻せません。"
-          : "このメーカーを完全に削除します。\nこの操作は元に戻せません。";
-    if (
-      !window.confirm(
-        `${irreversible}\n\n対象: 「${display}」\n\n参照中の場合は削除できず、利用停止を案内します。`
-      )
-    ) {
+    if (!window.confirm(deleteConfirmMessage(opts.kind, display))) {
       return;
     }
 
@@ -187,7 +225,23 @@ export default function MasterListRowActions({ items, label }: Props) {
           role="menu"
           className="absolute right-0 z-20 mt-1 min-w-[11rem] rounded-lg border border-gray-200 bg-white py-1 shadow-md"
         >
-          {visibleItems.map((item, index) => {
+          {menuItems.map((item, index) => {
+            if ("separator" in item && item.separator) {
+              return (
+                <div
+                  key={`sep-${index}`}
+                  className="my-1 border-t border-gray-100"
+                  role="separator"
+                />
+              );
+            }
+            if ("node" in item && item.node) {
+              return (
+                <div key={`node-${index}`} role="none">
+                  {item.node}
+                </div>
+              );
+            }
             if ("href" in item && item.href) {
               return (
                 <Link
@@ -199,6 +253,26 @@ export default function MasterListRowActions({ items, label }: Props) {
                 >
                   {item.label}
                 </Link>
+              );
+            }
+            if ("onClick" in item && item.onClick) {
+              return (
+                <button
+                  key={`click-${item.label}-${index}`}
+                  type="button"
+                  role="menuitem"
+                  className={
+                    item.danger
+                      ? "block w-full px-3 py-2 text-left text-sm font-medium text-red-700 hover:bg-red-50"
+                      : "block w-full px-3 py-2 text-left text-sm text-gray-800 hover:bg-gray-50"
+                  }
+                  onClick={() => {
+                    setOpen(false);
+                    void item.onClick();
+                  }}
+                >
+                  {item.label}
+                </button>
               );
             }
             if ("delete" in item && item.delete) {

@@ -10,7 +10,12 @@ import { gatewayLog } from "@/lib/gateway/safeDto";
 
 export const runtime = "nodejs";
 
-const KINDS = new Set<MasterKind>(["dealer", "contractor", "manufacturer"]);
+const KINDS = new Set<MasterKind>([
+  "dealer",
+  "contractor",
+  "manufacturer",
+  "package",
+]);
 
 /**
  * マスタ物理削除（管理者のみ）。
