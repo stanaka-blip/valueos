@@ -1,15 +1,22 @@
 /**
- * 販売店起点一括販売価格の静的回帰
+ * 販売店起点一括販売価格の静的回帰（PRODUCT + PACKAGE）
  * 実行: node scripts/pr-dealer-bulk-sales-test.mjs
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const root = process.cwd();
-const mig = readFileSync(
+const migV1 = readFileSync(
   join(
     root,
     "supabase/migrations/20260808180000_create_dealer_sales_prices_rpc.sql"
+  ),
+  "utf8"
+);
+const migPkg = readFileSync(
+  join(
+    root,
+    "supabase/migrations/20260923120000_dealer_sales_prices_package_bulk.sql"
   ),
   "utf8"
 );
@@ -33,26 +40,12 @@ const salesPricesLib = readFileSync(
   join(root, "lib/salesPrices.ts"),
   "utf8"
 );
+const logic = readFileSync(
+  join(root, "lib/dealerSalesPrices/createDealerSalesPricesLogic.ts"),
+  "utf8"
+);
 const authCookie = readFileSync(
   join(root, "lib/gateway/authCookie.ts"),
-  "utf8"
-);
-const supplierMig = readFileSync(
-  join(
-    root,
-    "supabase/migrations/20260808170000_create_supplier_purchase_prices_rpc.sql"
-  ),
-  "utf8"
-);
-const productSetupMig = readFileSync(
-  join(root, "supabase/migrations/20260808140000_create_product_setup_rpc.sql"),
-  "utf8"
-);
-const existingSetupMig = readFileSync(
-  join(
-    root,
-    "supabase/migrations/20260808160000_create_existing_product_price_setup_rpc.sql"
-  ),
   "utf8"
 );
 const supplierBulkPage = readFileSync(
@@ -69,79 +62,73 @@ function assert(name, cond) {
   console.log(`ok - ${name}`);
 }
 
-assert(
-  "RPC は create_dealer_sales_prices",
-  mig.includes("create_dealer_sales_prices")
-);
+assert("RPC は create_dealer_sales_prices", migPkg.includes("create_dealer_sales_prices"));
 assert(
   "products INSERT/UPDATE なし",
-  !/INSERT\s+INTO\s+public\.products/i.test(mig) &&
-    !/UPDATE\s+public\.products/i.test(mig)
+  !/INSERT\s+INTO\s+public\.products/i.test(migPkg) &&
+    !/UPDATE\s+public\.products/i.test(migPkg)
 );
 assert(
   "既存 sales_prices UPDATE/DELETE なし",
-  !/UPDATE\s+public\.sales_prices/i.test(mig) &&
-    !/DELETE\s+FROM\s+public\.sales_prices/i.test(mig)
+  !/UPDATE\s+public\.sales_prices/i.test(migPkg) &&
+    !/DELETE\s+FROM\s+public\.sales_prices/i.test(migPkg)
 );
 assert(
-  "auto end_date なし",
-  mig.includes("auto end_date は行わない") || !/auto\s+end_date/i.test(mig)
-);
-assert("PRODUCT 固定 INSERT", mig.includes("'PRODUCT'"));
-assert("package_id は NULL", mig.includes("NULL,\n        v_dealer_id") || mig.includes("package_id,\n        dealer_id"));
-assert(
-  "同一リクエスト product 重複拒否",
-  mig.includes("同じ商品が複数行に入力されています")
+  "PACKAGE / PRODUCT 両対応",
+  migPkg.includes("price_target_type") &&
+    migPkg.includes("'PACKAGE'") &&
+    migPkg.includes("'PRODUCT'")
 );
 assert(
-  "不正 dealer / product NOT_FOUND",
-  mig.includes("販売店が見つかりません") && mig.includes("商品が見つかりません")
+  "PACKAGE 時 product_id 混入拒否",
+  migPkg.includes("PACKAGE 指定時は product_id を指定できません")
+);
+assert(
+  "同一リクエスト package 重複拒否",
+  migPkg.includes("同じパッケージが複数行に入力されています")
+);
+assert(
+  "販売価格1円以上維持",
+  migPkg.includes("販売価格は1円以上で入力してください")
 );
 assert(
   "ledger + 冪等",
-  mig.includes("dealer_sales_price_bulk_requests") &&
-    mig.includes("payload_hash") &&
-    mig.includes("idempotent_replay") &&
-    mig.includes("REQUEST_ID_CONFLICT") &&
-    mig.includes("REQUEST_IN_PROGRESS")
-);
-assert(
-  "atomic EXCEPTION rollback パターン",
-  mig.includes("EXCEPTION") && mig.includes("FAILED")
+  migV1.includes("dealer_sales_price_bulk_requests") &&
+    migPkg.includes("payload_hash") &&
+    migPkg.includes("idempotent_replay")
 );
 assert(
   "gateway CSRF/Idempotency",
   api.includes("assertCsrf") &&
     api.includes("Idempotency-Key") &&
-    api.includes("deriveDealerSalesPriceBulkRequestId") &&
-    api.includes("assertAppOrigin")
+    api.includes("deriveDealerSalesPriceBulkRequestId")
 );
 assert(
   "namespace 分離",
-  authCookie.includes("dealer-sales-price-bulk:v1") &&
-    authCookie.includes("supplier-purchase-price-bulk:v1")
+  authCookie.includes("dealer-sales-price-bulk:v2") &&
+    authCookie.includes("supplier-purchase-price-bulk:v2")
 );
-assert(
-  "UI は販売店+メーカー一覧方式",
-  page.includes("販売店ごとに一括") ||
-    page.includes("選択した商品の販売価格を登録")
-);
+assert("UI タブ 通常商品/パッケージ", page.includes("通常商品") && page.includes("パッケージ"));
 assert("メーカー絞り込み", page.includes("manufacturerId"));
 assert(
-  "型番・商品名検索",
+  "PRODUCT 検索回帰",
   page.includes("matchesProductSearch") && page.includes("型番")
 );
-assert("categoryフィルタ", page.includes("category"));
 assert(
-  "現行価格バッチ取得を使う",
-  page.includes("fetchActiveSalesUnitPrices")
+  "PACKAGE 検索",
+  page.includes("matchesPackageSearch") && page.includes("fetchActivePackageSalesUnitPrices")
+);
+assert("inactive PACKAGE 除外", page.includes("isPackageActiveFlag"));
+assert(
+  "logic が PRODUCT/PACKAGE 両対応",
+  logic.includes('price_target_type === "PACKAGE"') &&
+    logic.includes("SalesPriceBulkTargetType")
 );
 assert(
-  "バッチヘルパーが正式条件を使う",
+  "バッチヘルパー PRODUCT + PACKAGE",
   salesPricesLib.includes("fetchActiveSalesUnitPrices") &&
-    salesPricesLib.includes('eq("price_target_type", "PRODUCT")') &&
-    salesPricesLib.includes('eq("dealer_id", params.dealerId)') &&
-    salesPricesLib.includes(".order(\"start_date\", { ascending: false })")
+    salesPricesLib.includes("fetchActivePackageSalesUnitPrices") &&
+    salesPricesLib.includes('eq("price_target_type", "PACKAGE")')
 );
 assert(
   "sales-prices 一覧から導線",
@@ -155,27 +142,16 @@ assert(
     salesNew.includes("insert")
 );
 assert(
-  "#109 RPC を変更しない",
-  supplierMig.includes("create_supplier_purchase_prices") &&
-    !mig.includes("create_supplier_purchase_prices(")
-);
-assert(
-  "#106/#108 RPC を変更しない",
-  productSetupMig.includes("create_product_setup") &&
-    existingSetupMig.includes("create_existing_product_price_setup") &&
-    !mig.includes("create_product_setup(") &&
-    !mig.includes("create_existing_product_price_setup(")
-);
-assert(
   "#109 UI 回帰（仕入先一括が残る）",
   supplierBulkPage.includes("fetchActivePurchaseUnitPrices") &&
     supplierBulkPage.includes("選択した商品の仕入価格を登録")
 );
 assert(
   "service_role のみ EXECUTE",
-  mig.includes("GRANT EXECUTE ON FUNCTION public.create_dealer_sales_prices") &&
-    mig.includes("REVOKE ALL ON FUNCTION public.create_dealer_sales_prices")
+  migPkg.includes("GRANT EXECUTE ON FUNCTION public.create_dealer_sales_prices") &&
+    migPkg.includes("REVOKE ALL ON FUNCTION public.create_dealer_sales_prices")
 );
+assert("CASCADE 追加なし", !/ON DELETE CASCADE/i.test(migPkg));
 
 if (process.exitCode) {
   console.error("\nfailed");

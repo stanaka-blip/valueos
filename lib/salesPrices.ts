@@ -144,6 +144,68 @@ export async function fetchActiveSalesUnitPrices(
   };
 }
 
+/**
+ * 複数パッケージの有効販売単価を一括取得（PACKAGE のみ）。
+ * 判定は fetchActiveSalesPrice / create_case_registration と同じ条件。
+ */
+export async function fetchActivePackageSalesUnitPrices(
+  client: SupabaseClient,
+  params: {
+    packageIds: string[];
+    dealerId: string;
+    asOfDate?: string;
+  }
+): Promise<{
+  unitPriceByPackageId: Map<string, number>;
+  missingPackageIds: string[];
+  error: string | null;
+}> {
+  const uniqueIds = Array.from(
+    new Set(params.packageIds.filter((id) => Boolean(id)))
+  );
+
+  if (uniqueIds.length === 0 || !params.dealerId) {
+    return {
+      unitPriceByPackageId: new Map(),
+      missingPackageIds: uniqueIds,
+      error: null,
+    };
+  }
+
+  const asOfDate = params.asOfDate || getTodayDateString();
+  const { data, error } = await client
+    .from("sales_prices")
+    .select("package_id, sales_price, start_date")
+    .in("package_id", uniqueIds)
+    .eq("dealer_id", params.dealerId)
+    .eq("price_target_type", "PACKAGE")
+    .eq("is_active", true)
+    .lte("start_date", asOfDate)
+    .or(`end_date.is.null,end_date.gte.${asOfDate}`)
+    .order("start_date", { ascending: false });
+
+  if (error) {
+    return {
+      unitPriceByPackageId: new Map(),
+      missingPackageIds: uniqueIds,
+      error: error.message,
+    };
+  }
+
+  const unitPriceByPackageId = new Map<string, number>();
+  for (const row of data || []) {
+    const packageId = row.package_id as string | null;
+    if (!packageId || unitPriceByPackageId.has(packageId)) continue;
+    const unitPrice = toUnitPrice(row.sales_price);
+    if (unitPrice > 0) unitPriceByPackageId.set(packageId, unitPrice);
+  }
+
+  const missingPackageIds = uniqueIds.filter(
+    (id) => !unitPriceByPackageId.has(id)
+  );
+  return { unitPriceByPackageId, missingPackageIds, error: null };
+}
+
 /** 有効な販売単価を1件取得（マスタID付き） */
 export async function fetchActiveSalesPrice(
   client: SupabaseClient,

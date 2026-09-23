@@ -69,11 +69,21 @@ export default function MasterDeleteButton({
   async function onDelete() {
     const label = MASTER_KIND_LABELS[kind];
     const display = name.trim() || label;
+    const irreversible =
+      kind === "dealer"
+        ? "この販売店を完全に削除します。\nこの操作は元に戻せません。"
+        : kind === "contractor"
+          ? "この施工店を完全に削除します。\nこの操作は元に戻せません。"
+          : "このメーカーを完全に削除します。\nこの操作は元に戻せません。";
     const confirmExtra =
       kind === "contractor"
-        ? "施工店は案件へコピー参照のため、未使用なら削除できます。運用停止のみなら編集の「無効化」を使ってください。"
+        ? "施工店は案件へ名前コピーのため FK 参照はありません。未使用なら削除できます。運用停止のみなら編集の「無効化」を使ってください。"
         : "案件・価格・商品などから参照されている場合は削除できません。運用停止のみなら編集の「無効化」も利用できます。";
-    if (!window.confirm(`「${display}」を削除しますか？\n\n${confirmExtra}`)) {
+    if (
+      !window.confirm(
+        `${irreversible}\n\n対象: 「${display}」\n\n${confirmExtra}`
+      )
+    ) {
       return;
     }
 

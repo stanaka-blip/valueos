@@ -15,6 +15,9 @@ export type PackageListRow = {
   manufacturer_id?: string | null;
   manufacturerName: string;
   seriesName: string;
+  /** 検索用（任意）。例: "10kWh" */
+  capacityLabel?: string | null;
+  package_code?: string | null;
 };
 
 /** 現状一覧は有効・無効を両方表示。初期値は運用維持のため all */
@@ -48,14 +51,16 @@ function includesIgnoreCase(haystack: string | null | undefined, needle: string)
   return (haystack || "").toLocaleLowerCase().includes(needle.toLocaleLowerCase());
 }
 
-/** パッケージ名・メーカー名・シリーズ名のいずれかに部分一致 */
+/** パッケージ名・メーカー名・シリーズ名・容量・コードのいずれかに部分一致 */
 export function matchesPackageSearch(row: PackageListRow, q: string): boolean {
   const needle = q.trim();
   if (!needle) return true;
   return (
     includesIgnoreCase(row.name, needle) ||
     includesIgnoreCase(row.manufacturerName, needle) ||
-    includesIgnoreCase(row.seriesName, needle)
+    includesIgnoreCase(row.seriesName, needle) ||
+    includesIgnoreCase(row.capacityLabel, needle) ||
+    includesIgnoreCase(row.package_code, needle)
   );
 }
 

@@ -1,9 +1,14 @@
 /**
  * 販売店起点販売価格一括登録の入力検証・RPC payload 構築（純関数）。
+ * PRODUCT / PACKAGE 両対応。既存価格行の UPDATE/DELETE はしない（INSERT のみ）。
+ * 販売価格は1円以上（既存契約維持。仕入一括の0円許可とは別）。
  */
 
+export type SalesPriceBulkTargetType = "PRODUCT" | "PACKAGE";
+
 export type DealerSalesPriceItemInput = {
-  product_id: string;
+  product_id?: string;
+  package_id?: string;
   sales_price: number;
   start_date?: string | null;
   end_date?: string | null;
@@ -13,6 +18,8 @@ export type DealerSalesPriceItemInput = {
 
 export type CreateDealerSalesPricesBody = {
   dealer_id: string;
+  /** 省略時 PRODUCT（後方互換） */
+  price_target_type?: SalesPriceBulkTargetType;
   items: DealerSalesPriceItemInput[];
 };
 
@@ -26,6 +33,11 @@ const MAX_LONG = 2000;
 
 function isUuid(value: unknown): value is string {
   return typeof value === "string" && UUID_RE.test(value);
+}
+
+function parseTargetType(value: unknown): SalesPriceBulkTargetType {
+  if (value === "PACKAGE") return "PACKAGE";
+  return "PRODUCT";
 }
 
 export function validateCreateDealerSalesPricesBody(
@@ -48,6 +60,7 @@ export function validateCreateDealerSalesPricesBody(
 
   const input = body as Record<string, unknown>;
   const field_errors: DealerSalesPriceFieldErrors = {};
+  const price_target_type = parseTargetType(input.price_target_type);
 
   const dealer_id =
     typeof input.dealer_id === "string" ? input.dealer_id.trim() : "";
@@ -71,7 +84,7 @@ export function validateCreateDealerSalesPricesBody(
   }
 
   const items: DealerSalesPriceItemInput[] = [];
-  const seenProducts = new Set<string>();
+  const seenTargets = new Set<string>();
 
   input.items.forEach((row, idx) => {
     if (!row || typeof row !== "object" || Array.isArray(row)) {
@@ -81,13 +94,38 @@ export function validateCreateDealerSalesPricesBody(
     const r = row as Record<string, unknown>;
     const product_id =
       typeof r.product_id === "string" ? r.product_id.trim() : "";
-    if (!isUuid(product_id)) {
-      field_errors[`items.${idx}.product_id`] = "商品が不正です";
-    } else if (seenProducts.has(product_id)) {
-      field_errors[`items.${idx}.product_id`] =
-        "同じ商品が複数行に入力されています";
+    const package_id =
+      typeof r.package_id === "string" ? r.package_id.trim() : "";
+
+    let targetId = "";
+    if (price_target_type === "PACKAGE") {
+      if (!isUuid(package_id)) {
+        field_errors[`items.${idx}.package_id`] = "パッケージが不正です";
+      } else if (seenTargets.has(package_id)) {
+        field_errors[`items.${idx}.package_id`] =
+          "同じパッケージが複数行に入力されています";
+      } else {
+        seenTargets.add(package_id);
+        targetId = package_id;
+      }
+      if (product_id) {
+        field_errors[`items.${idx}.product_id`] =
+          "PACKAGE 指定時は product_id を指定できません";
+      }
     } else {
-      seenProducts.add(product_id);
+      if (!isUuid(product_id)) {
+        field_errors[`items.${idx}.product_id`] = "商品が不正です";
+      } else if (seenTargets.has(product_id)) {
+        field_errors[`items.${idx}.product_id`] =
+          "同じ商品が複数行に入力されています";
+      } else {
+        seenTargets.add(product_id);
+        targetId = product_id;
+      }
+      if (package_id) {
+        field_errors[`items.${idx}.package_id`] =
+          "PRODUCT 指定時は package_id を指定できません";
+      }
     }
 
     const n =
@@ -143,14 +181,17 @@ export function validateCreateDealerSalesPricesBody(
     }
 
     if (
-      isUuid(product_id) &&
+      targetId &&
       Number.isFinite(n) &&
       n > 0 &&
       !field_errors[`items.${idx}.end_date`] &&
-      !field_errors[`items.${idx}.start_date`]
+      !field_errors[`items.${idx}.start_date`] &&
+      !field_errors[`items.${idx}.product_id`] &&
+      !field_errors[`items.${idx}.package_id`]
     ) {
       items.push({
-        product_id,
+        product_id: price_target_type === "PRODUCT" ? targetId : undefined,
+        package_id: price_target_type === "PACKAGE" ? targetId : undefined,
         sales_price: n,
         start_date,
         end_date,
@@ -171,7 +212,7 @@ export function validateCreateDealerSalesPricesBody(
 
   return {
     ok: true,
-    value: { dealer_id, items },
+    value: { dealer_id, price_target_type, items },
   };
 }
 
@@ -179,11 +220,16 @@ export function buildCreateDealerSalesPricesRpcPayload(
   requestId: string,
   body: CreateDealerSalesPricesBody
 ): Record<string, unknown> {
+  const price_target_type = body.price_target_type || "PRODUCT";
   return {
     request_id: requestId,
     dealer_id: body.dealer_id,
+    price_target_type,
     items: body.items.map((item) => ({
-      product_id: item.product_id,
+      product_id:
+        price_target_type === "PRODUCT" ? item.product_id || null : null,
+      package_id:
+        price_target_type === "PACKAGE" ? item.package_id || null : null,
       sales_price: item.sales_price,
       start_date: item.start_date || null,
       end_date: item.end_date || null,
