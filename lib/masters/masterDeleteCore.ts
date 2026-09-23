@@ -246,6 +246,91 @@ export async function deleteManufacturerMaster(
   }
 }
 
+/**
+ * パッケージ物理削除（未使用時のみ）。
+ * DB RPC `delete_unused_package` で FOR UPDATE → 参照確認 →
+ * package_items / packages 削除を同一トランザクションで実行する。
+ * 途中失敗時は package_items も ROLLBACK（partial failure 禁止）。
+ * 新規 CASCADE 追加はしない。価格履歴・案件履歴は削除しない。
+ */
+export function parseDeleteUnusedPackageRpcResult(
+  data: unknown
+): MasterDeleteResult {
+  const raw = (data || {}) as {
+    ok?: unknown;
+    error_code?: unknown;
+    error_message?: unknown;
+  };
+  if (raw.ok === true) return { ok: true };
+
+  const code = typeof raw.error_code === "string" ? raw.error_code : "";
+  const message =
+    typeof raw.error_message === "string" && raw.error_message.trim()
+      ? raw.error_message
+      : "削除に失敗しました";
+
+  if (code === "NOT_FOUND" || code === "IN_USE" || code === "DELETE_FAILED") {
+    return {
+      ok: false,
+      error_code: code,
+      error_message: message,
+    };
+  }
+  return {
+    ok: false,
+    error_code: "DELETE_FAILED",
+    error_message: message,
+  };
+}
+
+export async function deletePackageMaster(
+  id: string,
+  client?: SupabaseClient
+): Promise<MasterDeleteResult> {
+  try {
+    const db = await adminDb(client);
+    const { data, error } = await db.rpc("delete_unused_package", {
+      p_package_id: id,
+    });
+    if (error) {
+      const message = String(error.message || "").toLowerCase();
+      const code = String(error.code || "");
+      // Migration 未適用時は明確に案内（途中削除は発生しない）
+      if (
+        code === "PGRST202" ||
+        message.includes("could not find the function") ||
+        message.includes("delete_unused_package")
+      ) {
+        return {
+          ok: false,
+          error_code: "CONFIG_ERROR",
+          error_message:
+            "パッケージ削除RPCが未適用です。管理者に migration 適用を依頼してください。",
+        };
+      }
+      return {
+        ok: false,
+        error_code: "DELETE_FAILED",
+        error_message: error.message || "削除に失敗しました",
+      };
+    }
+    return parseDeleteUnusedPackageRpcResult(data);
+  } catch (e) {
+    if (isConfigError(e)) {
+      return {
+        ok: false,
+        error_code: "CONFIG_ERROR",
+        error_message: "サーバー設定が完了していません",
+      };
+    }
+    return {
+      ok: false,
+      error_code: "DELETE_FAILED",
+      error_message: "削除に失敗しました",
+    };
+  }
+}
+
 export async function deleteMasterByKind(
   kind: MasterKind,
   id: string,
@@ -258,6 +343,8 @@ export async function deleteMasterByKind(
       return deleteContractorMaster(id, client);
     case "manufacturer":
       return deleteManufacturerMaster(id, client);
+    case "package":
+      return deletePackageMaster(id, client);
     default:
       return {
         ok: false,

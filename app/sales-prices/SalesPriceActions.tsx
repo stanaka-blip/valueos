@@ -1,10 +1,15 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+
+import MasterListRowActions from "@/app/components/masters/MasterListRowActions";
 import { supabase } from "@/lib/supabase";
 
+/**
+ * 販売価格一覧の操作列（⋯: 編集 / 複製 / 削除）。
+ * 削除の挙動は従来どおり（クライアント直 delete）。UIのみ統一。
+ */
 export default function SalesPriceActions({ id }: { id: string }) {
   const router = useRouter();
   const [deleting, setDeleting] = useState(false);
@@ -12,7 +17,10 @@ export default function SalesPriceActions({ id }: { id: string }) {
   async function onDelete() {
     if (!confirm("この販売価格を削除しますか？")) return;
     setDeleting(true);
-    const { error } = await supabase.from("sales_prices").delete().eq("id", id);
+    const { error } = await supabase
+      .from("sales_prices")
+      .delete()
+      .eq("id", id);
     setDeleting(false);
     if (error) {
       alert("削除に失敗しました：" + error.message);
@@ -22,27 +30,20 @@ export default function SalesPriceActions({ id }: { id: string }) {
   }
 
   return (
-    <div className="flex justify-center gap-2">
-      <Link
-        href={`/sales-prices/${id}/edit`}
-        className="rounded-lg bg-gray-900 px-3 py-2 text-xs font-bold text-white hover:bg-gray-700"
-      >
-        編集
-      </Link>
-      <Link
-        href={`/sales-prices/new?copyFrom=${id}`}
-        className="rounded-lg border border-gray-300 px-3 py-2 text-xs font-bold text-gray-800 hover:bg-gray-50"
-      >
-        複製して新規登録
-      </Link>
-      <button
-        type="button"
-        onClick={onDelete}
-        disabled={deleting}
-        className="rounded-lg border border-red-300 px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-50 disabled:opacity-50"
-      >
-        {deleting ? "削除中..." : "削除"}
-      </button>
-    </div>
+    <MasterListRowActions
+      label="販売価格"
+      items={[
+        { label: "編集", href: `/sales-prices/${id}/edit` },
+        {
+          label: "複製して新規登録",
+          href: `/sales-prices/new?copyFrom=${id}`,
+        },
+        {
+          label: deleting ? "削除中..." : "削除",
+          danger: true,
+          onClick: onDelete,
+        },
+      ]}
+    />
   );
 }
