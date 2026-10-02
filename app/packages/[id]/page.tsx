@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import MasterDeleteButton from "@/app/components/masters/MasterDeleteButton";
 import MasterPricePanels from "@/app/components/prices/MasterPricePanels";
+import BackLink from "@/components/BackLink";
 import { supabase } from "@/lib/supabase";
 
 import PackageActiveToggleButton from "../PackageActiveToggleButton";
@@ -139,12 +140,7 @@ export default async function PackageDetailPage({
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Link
-              href="/packages"
-              className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-bold text-gray-700"
-            >
-              ← パッケージ一覧へ戻る
-            </Link>
+            <BackLink href="/packages" />
             <Link
               href={`/packages/${id}/edit`}
               className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-bold text-white"

@@ -8,6 +8,7 @@ import {
   buildConstructionDetailForEdit,
   parseConstructionDetailForEdit,
 } from "@/app/components/case-registration/caseRegistrationExtras";
+import BackLink from "@/components/BackLink";
 
 type CaseEditForm = {
   case_no: string;
@@ -191,12 +192,7 @@ export default function EditCasePage({
               受注日を変更するとダッシュボードの売上集計期間も変わります
             </p>
           </div>
-          <Link
-            href={`/cases/${id}`}
-            className="rounded-lg border px-4 py-2 text-sm font-bold text-gray-700"
-          >
-            詳細へ戻る
-          </Link>
+          <BackLink href={`/cases/${id}`} />
         </div>
       </header>
 

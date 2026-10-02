@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import BackLink from "@/components/BackLink";
 import { supabase } from "@/lib/supabase";
 import { listOrderItemsByOrderId } from "@/lib/repositories/orderItems";
 import { formatDate, formatYen, getTodayString, toNumber } from "@/app/orders/orderUtils";
@@ -231,27 +232,9 @@ export default async function OrderDetailPage({
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
-            <Link
-              href="/queues/orders"
-              className="rounded-lg border bg-white px-4 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50"
-            >
-              ← 発注管理へ戻る
-            </Link>
-            {caseData?.id ? (
-              <Link
-                href={`/cases/${caseData.id}`}
-                className="rounded-lg border bg-white px-4 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50"
-              >
-                案件詳細へ戻る
-              </Link>
-            ) : (
-              <Link
-                href="/cases"
-                className="rounded-lg border bg-white px-4 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50"
-              >
-                案件一覧へ戻る
-              </Link>
-            )}
+            <BackLink
+              href={caseData?.id ? `/cases/${caseData.id}` : "/queues/orders"}
+            />
             <Link
               href={`/orders/${order.id}/edit`}
               className="rounded-lg border bg-white px-4 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50"

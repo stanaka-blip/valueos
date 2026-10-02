@@ -1,7 +1,15 @@
 /**
  * 案件粗利 v1（純関数）。
  *
- * 確定粗利 = 税抜売上 − 税抜仕入原価 − 税抜決済手数料
+ * 確定粗利 = 最終請求額（税抜） − 仕入原価（税抜） − 決済手数料（税抜）
+ *   - 売上: 有効請求（status≠取消）の税抜合計
+ *     subtotal_ex_tax+tax_amount があればスナップショット、無ければ floor(invoice_amount/1.1)
+ *     ※ 商品マスタ販売価格・見込売価は使わない
+ *   - 仕入: 有効発注（キャンセル/取消以外）の orders.order_amount 合計
+ *     order_amount は発注明細合計。replace_purchase_order 契約で [VE_PKG_COMP] は amount=0
+ *     （パッケージ親 [VE_PKG_AMT] と構成品の二重計上を防ぐ）
+ *   - 手数料: case_settlements.fee_amount 優先、なければ fee_rate% × 税抜売上
+ *
  * 見込粗利 = Σ case_products.sales_price − Σ purchase_price − 手数料見込（参考）
  *
  * 請求額・入金額（債権/資金移動）は税込のまま保持し、粗利の売上には使わない。

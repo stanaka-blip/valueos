@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
+import BackLink from "@/components/BackLink";
 import {
   PAYMENT_METHOD_OPTIONS,
   type PaymentMethod,
@@ -342,12 +343,7 @@ export default function EditPaymentPage() {
 
       <main className="space-y-6 p-4 md:p-8">
         <div className="flex flex-wrap gap-3">
-          <Link
-            href={`/invoices/${invoiceId}`}
-            className="inline-flex rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50"
-          >
-            ← 請求詳細へ戻る
-          </Link>
+          <BackLink href={`/invoices/${invoiceId}`} />
         </div>
 
         <section className="grid gap-4 md:grid-cols-3">

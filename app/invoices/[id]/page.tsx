@@ -2,7 +2,9 @@ import Link from "next/link";
 
 import InvoiceCancelButton from "@/app/invoices/[id]/InvoiceCancelButton";
 import PaymentRowActions from "@/app/invoices/[id]/PaymentRowActions";
+import BackLink from "@/components/BackLink";
 import { resolveInvoicePrintTaxDisplay } from "@/lib/invoices/invoicePrintTaxDisplay";
+import { withReturnTo } from "@/lib/navigation/safeReturnTo";
 import { summarizeInvoicePayments } from "@/lib/payments";
 import { isActiveInvoiceStatus } from "@/lib/status/activeRecords";
 import { supabase } from "@/lib/supabase";
@@ -228,6 +230,10 @@ export default async function InvoiceDetailPage({
   const caseData = getSingleRelation(invoice.cases);
   const dealer = getSingleRelation(caseData?.dealers);
   const back = resolveInvoiceBackFrom(fromParam, caseData?.id || invoice.case_id);
+  const selfHref = fromParam
+    ? `/invoices/${invoice.id}?from=${encodeURIComponent(fromParam)}`
+    : `/invoices/${invoice.id}`;
+  const editHref = withReturnTo(`/invoices/${invoice.id}/edit`, selfHref);
 
   const paymentSummary = summarizeInvoicePayments({
     invoiceAmount: invoice.invoice_amount,
@@ -265,12 +271,7 @@ export default async function InvoiceDetailPage({
           </div>
 
           <div className="flex flex-wrap gap-3">
-            <Link
-              href={back.href}
-              className="rounded-lg border bg-white px-4 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50"
-            >
-              ← {back.label}
-            </Link>
+            <BackLink href={back.href} />
             {back.from !== "invoices" ? (
               <Link
                 href="/invoices"
@@ -299,7 +300,7 @@ export default async function InvoiceDetailPage({
             {invoiceActive ? (
               <>
                 <Link
-                  href={`/invoices/${invoice.id}/edit`}
+                  href={editHref}
                   className="rounded-lg border bg-white px-4 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50"
                 >
                   編集
@@ -620,7 +621,7 @@ export default async function InvoiceDetailPage({
             <div className="flex flex-wrap gap-3">
               {invoiceActive ? (
                 <Link
-                  href={`/invoices/${invoice.id}/edit`}
+                  href={editHref}
                   className="rounded-lg border bg-white px-4 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50"
                 >
                   編集
