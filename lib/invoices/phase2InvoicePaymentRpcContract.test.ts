@@ -6,6 +6,13 @@ const sql = readFileSync(
   join(process.cwd(), "supabase/migrations/20260914150000_replace_invoice_rpc.sql"),
   "utf8",
 );
+const helperSql = readFileSync(
+  join(
+    process.cwd(),
+    "supabase/migrations/20261002100000_case_has_locking_dealer_settlement_helper.sql",
+  ),
+  "utf8",
+);
 
 const cancelBtn = readFileSync(
   join(process.cwd(), "app/invoices/[id]/InvoiceCancelButton.tsx"),
@@ -50,6 +57,33 @@ assert.doesNotMatch(
   /UPDATE\s+public\.(finance_receipts|dealer_settlements|supplier_payments|three_party_money_requests)/i,
 );
 
+// Follow-up: locking check via DEFINER helper (no direct dealer_settlements SELECT)
+assert.match(
+  helperSql,
+  /CREATE OR REPLACE FUNCTION public\.case_has_locking_dealer_settlement\(p_case_id uuid\)/,
+);
+assert.match(helperSql, /SECURITY DEFINER/);
+assert.match(
+  helperSql,
+  /public\.case_has_locking_dealer_settlement\(v_case_id\)/,
+);
+assert.match(
+  helperSql,
+  /確定済みまたは支払済の仕切があるため、請求額を変更できません/,
+);
+assert.match(
+  helperSql,
+  /v_invoice_amount IS DISTINCT FROM v_original_amount/,
+);
+assert.doesNotMatch(
+  helperSql,
+  /GRANT\s+[^\n]*ON\s+TABLE\s+public\.dealer_settlements/i,
+);
+assert.doesNotMatch(
+  helperSql,
+  /UPDATE\s+public\.(finance_receipts|dealer_settlements|supplier_payments|three_party_money_requests)/i,
+);
+
 // --- cancel_invoice ---
 assert.match(sql, /CREATE OR REPLACE FUNCTION public\.cancel_invoice\(payload jsonb\)/);
 assert.match(
@@ -60,6 +94,14 @@ assert.match(sql, /status = '取消'/);
 assert.match(sql, /この請求は既に取消済みです/);
 assert.match(sql, /確定済みまたは支払済の仕切があるため、請求を取消できません/);
 assert.match(sql, /<> '取消'/);
+assert.match(
+  helperSql,
+  /確定済みまたは支払済の仕切があるため、請求を取消できません/,
+);
+assert.match(
+  helperSql,
+  /public\.case_has_locking_dealer_settlement\(v_case_id\)/,
+);
 
 // --- replace_payment ---
 assert.match(sql, /CREATE OR REPLACE FUNCTION public\.replace_payment\(payload jsonb\)/);
