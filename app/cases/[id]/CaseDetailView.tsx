@@ -19,6 +19,7 @@ import {
   computeConfirmedCaseProfit,
   computeForecastCaseProfit,
 } from "@/lib/profit/caseProfitCalc";
+import { buildCaseAmountSummary } from "@/lib/profit/caseAmountSummary";
 
 import SettlementForm from "./SettlementForm";
 import ThreePartyMoneyPanels from "./ThreePartyMoneyPanels";
@@ -147,6 +148,8 @@ type CaseDetailViewProps = {
   threePartyMoney?: ThreePartyMoneyView;
   /** URL ?tab= などからの初期タブ（未指定時は基本情報） */
   initialTab?: CaseDetailTabId;
+  /** 一覧などへの戻り先（returnTo 済み） */
+  backHref?: string;
   errors: {
     products?: string;
     orders?: string;
@@ -199,6 +202,7 @@ export default function CaseDetailView({
   dealerId = null,
   threePartyMoney = EMPTY_THREE_PARTY,
   initialTab = "basic",
+  backHref = "/cases",
   errors,
 }: CaseDetailViewProps) {
   const [tab, setTab] = useState<CaseDetailTabId>(initialTab);
@@ -218,7 +222,7 @@ export default function CaseDetailView({
       .filter((p) => p.status !== "取消")
       .reduce((s, p) => s + p.paymentAmount, 0);
     const rate = sales > 0 ? (profit / sales) * 100 : null;
-    const confirmed = computeConfirmedCaseProfit({
+    const amountSummary = buildCaseAmountSummary({
       invoices: invoices.map((i) => ({
         status: i.status,
         invoiceAmount: i.invoiceAmount,
@@ -243,7 +247,8 @@ export default function CaseDetailView({
       invoiceAmount,
       paidIn,
       unpaid: Math.max(invoiceAmount - paidIn, 0),
-      confirmed,
+      confirmed: amountSummary.confirmed,
+      amountSummary,
     };
   }, [products, orders, invoices, payments, settlement]);
 
@@ -257,9 +262,9 @@ export default function CaseDetailView({
     <div className="min-h-full bg-[#f7f7f5] text-gray-900">
       <div className="border-b border-gray-200/80 bg-white">
         <div className="flex items-center justify-between gap-4 px-6 py-3">
-          <BackLink href="/cases" label="← 戻る" />
+          <BackLink href={backHref} label="← 戻る" />
           <div className="flex items-center gap-2">
-            <div className="mr-2 hidden items-center rounded-lg border border-gray-200 p-0.5 sm:flex">
+            <div className="mr-2 flex items-center rounded-lg border border-gray-200 p-0.5">
               <button
                 type="button"
                 onClick={() => setViewMode("detail")}
@@ -283,44 +288,6 @@ export default function CaseDetailView({
                 簡易表示
               </button>
             </div>
-            <Link
-              href={`/cases/${caseData.id}/products/new`}
-              className="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 transition hover:bg-gray-50"
-            >
-              商品追加
-            </Link>
-            {workflow.canOrder ||
-            (workflow.ruleKey === null &&
-              workflow.warnings.includes("決済区分が未設定です")) ? (
-              <Link
-                href={`/cases/${caseData.id}/orders/new`}
-                className="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 transition hover:bg-gray-50"
-              >
-                仕入発注
-              </Link>
-            ) : (
-              <span
-                title={workflow.warnings.join(" / ") || "発注不可"}
-                className="cursor-not-allowed rounded-md border border-gray-100 bg-gray-50 px-3 py-1.5 text-sm text-gray-400"
-              >
-                仕入発注（不可）
-              </span>
-            )}
-            {workflow.canInvoice ? (
-              <Link
-                href={`/cases/${caseData.id}/invoices/new`}
-                className="rounded-md bg-gray-900 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-gray-800"
-              >
-                請求登録
-              </Link>
-            ) : (
-              <span
-                title={workflow.warnings.join(" / ") || "請求不可"}
-                className="cursor-not-allowed rounded-md bg-gray-200 px-3 py-1.5 text-sm font-medium text-gray-500"
-              >
-                請求登録（不可）
-              </span>
-            )}
           </div>
         </div>
       </div>
@@ -335,6 +302,33 @@ export default function CaseDetailView({
           orders={orders}
           invoices={invoices}
         />
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+          <AmountSummaryCard
+            label="請求予定金額（税込）"
+            value={
+              totals.amountSummary.plannedInvoiceInclusive == null
+                ? "—"
+                : formatYen(totals.amountSummary.plannedInvoiceInclusive)
+            }
+            hint={
+              totals.amountSummary.hasActiveInvoices
+                ? "有効請求の最終請求額"
+                : "未請求（マスタ売価は使いません）"
+            }
+          />
+          <AmountSummaryCard
+            label="仕入れ値（税抜）"
+            value={formatYen(totals.amountSummary.purchaseCostExTax)}
+            hint="有効発注の order_amount 合計"
+          />
+          <AmountSummaryCard
+            label="粗利（税抜）"
+            value={formatYen(totals.amountSummary.profitExTax)}
+            hint="確定粗利（粗利タブと同じ）"
+            emphasize
+          />
+        </div>
       </div>
 
       <div className="mx-auto flex max-w-[1400px]">
@@ -395,23 +389,27 @@ export default function CaseDetailView({
 
             <Divider />
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3">
               <MiniStat
-                label="売上（税抜）"
-                value={formatYen(totals.confirmed.revenue)}
+                label="請求予定（税込）"
+                value={
+                  totals.amountSummary.plannedInvoiceInclusive == null
+                    ? "—"
+                    : formatYen(totals.amountSummary.plannedInvoiceInclusive)
+                }
               />
               <MiniStat
-                label="粗利"
-                value={formatYen(totals.confirmed.profit)}
+                label="仕入れ値（税抜）"
+                value={formatYen(totals.amountSummary.purchaseCostExTax)}
+              />
+              <MiniStat
+                label="粗利（税抜）"
+                value={formatYen(totals.amountSummary.profitExTax)}
               />
               <MiniStat
                 label="未入金"
                 value={formatYen(totals.unpaid)}
                 alert={totals.unpaid > 0}
-              />
-              <MiniStat
-                label="支払目安"
-                value={formatYen(paymentSummary.targetAmount)}
               />
             </div>
 
@@ -2321,6 +2319,32 @@ function MiniStat({
       >
         {value}
       </p>
+    </div>
+  );
+}
+
+function AmountSummaryCard({
+  label,
+  value,
+  hint,
+  emphasize = false,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  emphasize?: boolean;
+}) {
+  return (
+    <div className="rounded-xl border border-gray-200/80 bg-white px-4 py-4">
+      <p className="text-xs font-medium text-gray-500">{label}</p>
+      <p
+        className={`mt-2 text-xl font-semibold tabular-nums tracking-tight ${
+          emphasize ? "text-gray-900" : "text-gray-900"
+        }`}
+      >
+        {value}
+      </p>
+      {hint ? <p className="mt-1 text-[11px] text-gray-400">{hint}</p> : null}
     </div>
   );
 }

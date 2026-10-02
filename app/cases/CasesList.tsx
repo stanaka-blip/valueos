@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
+import { withReturnTo } from "@/lib/navigation/safeReturnTo";
+
 import {
   CASE_STATUSES,
   getCaseStatusLabel,
@@ -43,6 +45,7 @@ export default function CasesList({
   items,
   filterLabel,
   filterBanner,
+  returnTo = null,
 }: {
   items: CasesListItem[];
   filterLabel?: string;
@@ -51,9 +54,15 @@ export default function CasesList({
     period?: string;
     summary?: string;
   };
+  /** 一覧の絞り込みURL。案件詳細の戻る先に渡す */
+  returnTo?: string | null;
 }) {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+
+  function caseDetailHref(caseId: string): string {
+    return withReturnTo(`/cases/${caseId}`, returnTo);
+  }
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -193,20 +202,18 @@ export default function CasesList({
 
       <div className="overflow-hidden rounded-xl border border-gray-200/80 bg-white">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[960px] text-left text-sm">
+          <table className="w-full min-w-[880px] text-left text-sm">
             <thead className="border-b border-gray-200 bg-[#f7f7f5] text-xs text-gray-500">
               <tr>
                 <th className="px-4 py-3 font-medium">案件番号</th>
                 <th className="px-4 py-3 font-medium">販売店</th>
                 <th className="px-4 py-3 font-medium">顧客</th>
                 <th className="px-4 py-3 font-medium">決済条件</th>
+                <th className="px-4 py-3 font-medium">受注日</th>
                 <th className="px-4 py-3 font-medium">希望納期</th>
                 <th className="px-4 py-3 font-medium">発注メーカー</th>
                 <th className="px-4 py-3 font-medium">型番</th>
                 <th className="px-4 py-3 font-medium">ステータス</th>
-                <th className="px-4 py-3 font-medium">受注日</th>
-                <th className="px-4 py-3 font-medium">担当</th>
-                <th className="px-4 py-3 font-medium">優先度</th>
               </tr>
             </thead>
             <tbody>
@@ -217,7 +224,7 @@ export default function CasesList({
                 >
                   <td className="px-4 py-3 font-medium">
                     <Link
-                      href={`/cases/${item.id}`}
+                      href={caseDetailHref(item.id)}
                       className="text-gray-900 hover:underline"
                     >
                       {item.caseNo || "—"}
@@ -238,6 +245,9 @@ export default function CasesList({
                     {item.settlementType || "未設定"}
                   </td>
                   <td className="px-4 py-3 text-gray-600">
+                    {formatDate(item.orderReceivedDate)}
+                  </td>
+                  <td className="px-4 py-3 text-gray-600">
                     {item.desiredDeliveryDate || "—"}
                   </td>
                   <td className="px-4 py-3">
@@ -252,25 +262,13 @@ export default function CasesList({
                       currentStatus={item.status}
                     />
                   </td>
-                  <td className="px-4 py-3 text-gray-600">
-                    {formatDate(item.orderReceivedDate)}
-                  </td>
-                  <td className="px-4 py-3 text-gray-600">
-                    <p>{item.assignedUser || "—"}</p>
-                    {item.department ? (
-                      <p className="text-xs text-gray-400">{item.department}</p>
-                    ) : null}
-                  </td>
-                  <td className="px-4 py-3 text-gray-600">
-                    {item.priority || "中"}
-                  </td>
                 </tr>
               ))}
 
               {filtered.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={11}
+                    colSpan={9}
                     className="px-6 py-12 text-center text-sm text-gray-400"
                   >
                     {items.length === 0

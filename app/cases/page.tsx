@@ -51,6 +51,34 @@ function formatYen(value: number): string {
   return new Intl.NumberFormat("ja-JP").format(Math.round(value)) + "円";
 }
 
+function buildCasesListHref(params: {
+  from?: string;
+  to?: string;
+  orderReceivedFrom?: string;
+  orderReceivedTo?: string;
+  invoiceFrom?: string;
+  invoiceTo?: string;
+  fromDashboard?: string;
+  alert?: string;
+}): string | null {
+  const q = new URLSearchParams();
+  const entries: Array<[string, string | undefined]> = [
+    ["from", params.from],
+    ["to", params.to],
+    ["orderReceivedFrom", params.orderReceivedFrom],
+    ["orderReceivedTo", params.orderReceivedTo],
+    ["invoiceFrom", params.invoiceFrom],
+    ["invoiceTo", params.invoiceTo],
+    ["fromDashboard", params.fromDashboard],
+    ["alert", params.alert],
+  ];
+  for (const [key, value] of entries) {
+    if (value) q.set(key, value);
+  }
+  const qs = q.toString();
+  return qs ? `/cases?${qs}` : null;
+}
+
 export default async function CasesPage({
   searchParams,
 }: {
@@ -75,6 +103,7 @@ export default async function CasesPage({
   const fromDashboard = params.fromDashboard || "";
   const alert = params.alert || "";
   const hasInvoicePeriod = Boolean(invoiceFrom && invoiceTo);
+  const returnTo = buildCasesListHref(params);
 
   const [{ data: cases, error }, settlementsResult, dashboard] = await Promise.all([
     supabase
@@ -290,6 +319,7 @@ export default async function CasesPage({
           items={items}
           filterLabel={filterLabel}
           filterBanner={filterBanner}
+          returnTo={returnTo}
         />
       </div>
     </div>
