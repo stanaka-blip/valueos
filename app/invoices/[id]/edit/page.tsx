@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   ChangeEvent,
   FormEvent,
@@ -11,6 +11,7 @@ import {
   useState,
 } from "react";
 
+import BackLink from "@/components/BackLink";
 import InvoiceLineEditor from "@/components/invoices/InvoiceLineEditor";
 import {
   assertInvoiceAmountChangeAllowed,
@@ -26,6 +27,7 @@ import {
   type InvoiceLineItemRow,
 } from "@/lib/invoices/invoiceLineItems";
 import { buildInvoiceTaxSnapshotForSave } from "@/lib/invoices/invoiceTaxSnapshot";
+import { resolveBackHref } from "@/lib/navigation/safeReturnTo";
 import { isActiveInvoiceStatus } from "@/lib/status/activeRecords";
 import { supabase } from "@/lib/supabase";
 
@@ -92,7 +94,12 @@ function toDateInput(value: string | null | undefined) {
 export default function EditInvoicePage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
+  const searchParams = useSearchParams();
   const invoiceId = params?.id || "";
+  const backHref = resolveBackHref(
+    searchParams.get("returnTo"),
+    invoiceId ? `/invoices/${invoiceId}` : "/invoices"
+  );
 
   const [invoice, setInvoice] = useState<LoadedInvoice | null>(null);
   const [lineDrafts, setLineDrafts] = useState<InvoiceLineDraft[]>([]);
@@ -427,10 +434,10 @@ export default function EditInvoicePage() {
               {loadError || "請求が見つかりません。"}
             </p>
             <Link
-              href={invoice ? `/invoices/${invoice.id}` : "/invoices"}
+              href={backHref}
               className="mt-5 inline-flex rounded-lg bg-red-700 px-4 py-2 text-sm font-bold text-white"
             >
-              請求詳細へ戻る
+              戻る
             </Link>
           </div>
         </main>
@@ -451,12 +458,7 @@ export default function EditInvoicePage() {
 
       <main className="space-y-6 p-4 md:p-8">
         <div className="flex flex-wrap gap-3">
-          <Link
-            href={`/invoices/${invoice.id}`}
-            className="inline-flex rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50"
-          >
-            ← 請求詳細へ戻る
-          </Link>
+          <BackLink href={backHref} />
         </div>
 
         {confirmedPaymentsSum > 0 ? (

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import MasterDeleteButton from "@/app/components/masters/MasterDeleteButton";
+import BackLink from "@/components/BackLink";
 import { supabase } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
@@ -111,12 +112,7 @@ export default async function DealerDetailPage({
             </p>
           </div>
           <div className="flex flex-wrap items-start gap-2">
-            <Link
-              href="/dealers"
-              className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-bold text-gray-700"
-            >
-              ← 一覧へ戻る
-            </Link>
+            <BackLink href="/dealers" />
             <Link
               href={`/dealers/${dealer.id}/edit`}
               className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-bold text-white"

@@ -131,6 +131,62 @@ test("粗利率の分母は税抜売上", () => {
   assert.equal(r.rate, 40);
 });
 
+test("確定売上は請求税抜のみ（マスタ売価は入力に含めない設計）", () => {
+  const masterSalesPrices = [9_999_999, 8_888_888];
+  const r = computeConfirmedCaseProfit({
+    invoices: [
+      {
+        status: "請求済",
+        invoiceAmount: 1_122_000,
+        subtotalExTax: 1_020_000,
+        taxAmount: 102_000,
+      },
+    ],
+    orders: [{ status: "発注済", orderAmount: 600_000 }],
+    fee: { feeAmount: 0 },
+  });
+  assert.equal(r.revenue, 1_020_000);
+  assert.notEqual(r.revenue, masterSalesPrices[0]);
+  assert.notEqual(r.revenue, masterSalesPrices.reduce((a, b) => a + b, 0));
+});
+
+test("0円請求・0円発注も正しく扱う", () => {
+  const r = computeConfirmedCaseProfit({
+    invoices: [
+      {
+        status: "請求済",
+        invoiceAmount: 0,
+        subtotalExTax: 0,
+        taxAmount: 0,
+      },
+    ],
+    orders: [{ status: "発注済", orderAmount: 0 }],
+    fee: { feeAmount: 0 },
+  });
+  assert.equal(r.revenue, 0);
+  assert.equal(r.cost, 0);
+  assert.equal(r.profit, 0);
+  assert.equal(r.rate, null);
+});
+
+test("仕入原価は order_amount（PKG_COMP=0 契約のヘッダ合計）を使い二重計上しない", () => {
+  // パッケージ親 132,000 + 構成行 amount 0 → order_amount 132,000 のみ
+  const r = computeConfirmedCaseProfit({
+    invoices: [
+      {
+        status: "請求済",
+        invoiceAmount: 220_000,
+        subtotalExTax: 200_000,
+        taxAmount: 20_000,
+      },
+    ],
+    orders: [{ status: "発注済", orderAmount: 132_000 }],
+    fee: { feeAmount: 0 },
+  });
+  assert.equal(r.cost, 132_000);
+  assert.equal(r.profit, 68_000);
+});
+
 test("見込粗利: 価格NULLは hasUnsetPrices", () => {
   const r = computeForecastCaseProfit({
     products: [

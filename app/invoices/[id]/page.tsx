@@ -2,7 +2,9 @@ import Link from "next/link";
 
 import InvoiceCancelButton from "@/app/invoices/[id]/InvoiceCancelButton";
 import PaymentRowActions from "@/app/invoices/[id]/PaymentRowActions";
+import BackLink from "@/components/BackLink";
 import { resolveInvoicePrintTaxDisplay } from "@/lib/invoices/invoicePrintTaxDisplay";
+import { withReturnTo } from "@/lib/navigation/safeReturnTo";
 import { summarizeInvoicePayments } from "@/lib/payments";
 import { isActiveInvoiceStatus } from "@/lib/status/activeRecords";
 import { supabase } from "@/lib/supabase";
@@ -72,18 +74,18 @@ function resolveInvoiceBackFrom(
   if (value === "invoices") {
     return { from: "invoices", href: "/invoices", label: "請求一覧へ戻る" };
   }
-  if (value === "case" && caseId) {
-    return {
-      from: "case",
-      href: `/cases/${caseId}?tab=invoice`,
-      label: "案件詳細へ戻る",
-    };
-  }
   if (value === "collections") {
     return {
       from: "collections",
       href: "/queues/collections",
       label: "回収管理へ戻る",
+    };
+  }
+  if (caseId) {
+    return {
+      from: "case",
+      href: `/cases/${caseId}?tab=invoice`,
+      label: "案件詳細へ戻る",
     };
   }
   return {
@@ -204,18 +206,7 @@ export default async function InvoiceDetailPage({
           </div>
 
           <div className="mt-5 flex flex-wrap gap-3">
-            <Link
-              href={back.href}
-              className="inline-flex rounded-lg border bg-white px-4 py-2 text-sm font-bold text-gray-700"
-            >
-              ← {back.label}
-            </Link>
-            <Link
-              href="/invoices"
-              className="inline-flex rounded-lg border bg-white px-4 py-2 text-sm font-bold text-gray-700"
-            >
-              請求一覧
-            </Link>
+            <BackLink href={back.href} label={`← ${back.label}`} />
           </div>
         </main>
       </>
@@ -228,6 +219,10 @@ export default async function InvoiceDetailPage({
   const caseData = getSingleRelation(invoice.cases);
   const dealer = getSingleRelation(caseData?.dealers);
   const back = resolveInvoiceBackFrom(fromParam, caseData?.id || invoice.case_id);
+  const selfHref = fromParam
+    ? `/invoices/${invoice.id}?from=${encodeURIComponent(fromParam)}`
+    : `/invoices/${invoice.id}`;
+  const editHref = withReturnTo(`/invoices/${invoice.id}/edit`, selfHref);
 
   const paymentSummary = summarizeInvoicePayments({
     invoiceAmount: invoice.invoice_amount,
@@ -265,41 +260,12 @@ export default async function InvoiceDetailPage({
           </div>
 
           <div className="flex flex-wrap gap-3">
-            <Link
-              href={back.href}
-              className="rounded-lg border bg-white px-4 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50"
-            >
-              ← {back.label}
-            </Link>
-            {back.from !== "invoices" ? (
-              <Link
-                href="/invoices"
-                className="rounded-lg border bg-white px-4 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50"
-              >
-                請求一覧
-              </Link>
-            ) : null}
-            {back.from !== "payments" ? (
-              <Link
-                href="/payments"
-                className="rounded-lg border bg-white px-4 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50"
-              >
-                入金管理
-              </Link>
-            ) : null}
-            {back.from !== "collections" ? (
-              <Link
-                href="/queues/collections"
-                className="rounded-lg border bg-white px-4 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50"
-              >
-                回収管理
-              </Link>
-            ) : null}
+            <BackLink href={back.href} label={`← ${back.label}`} />
 
             {invoiceActive ? (
               <>
                 <Link
-                  href={`/invoices/${invoice.id}/edit`}
+                  href={editHref}
                   className="rounded-lg border bg-white px-4 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50"
                 >
                   編集
@@ -309,12 +275,6 @@ export default async function InvoiceDetailPage({
                   caseId={caseData?.id || invoice.case_id}
                   currentStatus={invoice.status}
                 />
-                <Link
-                  href={`/invoices/${invoice.id}/payments/new`}
-                  className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-bold text-white hover:bg-gray-700"
-                >
-                  ＋ 入金登録
-                </Link>
               </>
             ) : (
               <span className="rounded-full bg-gray-200 px-3 py-2 text-xs font-bold text-gray-600">
@@ -620,7 +580,7 @@ export default async function InvoiceDetailPage({
             <div className="flex flex-wrap gap-3">
               {invoiceActive ? (
                 <Link
-                  href={`/invoices/${invoice.id}/edit`}
+                  href={editHref}
                   className="rounded-lg border bg-white px-4 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50"
                 >
                   編集

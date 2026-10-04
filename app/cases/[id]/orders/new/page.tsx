@@ -12,6 +12,7 @@ import {
 } from "react";
 import { useParams, useRouter } from "next/navigation";
 
+import BackLink from "@/components/BackLink";
 import {
   fetchActivePackagePurchaseUnitPrices,
   fetchActivePurchaseUnitPrices,
@@ -806,18 +807,7 @@ export default function NewOrderPage() {
 
       <main className="space-y-6 p-4 md:p-8">
         <div className="flex flex-wrap gap-3">
-          <Link
-            href="/queues/orders"
-            className="inline-flex rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50"
-          >
-            ← 発注管理へ戻る
-          </Link>
-          <Link
-            href={`/cases/${caseData.id}`}
-            className="inline-flex rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50"
-          >
-            ← 案件詳細へ戻る
-          </Link>
+          <BackLink href={`/cases/${caseData.id}`} />
         </div>
 
         <section className="rounded-xl bg-white p-5 shadow-sm md:p-6">

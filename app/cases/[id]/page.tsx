@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { supabase } from "@/lib/supabase";
+import { resolveBackHref } from "@/lib/navigation/safeReturnTo";
 import { resolveProductIdentity } from "@/app/orders/productIdentity";
 import {
   buildDeliveryQuantityLines,
@@ -85,10 +86,11 @@ export default async function CaseDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ tab?: string }>;
+  searchParams: Promise<{ tab?: string; returnTo?: string }>;
 }) {
   const { id } = await params;
-  const { tab: tabParam } = await searchParams;
+  const { tab: tabParam, returnTo: returnToParam } = await searchParams;
+  const backHref = resolveBackHref(returnToParam, "/cases");
 
   const [
     { data: caseData, error: caseError },
@@ -584,6 +586,7 @@ export default async function CaseDetailPage({
       dealerId={(caseData.dealer_id as string) || null}
       threePartyMoney={threePartyMoney}
       initialTab={resolveCaseDetailTabId(tabParam)}
+      backHref={backHref}
       errors={{
         products: caseProductsError?.message,
         orders: ordersError?.message,

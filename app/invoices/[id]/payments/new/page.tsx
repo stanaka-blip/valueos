@@ -9,6 +9,7 @@ import {
 } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import BackLink from "@/components/BackLink";
 import { supabase } from "@/lib/supabase";
 import {
   PAYMENT_METHOD_OPTIONS,
@@ -396,18 +397,7 @@ export default function NewPaymentPage({
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
-            <Link
-              href="/queues/collections"
-              className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50"
-            >
-              ← 回収管理へ戻る
-            </Link>
-            <Link
-              href={`/invoices/${invoice.id}`}
-              className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50"
-            >
-              請求詳細へ戻る
-            </Link>
+            <BackLink href={`/invoices/${invoice.id}`} />
           </div>
         </div>
 
