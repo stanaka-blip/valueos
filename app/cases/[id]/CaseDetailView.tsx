@@ -305,7 +305,7 @@ export default function CaseDetailView({
 
         <div className="mt-4 grid gap-3 sm:grid-cols-3">
           <AmountSummaryCard
-            label="請求予定金額（税込）"
+            label="最終請求額（税込）"
             value={
               totals.amountSummary.plannedInvoiceInclusive == null
                 ? "—"
@@ -391,7 +391,7 @@ export default function CaseDetailView({
 
             <div className="grid grid-cols-1 gap-3">
               <MiniStat
-                label="請求予定（税込）"
+                label="最終請求額（税込）"
                 value={
                   totals.amountSummary.plannedInvoiceInclusive == null
                     ? "—"
